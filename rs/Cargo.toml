@@ -6,3 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+lsp-types = "0.92.0"
+jsonrpc-core-client = "18.0.0"
+tokio = { version = "1.17.0", features = ["full"] }
+emacs_module = "0.18.0"
