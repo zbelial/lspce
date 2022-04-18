@@ -10,7 +10,8 @@
 
     (lspce-say-hello "Emacs")
     (lspce-echo "Hello Emacs")
-
+    (lspce-has-server "/mnt/Personal/VCS/bitbucket/lspce" "rust")
+    (lspce-connect "/mnt/Personal/VCS/bitbucket/lspce" "rust" "rust-analyzer" "proc-macro" "")
   #+END_SRC
 
 * subprocess and stdin/stdout

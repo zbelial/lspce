@@ -163,7 +163,7 @@ fn decode_headers(headers: &[httparse::Header<'_>]) -> RustResult<usize, ParseEr
 impl IoTransport {
     pub fn new(mut stdin: ChildStdin, mut stdout: ChildStdout) -> Self {
         let (mut tx1, rx1) = mpsc::channel::<String>();
-        thread::spawn(move || {
+        let writer = thread::spawn(move || {
             for str in rx1 {
                 stdin.write_all(str.as_bytes());
             }
@@ -173,7 +173,7 @@ impl IoTransport {
         let msgs2 = msgs.clone();
 
         let (mut tx2, rx2) = mpsc::channel::<String>();
-        thread::spawn(move || {
+        let reader = thread::spawn(move || {
             let mut content_len: Option<usize> = None;
             let mut bytes_mut: BytesMut = BytesMut::with_capacity(65536);
             loop {
@@ -317,6 +317,16 @@ struct Project {
     pub client_capabilities: String,         // TODO 类型
 }
 
+impl Project {
+    pub fn new(root_uri: String, client_capabilities: String) -> Project {
+        Project {
+            root_uri,
+            servers: HashMap::new(),
+            client_capabilities,
+        }
+    }
+}
+
 // Emacs won't load the module without this.
 emacs::plugin_is_GPL_compatible!();
 
@@ -372,8 +382,12 @@ fn connect(
         "start initializing server for file_type {} in project {}",
         file_type, root_uri
     ));
-    if (has_server(env, root_uri.to_string(), file_type.to_string()).is_ok()) {
-        return Ok("".to_string());
+    if (has_server(env, root_uri.clone(), file_type.clone()).unwrap()) {
+        env.message(&format!(
+            "server created for file_type {} in project {}",
+            file_type, root_uri
+        ));
+        return Ok("server created.".to_string());
     }
 
     let mut server = LspServer::new(
@@ -383,30 +397,49 @@ fn connect(
         lsp_args.clone(),
     );
     if let Some(s) = server {
-        let uri = Url::parse(&root_uri)?;
-        let reqParams = InitializeParams {
-            process_id: None,
-            root_uri: Some(uri),
-            root_path: None,
-            capabilities: ClientCapabilities {
-                workspace: None,
-                text_document: None,
-                window: None,
-                general: None,
-                experimental: None,
-            },
-            workspace_folders: None,
-            client_info: None,
-            initialization_options: None,
-            trace: None,
-            locale: None,
-        };
+        let mut projects = projects().lock().unwrap();
+        let mut project = projects.get_mut(&root_uri);
+        if let Some(p) = project.as_mut() {
+            p.servers.insert(file_type, s);
+        } else {
+            let mut proj = Project::new(root_uri.clone(), "".to_string());
+            proj.servers.insert(file_type, s);
+
+            projects.insert(root_uri.clone(), proj);
+        }
+
         env.message(&format!("initialized."));
     } else {
         env.message(&format!("connect failed"));
     }
 
-    Ok("".to_string())
+    Ok("server created".to_string())
+}
+
+#[defun]
+fn initialize(env: &Env, root_uri: String, file_type: String, lsp_args: String) -> Result<String> {
+    env.message(&format!("initialize"));
+
+    let uri = Url::parse(&root_uri)?;
+    let reqParams = InitializeParams {
+        process_id: None,
+        root_uri: Some(uri),
+        root_path: None,
+        capabilities: ClientCapabilities {
+            workspace: None,
+            text_document: None,
+            window: None,
+            general: None,
+            experimental: None,
+        },
+        workspace_folders: None,
+        client_info: None,
+        initialization_options: None,
+        trace: None,
+        locale: None,
+    };
+
+    Ok("initialized".to_string())
 }
 
 #[defun]
