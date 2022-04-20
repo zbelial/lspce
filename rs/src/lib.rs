@@ -421,7 +421,7 @@ fn initialize(env: &Env, root_uri: String, file_type: String, lsp_args: String) 
     env.message(&format!("initialize"));
 
     let uri = Url::parse(&root_uri)?;
-    let reqParams = InitializeParams {
+    let req_params = InitializeParams {
         process_id: None,
         root_uri: Some(uri),
         root_path: None,

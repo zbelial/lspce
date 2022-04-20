@@ -4,23 +4,21 @@
 //! control the message dispatch loop yourself.
 //!
 //! Run with `RUST_LOG=lsp_server=debug` to see all the messages.
-mod error;
-mod msg;
-mod socket;
-mod stdio;
 
 use std::{
     io,
     net::{TcpListener, TcpStream, ToSocketAddrs},
+    process::{ChildStdin, ChildStdout},
 };
 
 use crossbeam_channel::{Receiver, Sender};
 
-pub use crate::{
+use crate::{
     error::{ExtractError, ProtocolError},
     msg::{ErrorCode, Message, Notification, Request, RequestId, Response, ResponseError},
     stdio::IoThreads,
 };
+use crate::{socket, stdio};
 
 /// Connection is just a pair of channels of LSP messages.
 pub struct Connection {
@@ -32,8 +30,8 @@ impl Connection {
     /// Create connection over standard in/standard out.
     ///
     /// Use this to create a real language server.
-    pub fn stdio() -> (Connection, IoThreads) {
-        let (sender, receiver, io_threads) = stdio::stdio_transport();
+    pub fn stdio(mut stdin: ChildStdin, mut stdout: ChildStdout) -> (Connection, IoThreads) {
+        let (sender, receiver, io_threads) = stdio::stdio_transport(stdin, stdout);
         (Connection { sender, receiver }, io_threads)
     }
 

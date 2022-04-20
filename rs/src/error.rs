@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{Notification, Request};
+use crate::msg::{Notification, Request};
 
 #[derive(Debug, Clone)]
 pub struct ProtocolError(pub(crate) String);

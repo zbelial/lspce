@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    io::{self, BufRead, Write},
+    io::{self, Read, Write},
 };
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -146,10 +146,10 @@ pub struct Notification {
 }
 
 impl Message {
-    pub fn read(r: &mut impl BufRead) -> io::Result<Option<Message>> {
+    pub fn read(r: &mut impl Read) -> io::Result<Option<Message>> {
         Message::_read(r)
     }
-    fn _read(r: &mut dyn BufRead) -> io::Result<Option<Message>> {
+    fn _read(r: &mut dyn Read) -> io::Result<Option<Message>> {
         let text = match read_msg_text(r)? {
             None => return Ok(None),
             Some(text) => text,
@@ -257,7 +257,11 @@ impl Notification {
     }
 }
 
-fn read_msg_text(inp: &mut dyn BufRead) -> io::Result<Option<String>> {
+fn read_line(inp: &mut dyn Read, buf: &mut String) -> io::Result<usize> {
+    Ok(0)
+}
+
+fn read_msg_text(inp: &mut dyn Read) -> io::Result<Option<String>> {
     fn invalid_data(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
         io::Error::new(io::ErrorKind::InvalidData, error)
     }
@@ -267,6 +271,7 @@ fn read_msg_text(inp: &mut dyn BufRead) -> io::Result<Option<String>> {
 
     let mut size = None;
     let mut buf = String::new();
+    let mut line = String::new();
     loop {
         buf.clear();
         if inp.read_line(&mut buf)? == 0 {

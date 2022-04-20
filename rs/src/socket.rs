@@ -7,8 +7,8 @@ use std::{
 use crossbeam_channel::{bounded, Receiver, Sender};
 
 use crate::{
+    msg::Message,
     stdio::{make_io_threads, IoThreads},
-    Message,
 };
 
 pub(crate) fn socket_transport(
