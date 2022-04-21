@@ -146,11 +146,11 @@ pub struct Notification {
 }
 
 impl Message {
-    pub fn read(r: &mut impl Read) -> io::Result<Option<Message>> {
-        Message::_read(r)
+    pub fn read(r: &mut impl Read, buf: &mut String) -> io::Result<Option<Message>> {
+        Message::_read(r, buf)
     }
-    fn _read(r: &mut dyn Read) -> io::Result<Option<Message>> {
-        let text = match read_msg_text(r)? {
+    fn _read(r: &mut dyn Read, buf: &mut String) -> io::Result<Option<Message>> {
+        let text = match read_msg_text(r, buf)? {
             None => return Ok(None),
             Some(text) => text,
         };
@@ -261,7 +261,7 @@ fn read_line(inp: &mut dyn Read, buf: &mut String) -> io::Result<usize> {
     Ok(0)
 }
 
-fn read_msg_text(inp: &mut dyn Read) -> io::Result<Option<String>> {
+fn read_msg_text(inp: &mut dyn Read, outbuf: &mut String) -> io::Result<Option<String>> {
     fn invalid_data(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
         io::Error::new(io::ErrorKind::InvalidData, error)
     }
@@ -271,10 +271,9 @@ fn read_msg_text(inp: &mut dyn Read) -> io::Result<Option<String>> {
 
     let mut size = None;
     let mut buf = String::new();
-    let mut line = String::new();
     loop {
         buf.clear();
-        if inp.read_line(&mut buf)? == 0 {
+        if inp.read_to_string(&mut buf)? == 0 {
             return Ok(None);
         }
         if !buf.ends_with("\r\n") {
