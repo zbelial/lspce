@@ -86,6 +86,7 @@ impl LspServer {
             let (mut transport, mut threads) = Connection::stdio(stdin, stdout);
 
             server.transport = Some(transport);
+            server.threads = Some(threads);
 
             Some(server)
         } else {
