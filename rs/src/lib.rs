@@ -1,5 +1,11 @@
 #![allow(unused)]
 
+mod connection;
+mod error;
+mod msg;
+mod socket;
+mod stdio;
+
 use bytes::Buf;
 use bytes::BytesMut;
 use emacs::{defun, Env, IntoLisp, Result, Value};
@@ -231,7 +237,7 @@ impl IoTransport {
         IoTransport {
             sender: tx1,
             receiver: rx2,
-            msgs: Arc::new(Mutex::new(VecDeque::new())),
+            msgs,
         }
     }
 }

@@ -1,6 +1,8 @@
 use std::{
+    collections::VecDeque,
     io::{self, stdin, stdout},
     process::{ChildStdin, ChildStdout},
+    sync::{Arc, Mutex},
     thread,
 };
 
@@ -12,6 +14,7 @@ use crate::msg::Message;
 pub(crate) fn stdio_transport(
     mut stdin: ChildStdin,
     mut stdout: ChildStdout,
+    msgs: Arc<Mutex<VecDeque<Message>>>,
 ) -> (Sender<Message>, Receiver<Message>, IoThreads) {
     let (writer_sender, writer_receiver) = bounded::<Message>(0);
     let writer = thread::spawn(move || {
@@ -20,20 +23,12 @@ pub(crate) fn stdio_transport(
             .try_for_each(|it| it.write(&mut stdin))?;
         Ok(())
     });
+
     let (reader_sender, reader_receiver) = bounded::<Message>(0);
     let reader = thread::spawn(move || {
         let mut buf = String::new();
-        while let Some(msg) = Message::read(&mut stdout)? {
-            let is_exit = match &msg {
-                Message::Notification(n) => n.is_exit(),
-                _ => false,
-            };
-
-            reader_sender.send(msg).unwrap();
-
-            if is_exit {
-                break;
-            }
+        while let Some(msg) = Message::read(&mut stdout, &mut buf)? {
+            msgs.lock().unwrap().push_back(msg);
         }
         Ok(())
     });

@@ -6,9 +6,11 @@
 //! Run with `RUST_LOG=lsp_server=debug` to see all the messages.
 
 use std::{
+    collections::VecDeque,
     io,
     net::{TcpListener, TcpStream, ToSocketAddrs},
     process::{ChildStdin, ChildStdout},
+    sync::{Arc, Mutex},
 };
 
 use crossbeam_channel::{Receiver, Sender};
@@ -24,6 +26,7 @@ use crate::{socket, stdio};
 pub struct Connection {
     pub sender: Sender<Message>,
     pub receiver: Receiver<Message>,
+    msgs: Arc<Mutex<VecDeque<Message>>>,
 }
 
 impl Connection {
@@ -31,8 +34,17 @@ impl Connection {
     ///
     /// Use this to create a real language server.
     pub fn stdio(mut stdin: ChildStdin, mut stdout: ChildStdout) -> (Connection, IoThreads) {
-        let (sender, receiver, io_threads) = stdio::stdio_transport(stdin, stdout);
-        (Connection { sender, receiver }, io_threads)
+        let msgs = Arc::new(Mutex::new(VecDeque::new()));
+        let msgs2 = msgs.clone();
+        let (sender, receiver, io_threads) = stdio::stdio_transport(stdin, stdout, msgs2);
+        (
+            Connection {
+                sender,
+                receiver,
+                msgs,
+            },
+            io_threads,
+        )
     }
 
     /// Open a connection over tcp.
@@ -40,9 +52,18 @@ impl Connection {
     ///
     /// Use this to create a real language server.
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<(Connection, IoThreads)> {
+        let msgs = Arc::new(Mutex::new(VecDeque::new()));
+        let msgs2 = msgs.clone();
         let stream = TcpStream::connect(addr)?;
-        let (sender, receiver, io_threads) = socket::socket_transport(stream);
-        Ok((Connection { sender, receiver }, io_threads))
+        let (sender, receiver, io_threads) = socket::socket_transport(stream, msgs2);
+        Ok((
+            Connection {
+                sender,
+                receiver,
+                msgs,
+            },
+            io_threads,
+        ))
     }
 
     /// Creates a pair of connected connections.
@@ -55,10 +76,12 @@ impl Connection {
             Connection {
                 sender: s1,
                 receiver: r2,
+                msgs: Arc::new(Mutex::new(VecDeque::new())),
             },
             Connection {
                 sender: s2,
                 receiver: r1,
+                msgs: Arc::new(Mutex::new(VecDeque::new())),
             },
         )
     }
