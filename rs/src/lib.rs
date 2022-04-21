@@ -8,6 +8,7 @@ mod stdio;
 
 use bytes::Buf;
 use bytes::BytesMut;
+use connection::Connection;
 use emacs::{defun, Env, IntoLisp, Result, Value};
 use error::ParseError;
 use lsp_types::lsp_request;
@@ -22,6 +23,7 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::result::Result as RustResult;
 use std::str::Utf8Error;
+use stdio::IoThreads;
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -37,148 +39,11 @@ use std::{
     thread::{self, JoinHandle, Thread},
 };
 
-pub trait Transport {
-    fn read(&self) -> Option<String>; // 读一个完整的响应/通知
-    fn write(&self, buf: &str);
-}
-
-#[derive(Debug)]
-struct SocketTransport {}
-
-#[derive(Debug)]
-struct IoTransport {
-    sender: Sender<String>,
-    receiver: Receiver<String>,
-    msgs: Arc<Mutex<VecDeque<String>>>,
-}
-
-/// Errors that can occur when processing an LSP message.
-fn decode_headers(headers: &[httparse::Header<'_>]) -> RustResult<usize, ParseError> {
-    let mut content_len = None;
-
-    for header in headers {
-        match header.name {
-            "Content-Length" => {
-                let string = std::str::from_utf8(header.value)?;
-                let parsed_len = string.parse()?;
-                content_len = Some(parsed_len);
-            }
-            "Content-Type" => {
-                let string = std::str::from_utf8(header.value)?;
-                let charset = string
-                    .split(';')
-                    .skip(1)
-                    .map(|param| param.trim())
-                    .find_map(|param| param.strip_prefix("charset="));
-
-                match charset {
-                    Some("utf-8") | Some("utf8") => {}
-                    _ => return Err(ParseError::InvalidContentType),
-                }
-            }
-            other => {}
-        }
-    }
-
-    if let Some(content_len) = content_len {
-        Ok(content_len)
-    } else {
-        Err(ParseError::MissingContentLength)
-    }
-}
-
-impl IoTransport {
-    pub fn new(mut stdin: ChildStdin, mut stdout: ChildStdout) -> Self {
-        let (mut tx1, rx1) = mpsc::channel::<String>();
-        let writer = thread::spawn(move || {
-            for str in rx1 {
-                stdin.write_all(str.as_bytes());
-            }
-        });
-
-        let mut msgs: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
-        let msgs2 = msgs.clone();
-
-        let (mut tx2, rx2) = mpsc::channel::<String>();
-        let reader = thread::spawn(move || {
-            let mut content_len: Option<usize> = None;
-            let mut bytes_mut: BytesMut = BytesMut::with_capacity(65536);
-            loop {
-                if let Some(len) = content_len {
-                    if (bytes_mut.len() < len) {
-                        stdout.read(&mut bytes_mut);
-                        continue;
-                    }
-
-                    let buf = &bytes_mut[..len];
-                    let message = std::str::from_utf8(buf).unwrap();
-                    if !message.is_empty() {
-                        msgs2.lock().unwrap().push_back(message.to_string());
-                    }
-
-                    bytes_mut.advance(len);
-                    content_len = None;
-                } else {
-                    stdout.read(&mut bytes_mut);
-
-                    let mut dst = [httparse::EMPTY_HEADER; 2];
-                    let (headers_len, headers) = match httparse::parse_headers(&bytes_mut, &mut dst)
-                    {
-                        Ok(p) => match p {
-                            httparse::Status::Complete(output) => output,
-                            httparse::Status::Partial => continue,
-                        },
-                        _ => {
-                            continue;
-                        }
-                    };
-
-                    match decode_headers(headers) {
-                        Ok(len) => {
-                            bytes_mut.advance(headers_len);
-                            content_len = Some(len);
-                            continue;
-                        }
-                        Err(err) => {
-                            match err {
-                                ParseError::MissingContentLength => {}
-                                _ => bytes_mut.advance(headers_len),
-                            }
-
-                            // Skip any garbage bytes by scanning ahead for another potential message.
-                            bytes_mut.advance(
-                                memmem::find(&bytes_mut, b"Content-Length").unwrap_or_default(),
-                            );
-                        }
-                    }
-                }
-            }
-        });
-
-        IoTransport {
-            sender: tx1,
-            receiver: rx2,
-            msgs,
-        }
-    }
-}
-
-impl Transport for IoTransport {
-    fn read(&self) -> Option<String> {
-        self.msgs.lock().unwrap().pop_front()
-    }
-
-    fn write(&self, buf: &str) {
-        self.sender.send(String::from(buf));
-    }
-}
-
 #[derive(Debug)]
 struct FileInfo {
     pub uri: String, // 文件名
 }
 
-#[derive(Debug)]
 struct LspServer {
     pub child: Option<Child>,
     pub nick_name: String,
@@ -186,7 +51,8 @@ struct LspServer {
     pub capabilities: String,            // TODO 类型
     pub usable_capabilites: String,      // TODO
     pub uris: HashMap<String, FileInfo>, // key: uri
-    transport: Option<IoTransport>,      // TODO StdioConnection替换为模板参数
+    transport: Option<Connection>,       // TODO StdioConnection替换为模板参数
+    threads: Option<IoThreads>,
 }
 
 impl LspServer {
@@ -211,12 +77,13 @@ impl LspServer {
                 usable_capabilites: "".to_string(),
                 uris: HashMap::new(),
                 transport: None,
+                threads: None,
             };
 
             let mut stdin = c.stdin.take().unwrap();
             let mut stdout = c.stdout.take().unwrap();
 
-            let mut transport = IoTransport::new(stdin, stdout);
+            let (mut transport, mut threads) = Connection::stdio(stdin, stdout);
 
             server.transport = Some(transport);
 
@@ -228,7 +95,7 @@ impl LspServer {
 
     pub fn request(&mut self, request: String) -> Option<String> {
         if self.transport.is_some() {
-            self.transport.as_ref().unwrap().write(&request);
+            // self.transport.as_ref().unwrap().write(&request);
         }
 
         None
@@ -237,7 +104,6 @@ impl LspServer {
     pub fn notify(&mut self, notification: String) {}
 }
 
-#[derive(Debug)]
 struct Project {
     pub root_uri: String,                    // 项目根目录
     pub servers: HashMap<String, LspServer>, // 每个LspServer处理一种类型的文件
