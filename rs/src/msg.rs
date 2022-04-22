@@ -271,10 +271,6 @@ impl Notification {
     }
 }
 
-fn read_line(inp: &mut dyn Read, buf: &mut String) -> io::Result<usize> {
-    Ok(0)
-}
-
 fn read_msg_text_buf(inp: &mut dyn BufRead) -> io::Result<Option<String>> {
     fn invalid_data(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
         io::Error::new(io::ErrorKind::InvalidData, error)

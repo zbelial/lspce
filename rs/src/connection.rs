@@ -13,7 +13,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::{Receiver, SendError, Sender};
 
 use crate::{
     error::{ExtractError, ProtocolError},
@@ -24,12 +24,20 @@ use crate::{socket, stdio};
 
 /// Connection is just a pair of channels of LSP messages.
 pub struct Connection {
-    pub sender: Sender<Message>,
-    pub receiver: Receiver<Message>,
+    sender: Sender<Message>,
+    receiver: Receiver<Message>,
     msgs: Arc<Mutex<VecDeque<Message>>>,
 }
 
 impl Connection {
+    pub fn write(&self, req: Message) -> Result<(), SendError<Message>> {
+        self.sender.send(req)
+    }
+
+    pub fn read(&self) -> Option<Message> {
+        self.msgs.lock().unwrap().pop_front()
+    }
+
     /// Create connection over standard in/standard out.
     ///
     /// Use this to create a real language server.

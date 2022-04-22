@@ -19,6 +19,7 @@ use lsp_types::InitializeParams;
 use lsp_types::InitializeResult;
 use lsp_types::Url;
 use memchr::memmem;
+use msg::Message;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::result::Result as RustResult;
@@ -96,7 +97,9 @@ impl LspServer {
 
     pub fn request(&mut self, request: String) -> Option<String> {
         if self.transport.is_some() {
-            // self.transport.as_ref().unwrap().write(&request);
+            let msg: Message = serde_json::from_str(&request).unwrap();
+
+            let result = self.transport.as_ref().unwrap().write(msg);
         }
 
         None
@@ -176,7 +179,7 @@ fn connect(
         "start initializing server for file_type {} in project {}",
         file_type, root_uri
     ));
-    if (has_server(env, root_uri.clone(), file_type.clone()).unwrap()) {
+    if (server_running(env, root_uri.clone(), file_type.clone()).unwrap()) {
         env.message(&format!(
             "server created for file_type {} in project {}",
             file_type, root_uri
@@ -210,34 +213,33 @@ fn connect(
     Ok("server created".to_string())
 }
 
-#[defun]
 fn initialize(env: &Env, root_uri: String, file_type: String, lsp_args: String) -> Result<String> {
     env.message(&format!("initialize"));
 
-    let uri = Url::parse(&root_uri)?;
-    let req_params = InitializeParams {
-        process_id: None,
-        root_uri: Some(uri),
-        root_path: None,
-        capabilities: ClientCapabilities {
-            workspace: None,
-            text_document: None,
-            window: None,
-            general: None,
-            experimental: None,
-        },
-        workspace_folders: None,
-        client_info: None,
-        initialization_options: None,
-        trace: None,
-        locale: None,
-    };
+    // let uri = Url::parse(&root_uri)?;
+    // let req_params = InitializeParams {
+    //     process_id: None,
+    //     root_uri: Some(uri),
+    //     root_path: None,
+    //     capabilities: ClientCapabilities {
+    //         workspace: None,
+    //         text_document: None,
+    //         window: None,
+    //         general: None,
+    //         experimental: None,
+    //     },
+    //     workspace_folders: None,
+    //     client_info: None,
+    //     initialization_options: None,
+    //     trace: None,
+    //     locale: None,
+    // };
 
     Ok("initialized".to_string())
 }
 
 #[defun]
-fn has_server(env: &Env, root_uri: String, file_type: String) -> Result<bool> {
+fn server_running(env: &Env, root_uri: String, file_type: String) -> Result<bool> {
     let projects = projects().lock().unwrap();
 
     if let Some(p) = projects.get(&root_uri) {
