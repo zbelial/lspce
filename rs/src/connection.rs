@@ -17,6 +17,7 @@ use crossbeam_channel::{Receiver, SendError, Sender};
 
 use crate::{
     error::{ExtractError, ProtocolError},
+    logger::Logger,
     msg::{ErrorCode, Message, Notification, Request, RequestId, Response, ResponseError},
     stdio::IoThreads,
 };
@@ -31,11 +32,16 @@ pub struct Connection {
 
 impl Connection {
     pub fn write(&self, req: Message) -> Result<(), SendError<Message>> {
+        Logger::log(&format!("Connection write {:#?}", &req));
+
         self.sender.send(req)
     }
 
     pub fn read(&self) -> Option<Message> {
-        self.msgs.lock().unwrap().pop_front()
+        let msg = self.msgs.lock().unwrap().pop_front();
+        Logger::log(&format!("Connection read {:#?}", &msg));
+
+        msg
     }
 
     /// Create connection over standard in/standard out.

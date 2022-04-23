@@ -176,15 +176,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
-name = "log"
-version = "0.4.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6389c490849ff5bc16be905ae24bc913a9c8892e19b2341dbc175e14c341c2b8"
-dependencies = [
- "cfg-if",
-]
-
-[[package]]
 name = "lsp-types"
 version = "0.92.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -198,14 +189,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "lspce"
+name = "lspce-module"
 version = "0.1.0"
 dependencies = [
  "bytes",
  "crossbeam-channel",
  "emacs",
  "httparse",
- "log",
  "lsp-types",
  "memchr",
  "serde",

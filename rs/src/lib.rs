@@ -2,6 +2,7 @@
 
 mod connection;
 mod error;
+mod logger;
 mod msg;
 mod socket;
 mod stdio;
@@ -9,19 +10,15 @@ mod stdio;
 use bytes::Buf;
 use bytes::BytesMut;
 use connection::Connection;
+use crossbeam_channel::SendError;
 use emacs::{defun, Env, IntoLisp, Result, Value};
 use error::ParseError;
-use lsp_types::lsp_request;
-use lsp_types::request::Initialize;
-use lsp_types::request::Request;
-use lsp_types::ClientCapabilities;
-use lsp_types::InitializeParams;
-use lsp_types::InitializeResult;
-use lsp_types::Url;
+use logger::Logger;
 use memchr::memmem;
 use msg::Message;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
+use std::fs::File;
 use std::result::Result as RustResult;
 use std::str::Utf8Error;
 use stdio::IoThreads;
@@ -127,11 +124,11 @@ impl Project {
 // Emacs won't load the module without this.
 emacs::plugin_is_GPL_compatible!();
 
-// let mut projects: Arc<Mutex<HashMap<String, Project>>> = Arc::new(Mutex::new(HashMap::new()));
-
 // Register the initialization hook that Emacs will call when it loads the module.
-#[emacs::module]
+#[emacs::module(name("lspce-module"))]
 fn init(env: &Env) -> Result<Value<'_>> {
+    Logger::log("Done loading!");
+
     env.message("Done loading!")
 }
 
@@ -181,10 +178,10 @@ fn connect(
     ));
     if (server_running(env, root_uri.clone(), file_type.clone()).unwrap()) {
         env.message(&format!(
-            "server created for file_type {} in project {}",
+            "server created already for file_type {} in project {}",
             file_type, root_uri
         ));
-        return Ok("server created.".to_string());
+        return Ok("server created already, return now.".to_string());
     }
 
     let mut server = LspServer::new(
@@ -193,19 +190,23 @@ fn connect(
         cmd_args.clone(),
         lsp_args.clone(),
     );
-    if let Some(s) = server {
+    if let Some(mut s) = server {
         let mut projects = projects().lock().unwrap();
         let mut project = projects.get_mut(&root_uri);
         if let Some(p) = project.as_mut() {
+            initialize(env, root_uri, &mut s, lsp_args);
+
             p.servers.insert(file_type, s);
         } else {
             let mut proj = Project::new(root_uri.clone(), "".to_string());
+            initialize(env, root_uri.clone(), &mut s, lsp_args);
+
             proj.servers.insert(file_type, s);
 
             projects.insert(root_uri.clone(), proj);
         }
 
-        env.message(&format!("initialized."));
+        env.message(&format!("connected to server."));
     } else {
         env.message(&format!("connect failed"));
     }
@@ -213,29 +214,35 @@ fn connect(
     Ok("server created".to_string())
 }
 
-fn initialize(env: &Env, root_uri: String, file_type: String, lsp_args: String) -> Result<String> {
-    env.message(&format!("initialize"));
+fn initialize(
+    env: &Env,
+    root_uri: String,
+    server: &mut LspServer,
+    lsp_args: String,
+) -> Result<String> {
+    Logger::log(&format!("initialize request {:#?}", lsp_args));
 
-    // let uri = Url::parse(&root_uri)?;
-    // let req_params = InitializeParams {
-    //     process_id: None,
-    //     root_uri: Some(uri),
-    //     root_path: None,
-    //     capabilities: ClientCapabilities {
-    //         workspace: None,
-    //         text_document: None,
-    //         window: None,
-    //         general: None,
-    //         experimental: None,
-    //     },
-    //     workspace_folders: None,
-    //     client_info: None,
-    //     initialization_options: None,
-    //     trace: None,
-    //     locale: None,
-    // };
+    let msg: Message = serde_json::from_str(&lsp_args).unwrap();
+
+    let write_result = server.transport.as_mut().unwrap().write(msg);
+    match write_result {
+        Ok(_) => loop {
+            let resp = server.transport.as_mut().unwrap().read();
+            env.message(&format!("initialize ok {:#?}", resp));
+            break;
+        },
+        Err(error) => {
+            env.message(&format!("initialize error {:#?}", error));
+        }
+    }
 
     Ok("initialized".to_string())
+}
+
+fn server(env: &Env, root_uri: String, file_type: String) -> Result<bool> {
+    let projects = projects().lock().unwrap();
+
+    Ok(false)
 }
 
 #[defun]

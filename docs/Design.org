@@ -6,12 +6,24 @@
   #+BEGIN_SRC elisp
     (add-to-list 'load-path "/mnt/Personal/VCS/bitbucket/lspce/rs/target/debug")
 
-    (require 'lspce)
+    (require 'lspce-module)
 
-    (lspce-say-hello "Emacs")
-    (lspce-echo "Hello Emacs")
-    (lspce-has-server "/mnt/Personal/VCS/bitbucket/lspce" "rust")
-    (lspce-connect "/mnt/Personal/VCS/bitbucket/lspce" "rust" "rust-analyzer" "proc-macro" "")
+    (defun lspce--path-to-uri (path)
+      "URIfy PATH."
+      (url-hexify-string
+       (concat "file://" (if (eq system-type 'windows-nt) "/") (file-truename path))
+       url-path-allowed-chars))
+
+    (setq lspce--initialize-params (list :processId (emacs-pid)
+                                         :rootPath (expand-file-name default-directory)
+                                         :rootUri (lspce--path-to-uri default-directory)
+                                         :initializationOptions nil
+                                         :capabilities nil))
+
+    (lspce-module-say-hello "Emacs")
+    (lspce-module-echo "Hello Emacs")
+    (lspce-module-server-running "/mnt/Personal/VCS/bitbucket/lspce" "rust")
+    (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce" "rust" "rust-analyzer" "proc-macro" "")
   #+END_SRC
 
 * subprocess and stdin/stdout
