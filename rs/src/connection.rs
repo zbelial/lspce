@@ -10,13 +10,10 @@ use std::{
     io,
     net::{TcpListener, TcpStream, ToSocketAddrs},
     process::{ChildStdin, ChildStdout},
-    sync::{
-        mpsc::{Receiver, SendError, Sender},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
 };
 
-// use crossbeam_channel::{Receiver, SendError, Sender};
+use crossbeam_channel::{Receiver, SendError, Sender};
 
 use crate::{
     error::{ExtractError, ProtocolError},

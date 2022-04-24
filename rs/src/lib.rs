@@ -229,12 +229,15 @@ fn initialize(
     let write_result = server.transport.as_mut().unwrap().write(msg);
     match write_result {
         Ok(_) => loop {
+            thread::sleep(std::time::Duration::from_millis(100));
+
             let resp = server.transport.as_mut().unwrap().read();
             Logger::log(&format!("initialize ok {:#?}", resp));
             if resp.is_some() {
                 break;
+                // TODO
             } else {
-                thread::sleep(std::time::Duration::from_millis(100));
+                // TODO
             }
         },
         Err(error) => {

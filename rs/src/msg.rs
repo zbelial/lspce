@@ -153,22 +153,11 @@ pub struct Notification {
 }
 
 impl Message {
-    pub fn read_buf(r: &mut impl BufRead) -> io::Result<Option<Message>> {
-        Message::_read_buf(r)
+    pub fn read(r: &mut impl BufRead) -> io::Result<Option<Message>> {
+        Message::_read(r)
     }
-    fn _read_buf(r: &mut dyn BufRead) -> io::Result<Option<Message>> {
-        let text = match read_msg_text_buf(r)? {
-            None => return Ok(None),
-            Some(text) => text,
-        };
-        let msg = serde_json::from_str(&text)?;
-        Ok(Some(msg))
-    }
-    pub fn read(r: &mut impl Read, bytes_mut: &mut BytesMut) -> io::Result<Option<Message>> {
-        Message::_read(r, bytes_mut)
-    }
-    fn _read(r: &mut dyn Read, bytes_mut: &mut BytesMut) -> io::Result<Option<Message>> {
-        let text = match read_msg_text(r, bytes_mut)? {
+    fn _read(r: &mut dyn BufRead) -> io::Result<Option<Message>> {
+        let text = match read_msg_text(r)? {
             None => return Ok(None),
             Some(text) => text,
         };
@@ -275,7 +264,7 @@ impl Notification {
     }
 }
 
-fn read_msg_text_buf(inp: &mut dyn BufRead) -> io::Result<Option<String>> {
+fn read_msg_text(inp: &mut dyn BufRead) -> io::Result<Option<String>> {
     fn invalid_data(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
         io::Error::new(io::ErrorKind::InvalidData, error)
     }
@@ -311,132 +300,15 @@ fn read_msg_text_buf(inp: &mut dyn BufRead) -> io::Result<Option<String>> {
     buf.resize(size, 0);
     inp.read_exact(&mut buf)?;
     let buf = String::from_utf8(buf).map_err(invalid_data)?;
-    // log::debug!("< {}", buf);
+    Logger::log(&format!("< {}", buf));
+
     Ok(Some(buf))
-}
-
-fn decode_headers(headers: &[httparse::Header<'_>]) -> Result<usize, ParseError> {
-    let mut content_len = None;
-
-    for header in headers {
-        match header.name {
-            "Content-Length" => {
-                let string = std::str::from_utf8(header.value)?;
-                let parsed_len = string.parse()?;
-                content_len = Some(parsed_len);
-            }
-            "Content-Type" => {
-                let string = std::str::from_utf8(header.value)?;
-                let charset = string
-                    .split(';')
-                    .skip(1)
-                    .map(|param| param.trim())
-                    .find_map(|param| param.strip_prefix("charset="));
-
-                match charset {
-                    Some("utf-8") | Some("utf8") => {}
-                    _ => return Err(ParseError::InvalidContentType),
-                }
-            }
-            other => {}
-        }
-    }
-
-    if let Some(content_len) = content_len {
-        Ok(content_len)
-    } else {
-        Err(ParseError::MissingContentLength)
-    }
-}
-
-fn read_msg_text(inp: &mut dyn Read, bytes_mut: &mut BytesMut) -> io::Result<Option<String>> {
-    fn invalid_data(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
-        io::Error::new(io::ErrorKind::InvalidData, error)
-    }
-    macro_rules! invalid_data {
-        ($($tt:tt)*) => (invalid_data(format!($($tt)*)))
-    }
-
-    let mut message = String::new();
-    let mut content_len: Option<usize> = None;
-    loop {
-        thread::sleep(time::Duration::from_millis(100));
-
-        Logger::log(&format!("read_msg_text content_len {:?}", content_len));
-
-        if let Some(len) = content_len {
-            if (bytes_mut.len() < len) {
-                Logger::log(&format!("bytes_mut.len {} < len {}", bytes_mut.len(), len));
-
-                return Ok(None);
-            }
-
-            let buf = &bytes_mut[..len];
-            message = String::from_utf8(buf.to_vec()).map_err(invalid_data)?;
-            Logger::log(&format!("read_msg_text message {:#?}", message));
-            let result = if message.is_empty() {
-                Ok(None)
-            } else {
-                Ok(Some(message))
-            };
-
-            bytes_mut.advance(len);
-            content_len = None;
-
-            return result;
-        } else {
-            let n = inp.read(bytes_mut);
-            if let Ok(size) = n {
-                if size == 0 {
-                    return Ok(None);
-                }
-            } else {
-                Logger::log(&format!("read_msg_text inp.read result {:#?}", n));
-            }
-
-            Logger::log(&format!("read_msg_text bytes_mut len {}", bytes_mut.len()));
-
-            let mut dst = [httparse::EMPTY_HEADER; 2];
-            let (headers_len, headers) = match httparse::parse_headers(&bytes_mut, &mut dst) {
-                Ok(p) => match p {
-                    httparse::Status::Complete(output) => output,
-                    httparse::Status::Partial => continue,
-                },
-                _ => {
-                    continue;
-                }
-            };
-
-            match decode_headers(headers) {
-                Ok(len) => {
-                    bytes_mut.advance(headers_len);
-                    content_len = Some(len);
-                    continue;
-                }
-                Err(err) => {
-                    match err {
-                        ParseError::MissingContentLength => {}
-                        _ => bytes_mut.advance(headers_len),
-                    }
-
-                    // Skip any garbage bytes by scanning ahead for another potential message.
-                    bytes_mut
-                        .advance(memmem::find(&bytes_mut, b"Content-Length").unwrap_or_default());
-                }
-            }
-        }
-    }
-    Logger::log(&format!("< {}", message));
-
-    Ok(Some(message))
 }
 
 fn write_msg_text(out: &mut dyn Write, msg: &str) -> io::Result<()> {
     Logger::log(&format!("> {} {}", msg.len(), &msg));
 
-    // write!(out, "Content-Length: {}\r\n\r\n{}", msg.len(), &msg)?;
     out.write_all(&format!("Content-Length: {}\r\n\r\n{}", msg.len(), &msg).as_bytes())?;
-    // out.write_all(msg.as_bytes())?;
     out.flush()?;
 
     Logger::log("after flush");
