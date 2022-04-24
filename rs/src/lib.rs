@@ -60,8 +60,10 @@ impl LspServer {
         cmd_args: String,
         lsp_args: String,
     ) -> Option<LspServer> {
+        let args = cmd_args.split_ascii_whitespace().collect::<Vec<&str>>();
+
         let mut child = Command::new(cmd)
-            .arg(cmd_args)
+            .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn();

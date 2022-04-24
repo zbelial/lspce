@@ -10,10 +10,13 @@ use std::{
     io,
     net::{TcpListener, TcpStream, ToSocketAddrs},
     process::{ChildStdin, ChildStdout},
-    sync::{Arc, Mutex},
+    sync::{
+        mpsc::{Receiver, SendError, Sender},
+        Arc, Mutex,
+    },
 };
 
-use crossbeam_channel::{Receiver, SendError, Sender};
+// use crossbeam_channel::{Receiver, SendError, Sender};
 
 use crate::{
     error::{ExtractError, ProtocolError},
@@ -78,25 +81,5 @@ impl Connection {
             },
             io_threads,
         ))
-    }
-
-    /// Creates a pair of connected connections.
-    ///
-    /// Use this for testing.
-    pub fn memory() -> (Connection, Connection) {
-        let (s1, r1) = crossbeam_channel::unbounded();
-        let (s2, r2) = crossbeam_channel::unbounded();
-        (
-            Connection {
-                sender: s1,
-                receiver: r2,
-                msgs: Arc::new(Mutex::new(VecDeque::new())),
-            },
-            Connection {
-                sender: s2,
-                receiver: r1,
-                msgs: Arc::new(Mutex::new(VecDeque::new())),
-            },
-        )
     }
 }

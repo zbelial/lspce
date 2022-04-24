@@ -2,11 +2,14 @@ use std::{
     collections::VecDeque,
     io::{self, BufReader},
     net::TcpStream,
-    sync::{Arc, Mutex},
+    sync::{
+        mpsc::{self, Receiver, Sender},
+        Arc, Mutex,
+    },
     thread,
 };
 
-use crossbeam_channel::{bounded, Receiver, Sender};
+// use crossbeam_channel::{bounded, Receiver, Sender};
 
 use crate::{
     msg::Message,
@@ -27,7 +30,8 @@ fn make_reader(
     stream: TcpStream,
     msgs: Arc<Mutex<VecDeque<Message>>>,
 ) -> (Receiver<Message>, thread::JoinHandle<io::Result<()>>) {
-    let (reader_sender, reader_receiver) = bounded::<Message>(0);
+    // let (reader_sender, reader_receiver) = bounded::<Message>(0);
+    let (reader_sender, reader_receiver) = mpsc::channel::<Message>();
     let reader = thread::spawn(move || {
         let mut buf_read = BufReader::new(stream);
         while let Some(msg) = Message::read_buf(&mut buf_read).unwrap() {
@@ -39,7 +43,8 @@ fn make_reader(
 }
 
 fn make_writer(mut stream: TcpStream) -> (Sender<Message>, thread::JoinHandle<io::Result<()>>) {
-    let (writer_sender, writer_receiver) = bounded::<Message>(0);
+    // let (writer_sender, writer_receiver) = bounded::<Message>(0);
+    let (writer_sender, writer_receiver) = mpsc::channel::<Message>();
     let writer = thread::spawn(move || {
         writer_receiver
             .into_iter()

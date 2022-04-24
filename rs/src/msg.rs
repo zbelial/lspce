@@ -8,7 +8,10 @@ use bytes::BytesMut;
 use memchr::memmem;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::error::{ExtractError, ParseError};
+use crate::{
+    error::{ExtractError, ParseError},
+    logger::Logger,
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -356,6 +359,8 @@ fn read_msg_text(inp: &mut dyn Read, bytes_mut: &mut BytesMut) -> io::Result<Opt
     let mut message = String::new();
     let mut content_len: Option<usize> = None;
     loop {
+        // Logger::log(&format!("read_msg_text content_len {:?}", content_len));
+
         if let Some(len) = content_len {
             if (bytes_mut.len() < len) {
                 inp.read(bytes_mut);
@@ -364,11 +369,22 @@ fn read_msg_text(inp: &mut dyn Read, bytes_mut: &mut BytesMut) -> io::Result<Opt
 
             let buf = &bytes_mut[..len];
             message = String::from_utf8(buf.to_vec()).map_err(invalid_data)?;
+            Logger::log(&format!("read_msg_text message {:#?}", message));
 
             bytes_mut.advance(len);
             content_len = None;
+            break;
         } else {
-            inp.read(bytes_mut);
+            let n = inp.read(bytes_mut);
+            if let Ok(size) = n {
+                if size == 0 {
+                    return Ok(None);
+                }
+            } else {
+                Logger::log(&format!("read_msg_text inp.read result {:#?}", n));
+            }
+
+            Logger::log(&format!("read_msg_text bytes_mut len {}", bytes_mut.len()));
 
             let mut dst = [httparse::EMPTY_HEADER; 2];
             let (headers_len, headers) = match httparse::parse_headers(&bytes_mut, &mut dst) {
@@ -400,15 +416,17 @@ fn read_msg_text(inp: &mut dyn Read, bytes_mut: &mut BytesMut) -> io::Result<Opt
             }
         }
     }
-    // log::debug!("< {}", message);
+    Logger::log(&format!("< {}", message));
+
     Ok(Some(message))
 }
 
 fn write_msg_text(out: &mut dyn Write, msg: &str) -> io::Result<()> {
-    // log::debug!("> {}", msg);
-    write!(out, "Content-Length: {}\r\n\r\n", msg.len())?;
-    out.write_all(msg.as_bytes())?;
-    out.flush()?;
+    Logger::log(&format!("> {}", &msg));
+
+    write!(out, "Content-Length: {}\r\n\r\n{}", msg.len(), &msg)?;
+    // out.write_all(msg.as_bytes())?;
+    // out.flush()?;
     Ok(())
 }
 

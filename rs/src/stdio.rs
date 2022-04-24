@@ -2,12 +2,15 @@ use std::{
     collections::VecDeque,
     io::{self, stdin, stdout},
     process::{ChildStdin, ChildStdout},
-    sync::{Arc, Mutex},
+    sync::{
+        mpsc::{self, Receiver, Sender},
+        Arc, Mutex,
+    },
     thread,
 };
 
 use bytes::BytesMut;
-use crossbeam_channel::{bounded, Receiver, Sender};
+// use crossbeam_channel::{bounded, Receiver, Sender};
 
 use crate::{logger::Logger, msg::Message};
 
@@ -17,7 +20,8 @@ pub(crate) fn stdio_transport(
     mut stdout: ChildStdout,
     msgs: Arc<Mutex<VecDeque<Message>>>,
 ) -> (Sender<Message>, Receiver<Message>, IoThreads) {
-    let (writer_sender, writer_receiver) = bounded::<Message>(0);
+    // let (writer_sender, writer_receiver) = bounded::<Message>(0);
+    let (writer_sender, writer_receiver) = mpsc::channel::<Message>();
     let writer = thread::spawn(move || {
         writer_receiver.into_iter().try_for_each(|it| {
             Logger::log(&format!("stdio write {:#?}", &it));
@@ -27,7 +31,8 @@ pub(crate) fn stdio_transport(
         Ok(())
     });
 
-    let (reader_sender, reader_receiver) = bounded::<Message>(0);
+    // let (reader_sender, reader_receiver) = bounded::<Message>(0);
+    let (reader_sender, reader_receiver) = mpsc::channel::<Message>();
     let reader = thread::spawn(move || {
         let mut bytes_mut = BytesMut::with_capacity(65536);
         while let Some(msg) = Message::read(&mut stdout, &mut bytes_mut)? {
