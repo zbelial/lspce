@@ -7,6 +7,8 @@ use std::{
     sync::{Arc, Mutex, Once},
 };
 
+use chrono::Local;
+
 pub struct Logger {
     initilized: bool,
 }
@@ -14,6 +16,12 @@ pub struct Logger {
 impl Logger {
     pub fn log(buf: &str) {
         let mut logger = logger().lock().unwrap();
+        logger.write_all(
+            Local::now()
+                .format("%Y-%m-%d %H:%M:%S%.3f - ")
+                .to_string()
+                .as_bytes(),
+        );
         logger.write_all(buf.as_bytes());
         logger.write("\n".as_bytes());
     }

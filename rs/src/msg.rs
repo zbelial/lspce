@@ -1,6 +1,7 @@
 use std::{
     fmt,
     io::{self, BufRead, Read, Write},
+    thread, time,
 };
 
 use bytes::Buf;
@@ -359,21 +360,30 @@ fn read_msg_text(inp: &mut dyn Read, bytes_mut: &mut BytesMut) -> io::Result<Opt
     let mut message = String::new();
     let mut content_len: Option<usize> = None;
     loop {
-        // Logger::log(&format!("read_msg_text content_len {:?}", content_len));
+        thread::sleep(time::Duration::from_millis(100));
+
+        Logger::log(&format!("read_msg_text content_len {:?}", content_len));
 
         if let Some(len) = content_len {
             if (bytes_mut.len() < len) {
-                inp.read(bytes_mut);
-                continue;
+                Logger::log(&format!("bytes_mut.len {} < len {}", bytes_mut.len(), len));
+
+                return Ok(None);
             }
 
             let buf = &bytes_mut[..len];
             message = String::from_utf8(buf.to_vec()).map_err(invalid_data)?;
             Logger::log(&format!("read_msg_text message {:#?}", message));
+            let result = if message.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(message))
+            };
 
             bytes_mut.advance(len);
             content_len = None;
-            break;
+
+            return result;
         } else {
             let n = inp.read(bytes_mut);
             if let Ok(size) = n {
@@ -422,11 +432,14 @@ fn read_msg_text(inp: &mut dyn Read, bytes_mut: &mut BytesMut) -> io::Result<Opt
 }
 
 fn write_msg_text(out: &mut dyn Write, msg: &str) -> io::Result<()> {
-    Logger::log(&format!("> {}", &msg));
+    Logger::log(&format!("> {} {}", msg.len(), &msg));
 
-    write!(out, "Content-Length: {}\r\n\r\n{}", msg.len(), &msg)?;
+    // write!(out, "Content-Length: {}\r\n\r\n{}", msg.len(), &msg)?;
+    out.write_all(&format!("Content-Length: {}\r\n\r\n{}", msg.len(), &msg).as_bytes())?;
     // out.write_all(msg.as_bytes())?;
-    // out.flush()?;
+    out.flush()?;
+
+    Logger::log("after flush");
     Ok(())
 }
 

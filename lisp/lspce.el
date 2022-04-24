@@ -20,8 +20,9 @@
 (setq lspce--initialize-params (list :processId (emacs-pid)
                                      :rootPath (expand-file-name default-directory)
                                      :rootUri (lspce--path-to-uri default-directory)
-                                     :initializationOptions nil
-                                     :capabilities nil))
+                                     :initializationOptions (make-hash-table)
+                                     :capabilities (make-hash-table)
+                                     ))
 (setq lspce--initialize-request (list 
                                  :id (lspce--jsonrpc-id)
                                  :method "initialize"
@@ -32,6 +33,7 @@
 (lspce-module-server-running "/mnt/Personal/VCS/bitbucket/lspce" "rust")
 ;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce" "cat" "cat" "" (json-encode lspce--initialize-request))
 ;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce" "rust" "rust-analyzer" "proc-macro" (json-encode lspce--initialize-request))
-;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce" "rust" "rust-analyzer" "--log-file /tmp/ra.log proc-macro" (json-encode lspce--initialize-request))
+;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce" "rust" "rust-analyzer" "--log-file /tmp/ra.log -v" (json-encode lspce--initialize-request))
+;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce" "go" "gopls" "-logfile=/tmp/gopls.log" (json-encode lspce--initialize-request))
 ;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce" "go" "gopls" "" (json-encode lspce--initialize-request))
 

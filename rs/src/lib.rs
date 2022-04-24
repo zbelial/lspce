@@ -174,12 +174,12 @@ fn connect(
     cmd_args: String,
     lsp_args: String,
 ) -> Result<String> {
-    env.message(&format!(
+    Logger::log(&format!(
         "start initializing server for file_type {} in project {}",
         file_type, root_uri
     ));
     if (server_running(env, root_uri.clone(), file_type.clone()).unwrap()) {
-        env.message(&format!(
+        Logger::log(&format!(
             "server created already for file_type {} in project {}",
             file_type, root_uri
         ));
@@ -208,9 +208,9 @@ fn connect(
             projects.insert(root_uri.clone(), proj);
         }
 
-        env.message(&format!("connected to server."));
+        Logger::log(&format!("connected to server."));
     } else {
-        env.message(&format!("connect failed"));
+        Logger::log(&format!("connect failed"));
     }
 
     Ok("server created".to_string())
@@ -230,11 +230,15 @@ fn initialize(
     match write_result {
         Ok(_) => loop {
             let resp = server.transport.as_mut().unwrap().read();
-            env.message(&format!("initialize ok {:#?}", resp));
-            break;
+            Logger::log(&format!("initialize ok {:#?}", resp));
+            if resp.is_some() {
+                break;
+            } else {
+                thread::sleep(std::time::Duration::from_millis(100));
+            }
         },
         Err(error) => {
-            env.message(&format!("initialize error {:#?}", error));
+            Logger::log(&format!("initialize error {:#?}", error));
         }
     }
 
