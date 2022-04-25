@@ -6,13 +6,9 @@ use std::{
 
 use bytes::Buf;
 use bytes::BytesMut;
-use memchr::memmem;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::{
-    error::{ExtractError, ParseError},
-    logger::Logger,
-};
+use crate::{error::ExtractError, logger::Logger};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
