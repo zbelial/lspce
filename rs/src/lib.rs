@@ -194,7 +194,7 @@ fn connect(
         let mut projects = projects().lock().unwrap();
         let mut project = projects.get_mut(&root_uri);
         if let Some(p) = project.as_mut() {
-            initialize(env, root_uri, &mut s, lsp_args);
+            initialize(env, root_uri.clone(), &mut s, lsp_args);
 
             p.servers.insert(file_type, s);
         } else {
@@ -246,6 +246,7 @@ fn initialize(
     Ok("initialized".to_string())
 }
 
+// 返回server信息 TODO
 fn server(env: &Env, root_uri: String, file_type: String) -> Result<bool> {
     let projects = projects().lock().unwrap();
 
