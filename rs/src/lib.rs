@@ -27,11 +27,7 @@ use std::{
     io::{Read, Write},
     mem::MaybeUninit,
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
-    slice::SliceIndex,
-    sync::{
-        mpsc::{self, Receiver, Sender},
-        Arc, Mutex, Once,
-    },
+    sync::{Arc, Mutex, Once},
     thread::{self, JoinHandle, Thread},
 };
 
@@ -145,24 +141,6 @@ fn projects() -> &'static Arc<Mutex<HashMap<String, Project>>> {
     unsafe { &*PROJECTS.as_mut_ptr() }
 }
 
-// Define a function callable by Lisp code.
-#[defun]
-fn say_hello(env: &Env, name: String) -> Result<Value<'_>> {
-    env.message(&format!("Hello, {}!", name))
-}
-
-#[defun]
-fn echo(env: &Env, content: String) -> Result<Value<'_>> {
-    use std::process::Command;
-
-    let output = Command::new("echo")
-        .arg(content)
-        .output()
-        .expect("Failed to execute echo");
-
-    env.message(&format!("Echo {:?}", String::from_utf8(output.stdout)))
-}
-
 #[defun]
 fn connect(
     env: &Env,
@@ -247,6 +225,7 @@ fn initialize(
 }
 
 // 返回server信息 TODO
+#[defun]
 fn server(env: &Env, root_uri: String, file_type: String) -> Result<bool> {
     let projects = projects().lock().unwrap();
 
@@ -264,4 +243,24 @@ fn server_running(env: &Env, root_uri: String, file_type: String) -> Result<bool
     }
 
     Ok(false)
+}
+
+fn _server(root_uri: String, file_type: String) -> Option<&'static LspServer> {
+    let projects = projects().lock().unwrap();
+
+    None
+}
+
+#[defun]
+fn request(env: &Env, root_uri: String, file_type: String, req: String) -> Result<String> {
+    let projects = projects().lock().unwrap();
+
+    Ok("".to_string())
+}
+
+#[defun]
+fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result<()> {
+    let projects = projects().lock().unwrap();
+
+    Ok(())
 }

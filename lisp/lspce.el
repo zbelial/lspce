@@ -28,8 +28,6 @@
                                  :method "initialize"
                                  :params lspce--initialize-params))
 
-;; (lspce-module-say-hello "Emacs")
-;; (lspce-module-echo "Hello Emacs")
 (lspce-module-server-running "/mnt/Personal/VCS/bitbucket/lspce" "rust")
 ;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce" "cat" "cat" "" (json-encode lspce--initialize-request))
 ;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce" "rust" "rust-analyzer" "proc-macro" (json-encode lspce--initialize-request))
