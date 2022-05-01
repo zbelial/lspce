@@ -2,6 +2,7 @@
 * Roadmap
 ** Version 0.1
    - Transports: support using stdio as a transport.
+   - Initialize and Shutdown 
    - Goto Definition: provides goto definition support for a symbol selected in a text document.
    - Find References: finds all project-wide references for a symbol selected in a text document.
    - Code Complete: provides code complete lists.
