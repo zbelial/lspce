@@ -1,0 +1,16 @@
+
+* Roadmap
+** Version 0.1
+   - Transports: support using stdio as a transport.
+   - Goto Definition: provides goto definition support for a symbol selected in a text document.
+   - Find References: finds all project-wide references for a symbol selected in a text document.
+   - Code Complete: provides code complete lists.
+** Version 0.2
+   - Document synchronization: incremental and full text document synchronization.
+   - File events: synchronization of file events to the server.
+   - Diagnostic: show diagnostic problems.
+   - Code Actions: provide actions to fix diagnostic problems.
+   - Rename refactoring: provides renaming symbols.
+** Version 0.3
+   - Server Request: handle server request.
+** Version xxx

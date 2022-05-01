@@ -15,6 +15,7 @@ use crossbeam_channel::SendError;
 use emacs::{defun, Env, IntoLisp, Result, Value};
 use error::LspceError;
 use logger::Logger;
+use lsp_types::request::Shutdown;
 use lsp_types::InitializeParams;
 use lsp_types::InitializedParams;
 use msg::Message;
@@ -249,13 +250,17 @@ fn initialize(
     match resp_value {
         Ok(resp) => match resp {
             Some(m) => {
+                // TODO 处理server返回
+
                 let n: InitializedParams = InitializedParams {};
                 let initialized: Notification = Notification {
                     method: "initialized".to_string(),
                     params: serde_json::to_value(n).unwrap(),
                 };
 
-                _notify2(env, server, initialized);
+                _notify(env, server, initialized);
+
+                // TODO 记录server初始化完成
 
                 return Ok(Some(serde_json::to_string(&m).unwrap()));
             }
@@ -264,12 +269,64 @@ fn initialize(
             }
         },
         Err(e) => {
-            env.message(&format!("error response {}", e.to_string()));
+            env.message(&format!("Response error {}", e.to_string()));
             return Ok(None);
         }
     }
 
     Ok(Some("initialized".to_string()))
+}
+
+#[defun]
+fn shutdown(
+    env: &Env,
+    root_uri: String,
+    file_type: String,
+    shutdown: String,
+) -> Result<Option<String>> {
+    let mut projects = projects().lock().unwrap();
+    if let Some(mut p) = projects.get_mut(&root_uri) {
+        if let Some(mut server) = p.servers.get_mut(&file_type) {
+            let resp_value = _request(env, server, shutdown);
+
+            match resp_value {
+                Ok(resp) => match resp {
+                    Some(m) => {
+                        let exit: Notification = Notification {
+                            method: "exit".to_string(),
+                            params: json!({}),
+                        };
+
+                        _notify(env, server, exit);
+
+                        p.servers.remove(&file_type);
+                        if p.servers.len() == 0 {
+                            projects.remove(&root_uri);
+                        }
+
+                        return Ok(Some(serde_json::to_string(&m).unwrap()));
+                    }
+                    None => {
+                        return Ok(None);
+                    }
+                },
+                Err(e) => {
+                    env.message(&format!("Response error {}", e.to_string()));
+                    return Ok(None);
+                }
+            }
+        } else {
+            env.message(&format!("No server for {}", &file_type));
+
+            return Ok(None);
+        }
+    } else {
+        env.message(&format!("No project for {} {}", &root_uri, &file_type));
+
+        return Ok(None);
+    }
+
+    Ok(None)
 }
 
 // 返回server信息 TODO
@@ -393,6 +450,8 @@ fn request(env: &Env, root_uri: String, file_type: String, req: String) -> Resul
     let mut projects = projects().lock().unwrap();
     if let Some(mut p) = projects.get_mut(&root_uri) {
         if let Some(mut server) = p.servers.get_mut(&file_type) {
+            // TODO 检查server是否初始化完成
+
             let resp_value = _request(env, server, req);
             match resp_value {
                 Ok(resp) => match resp {
@@ -420,30 +479,7 @@ fn request(env: &Env, root_uri: String, file_type: String, req: String) -> Resul
     }
 }
 
-fn _notify(env: &Env, server: &mut LspServer, req: String) -> Result<Option<bool>> {
-    if let Ok(msg) = serde_json::from_str::<Notification>(&req) {
-        let write_result = server.write(Message::Notification(msg));
-
-        match write_result {
-            Ok(_) => {
-                Logger::log(&format!("notify successfully: {:#?}", &req));
-                return Ok(Some(true));
-            }
-            Err(e) => {
-                Logger::log(&format!("notify error {:#?}", e));
-                return Ok(None);
-            }
-        }
-    } else {
-        env.message(&format!("request is not valid json {}", &req));
-
-        return Ok(None);
-    };
-
-    return Ok(None);
-}
-
-fn _notify2(env: &Env, server: &mut LspServer, req: Notification) -> Result<Option<bool>> {
+fn _notify(env: &Env, server: &mut LspServer, req: Notification) -> Result<Option<bool>> {
     let method = req.method.clone();
 
     let write_result = server.write(Message::Notification(req));
@@ -467,28 +503,12 @@ fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result
     let mut projects = projects().lock().unwrap();
     if let Some(mut p) = projects.get_mut(&root_uri) {
         if let Some(mut server) = p.servers.get_mut(&file_type) {
-            return _notify(env, server, req);
-        } else {
-            env.message(&format!("No server for {}", &file_type));
+            // TODO 检查server是否初始化完成
 
-            return Ok(None);
-        }
-    } else {
-        env.message(&format!("No project for {} {}", &root_uri, &file_type));
-
-        return Ok(None);
-    }
-}
-
-#[defun]
-fn notify2(env: &Env, root_uri: String, file_type: String, req: String) -> Result<Option<bool>> {
-    let mut projects = projects().lock().unwrap();
-    if let Some(mut p) = projects.get_mut(&root_uri) {
-        if let Some(mut server) = p.servers.get_mut(&file_type) {
             let json_object = serde_json::from_str::<Notification>(&req);
             match json_object {
                 Ok(notification) => {
-                    return _notify2(env, server, notification);
+                    return _notify(env, server, notification);
                 }
                 Err(e) => {
                     env.message(&format!("Invalid json string {}", &req));

@@ -5,6 +5,8 @@
 
 (require 'lspce-module)
 
+(require 'lspce-types)
+
 (defun lspce--path-to-uri (path)
   "URIfy PATH."
   (url-hexify-string
@@ -22,16 +24,23 @@
                                      :initializationOptions (make-hash-table)
                                      :capabilities (make-hash-table)
                                      ))
-(setq lspce--initialize-request (list 
-                                 :id (lspce--jsonrpc-id)
-                                 :method "initialize"
-                                 :params lspce--initialize-params))
 
-(lspce-module-server-running "/mnt/Personal/VCS/bitbucket/lspce" "rust")
-(lspce-module-server-running "/mnt/Personal/VCS/bitbucket/lspce" "python")
+(defun lspce--initialize-request () (list 
+                                     :id (lspce--jsonrpc-id)
+                                     :method "initialize"
+                                     :params lspce--initialize-params))
 
-;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" "rust-analyzer" "--log-file /tmp/ra.log -v" (json-encode lspce--initialize-request))
-;; (lspce-module-connect "/home/lucency/lsp-bridge" "python" "pyright-langserver" "--stdio" (json-encode lspce--initialize-request))
+(defun lspce--shutdown-request () (list
+                                   :id (lspce--jsonrpc-id)
+                                   :method "shutdown"))
 
-;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" "rust-analyzer" "proc-macro" (json-encode lspce--initialize-request))
+(lspce-module-server-running "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust")
+(lspce-module-server-running "/home/lucency/lsp-bridge" "python")
+
+;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" "rust-analyzer" "--log-file /tmp/ra.log -v" (json-encode (lspce--initialize-request)))
+;; (lspce-module-shutdown "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" (json-encode (lspce--shutdown-request)))
+
+;; (lspce-module-connect "/home/lucency/lsp-bridge" "python" "pyright-langserver" "--stdio" (json-encode (lspce--initialize-request)))
+
+;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" "rust-analyzer" "proc-macro" (json-encode (lspce--initialize-request)))
 
