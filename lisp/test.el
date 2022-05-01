@@ -18,8 +18,7 @@
     id))
 
 (setq lspce--initialize-params (list :processId (emacs-pid)
-                                     :rootPath (expand-file-name default-directory)
-                                     :rootUri (lspce--path-to-uri default-directory)
+                                     :rootUri (lspce--path-to-uri "/mnt/Personal/VCS/bitbucket/lspce/rs")
                                      :initializationOptions (make-hash-table)
                                      :capabilities (make-hash-table)
                                      ))
@@ -29,9 +28,10 @@
                                  :params lspce--initialize-params))
 
 (lspce-module-server-running "/mnt/Personal/VCS/bitbucket/lspce" "rust")
-;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce" "cat" "cat" "" (json-encode lspce--initialize-request))
-;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce" "rust" "rust-analyzer" "proc-macro" (json-encode lspce--initialize-request))
-;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce" "rust" "rust-analyzer" "--log-file /tmp/ra.log -v" (json-encode lspce--initialize-request))
-;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce" "go" "gopls" "-logfile=/tmp/gopls.log" (json-encode lspce--initialize-request))
-;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce" "go" "gopls" "" (json-encode lspce--initialize-request))
+(lspce-module-server-running "/mnt/Personal/VCS/bitbucket/lspce" "python")
+
+;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" "rust-analyzer" "--log-file /tmp/ra.log -v" (json-encode lspce--initialize-request))
+;; (lspce-module-connect "/home/lucency/lsp-bridge" "python" "pyright-langserver" "--stdio" (json-encode lspce--initialize-request))
+
+;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" "rust-analyzer" "proc-macro" (json-encode lspce--initialize-request))
 

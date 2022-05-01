@@ -10,9 +10,19 @@ use crate::msg::{Notification, Request};
 #[derive(Debug, Clone)]
 pub struct ProtocolError(pub(crate) String);
 
+#[derive(Debug, Clone)]
+pub struct LspceError(pub(crate) String);
+
 impl std::error::Error for ProtocolError {}
+impl std::error::Error for LspceError {}
 
 impl fmt::Display for ProtocolError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Display for LspceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.0, f)
     }
