@@ -33,7 +33,6 @@ pub(crate) fn stdio_transport(
         let mut stdout = child_stdout;
         let mut reader = std::io::BufReader::new(stdout);
 
-        let mut bytes_mut = BytesMut::with_capacity(4096);
         while let Some(msg) = Message::read(&mut reader)? {
             Logger::log(&format!("stdio read {:#?}", &msg));
 

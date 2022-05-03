@@ -51,7 +51,7 @@ struct LspServer {
     pub nick_name: String,
     pub initialized: bool,               // 是否已经启动完
     pub capabilities: String,            // TODO 类型
-    pub usable_capabilites: String,      // TODO
+    pub server_capabilites: String,      // TODO
     pub uris: HashMap<String, FileInfo>, // key: uri
     latest_id: Mutex<RequestId>,
     transport: Option<Connection>,
@@ -79,7 +79,7 @@ impl LspServer {
                 nick_name: "".to_string(),
                 initialized: false,
                 capabilities: "".to_string(),
-                usable_capabilites: "".to_string(),
+                server_capabilites: "".to_string(),
                 latest_id: Mutex::new(RequestId::from(-1)),
                 uris: HashMap::new(),
                 transport: None,
@@ -298,6 +298,11 @@ fn shutdown(
                         };
 
                         _notify(env, server, exit);
+
+                        // 等待子进程结束，否则会成僵尸进程。
+                        server.child.take().unwrap().wait();
+                        // 等待读写线程结束
+                        server.threads.take().unwrap().join();
 
                         p.servers.remove(&file_type);
                         if p.servers.len() == 0 {
