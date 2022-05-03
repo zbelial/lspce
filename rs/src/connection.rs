@@ -27,7 +27,11 @@ use crate::{socket, stdio};
 pub struct Connection {
     sender: Sender<Message>,
     receiver: Receiver<Message>,
-    msgs: Arc<Mutex<VecDeque<Message>>>,
+    responses: Arc<Mutex<VecDeque<Response>>>,
+    notifications: Arc<Mutex<VecDeque<Notification>>>,
+    requests: Arc<Mutex<VecDeque<Request>>>,
+    exit_reader: Arc<Mutex<bool>>,
+    exit_writer: Arc<Mutex<bool>>,
 }
 
 impl Connection {
@@ -37,25 +41,73 @@ impl Connection {
         self.sender.send(req)
     }
 
-    pub fn read(&self) -> Option<Message> {
-        let msg = self.msgs.lock().unwrap().pop_front();
-        Logger::log(&format!("Connection read {:#?}", &msg));
+    pub fn read_response(&self) -> Option<Response> {
+        let msg = self.responses.lock().unwrap().pop_front();
+        Logger::log(&format!("Connection read response {:#?}", &msg));
 
         msg
+    }
+
+    pub fn read_notification(&self) -> Option<Notification> {
+        let msg = self.notifications.lock().unwrap().pop_front();
+        Logger::log(&format!("Connection read notification {:#?}", &msg));
+
+        msg
+    }
+
+    pub fn read_request(&self) -> Option<Request> {
+        let msg = self.requests.lock().unwrap().pop_front();
+        Logger::log(&format!("Connection read request {:#?}", &msg));
+
+        msg
+    }
+
+    pub fn to_exit(&self) {
+        let mut exit_reader = self.exit_reader.lock().unwrap();
+        *exit_reader = true;
+
+        Logger::log("after exit_reader");
+
+        let mut exit_writer = self.exit_writer.lock().unwrap();
+        *exit_writer = true;
+
+        // drop(&self.sender);
+        Logger::log("after exit_writer");
     }
 
     /// Create connection over standard in/standard out.
     ///
     /// Use this to create a real language server.
     pub fn stdio(mut stdin: ChildStdin, mut stdout: ChildStdout) -> (Connection, IoThreads) {
-        let msgs = Arc::new(Mutex::new(VecDeque::new()));
-        let msgs2 = msgs.clone();
-        let (sender, receiver, io_threads) = stdio::stdio_transport(stdin, stdout, msgs2);
+        let responses = Arc::new(Mutex::new(VecDeque::new()));
+        let notifications = Arc::new(Mutex::new(VecDeque::new()));
+        let requests = Arc::new(Mutex::new(VecDeque::new()));
+        let exit_reader = Arc::new(Mutex::new(false));
+        let exit_writer = Arc::new(Mutex::new(false));
+
+        let responses2 = Arc::clone(&responses);
+        let notifications2 = Arc::clone(&notifications);
+        let requests2 = Arc::clone(&requests);
+        let exit_reader2 = Arc::clone(&exit_reader);
+        let exit_writer2 = Arc::clone(&exit_writer);
+        let (sender, receiver, io_threads) = stdio::stdio_transport(
+            stdin,
+            stdout,
+            responses2,
+            notifications2,
+            requests2,
+            exit_reader2,
+            exit_writer2,
+        );
         (
             Connection {
                 sender,
                 receiver,
-                msgs,
+                responses,
+                notifications,
+                requests,
+                exit_reader,
+                exit_writer,
             },
             io_threads,
         )
@@ -66,15 +118,36 @@ impl Connection {
     ///
     /// Use this to create a real language server.
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<(Connection, IoThreads)> {
-        let msgs = Arc::new(Mutex::new(VecDeque::new()));
-        let msgs2 = msgs.clone();
+        let responses = Arc::new(Mutex::new(VecDeque::new()));
+        let notifications = Arc::new(Mutex::new(VecDeque::new()));
+        let requests = Arc::new(Mutex::new(VecDeque::new()));
+        let exit_reader = Arc::new(Mutex::new(false));
+        let exit_writer = Arc::new(Mutex::new(false));
+
+        let responses2 = Arc::clone(&responses);
+        let notifications2 = Arc::clone(&notifications);
+        let requests2 = Arc::clone(&requests);
+        let exit_reader2 = Arc::clone(&exit_reader);
+        let exit_writer2 = Arc::clone(&exit_reader);
+
         let stream = TcpStream::connect(addr)?;
-        let (sender, receiver, io_threads) = socket::socket_transport(stream, msgs2);
+        let (sender, receiver, io_threads) = socket::socket_transport(
+            stream,
+            responses2,
+            notifications2,
+            requests2,
+            exit_reader2,
+            exit_writer2,
+        );
         Ok((
             Connection {
                 sender,
                 receiver,
-                msgs,
+                responses,
+                notifications,
+                requests,
+                exit_reader,
+                exit_writer,
             },
             io_threads,
         ))

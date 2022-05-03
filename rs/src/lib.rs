@@ -22,10 +22,12 @@ use msg::Message;
 use msg::Notification;
 use msg::Request;
 use msg::RequestId;
+use msg::Response;
 use serde_json::json;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::fs::File;
+use std::ptr::read_volatile;
 use std::result::Result as RustResult;
 use std::str::Utf8Error;
 use std::time::Instant;
@@ -91,6 +93,7 @@ impl LspServer {
 
             let (mut transport, mut threads) = Connection::stdio(stdin, stdout);
 
+            server.child = Some(c);
             server.transport = Some(transport);
             server.threads = Some(threads);
 
@@ -113,6 +116,12 @@ impl LspServer {
         return id < *latest_id;
     }
 
+    pub fn exit_transport(&self) {
+        if self.transport.is_some() {
+            self.transport.as_ref().unwrap().to_exit();
+        }
+    }
+
     pub fn write(&self, request: Message) -> RustResult<(), LspceError> {
         if self.transport.is_some() {
             let result = self.transport.as_ref().unwrap().write(request);
@@ -125,25 +134,29 @@ impl LspServer {
         }
     }
 
-    pub fn read(&self) -> Option<Message> {
+    pub fn read_response(&self) -> Option<Response> {
         if self.transport.is_some() {
-            self.transport.as_ref().unwrap().read()
+            self.transport.as_ref().unwrap().read_response()
         } else {
             None
         }
     }
 
-    pub fn request(&mut self, request: String) -> Option<String> {
+    pub fn read_notification(&self) -> Option<Notification> {
         if self.transport.is_some() {
-            let msg: Message = serde_json::from_str(&request).unwrap();
-
-            let result = self.transport.as_ref().unwrap().write(msg);
+            self.transport.as_ref().unwrap().read_notification()
+        } else {
+            None
         }
-
-        None
     }
 
-    pub fn notify(&mut self, notification: String) {}
+    pub fn read_request(&self) -> Option<Request> {
+        if self.transport.is_some() {
+            self.transport.as_ref().unwrap().read_request()
+        } else {
+            None
+        }
+    }
 }
 
 struct Project {
@@ -299,10 +312,14 @@ fn shutdown(
 
                         _notify(env, server, exit);
 
-                        // 等待子进程结束，否则会成僵尸进程。
-                        server.child.take().unwrap().wait();
+                        server.exit_transport();
+                        Logger::log("after exit transport.");
                         // 等待读写线程结束
                         server.threads.take().unwrap().join();
+                        Logger::log("after thread join.");
+                        // 等待子进程结束，否则会成僵尸进程。
+                        server.child.take().unwrap().wait();
+                        Logger::log("after child wait.");
 
                         p.servers.remove(&file_type);
                         if p.servers.len() == 0 {
@@ -361,7 +378,7 @@ fn _server(root_uri: String, file_type: String) -> Option<&'static LspServer> {
     None
 }
 
-fn _request(env: &Env, server: &mut LspServer, req: String) -> Result<Option<Message>> {
+fn _request(env: &Env, server: &mut LspServer, req: String) -> Result<Option<Response>> {
     if let Ok(msg) = serde_json::from_str::<Request>(&req) {
         let start_time = Instant::now();
         let method = msg.method.clone();
@@ -379,54 +396,41 @@ fn _request(env: &Env, server: &mut LspServer, req: String) -> Result<Option<Mes
 
                     return Ok(None);
                 } else {
-                    let read_value = server.read();
+                    let read_value = server.read_response();
                     Logger::log(&format!("initialize ok {:#?}", read_value));
 
                     match read_value {
-                        Some(m) => match m {
-                            Message::Request(r) => {
-                                Logger::log(&format!("request from server, content is {:?}", r));
-                                todo!()
-                            }
-                            Message::Notification(n) => {
-                                Logger::log(&format!(
-                                    "notification from server, content is {:?}",
-                                    n
-                                ));
-                                todo!()
-                            }
-                            Message::Response(r) => {
-                                let ret_id = r.id.clone();
-                                let latest_id = server.latest_id.lock().unwrap();
-                                if id == *latest_id {
-                                    if ret_id < id {
-                                        //nothing
-                                        Logger::log(&format!(
-                                            "outdated response for id {}",
-                                            ret_id.to_string()
-                                        ));
-                                        continue;
-                                    } else if ret_id == id {
-                                        return Ok(Some(Message::Response(r)));
-                                    } else {
-                                        // ret_id > id
-                                        // 有更新的响应，当前请求可以丢弃了。
-                                        Logger::log(&format!(
-                                            "response for newer reqeust id {}",
-                                            id.clone()
-                                        ));
-                                        return Ok(None);
-                                    }
-                                } else {
+                        Some(r) => {
+                            let ret_id = r.id.clone();
+                            let latest_id = server.latest_id.lock().unwrap();
+                            if id == *latest_id {
+                                if ret_id < id {
+                                    //nothing
                                     Logger::log(&format!(
-                                        "current request is outdated, id {}, latest_id {}",
-                                        id, *latest_id
+                                        "outdated response for id {}",
+                                        ret_id.to_string()
                                     ));
-
+                                    continue;
+                                } else if ret_id == id {
+                                    return Ok(Some(r));
+                                } else {
+                                    // ret_id > id
+                                    // 有更新的响应，当前请求可以丢弃了。
+                                    Logger::log(&format!(
+                                        "response for newer reqeust id {}",
+                                        id.clone()
+                                    ));
                                     return Ok(None);
                                 }
+                            } else {
+                                Logger::log(&format!(
+                                    "current request is outdated, id {}, latest_id {}",
+                                    id, *latest_id
+                                ));
+
+                                return Ok(None);
                             }
-                        },
+                        }
                         None => {
                             //nothing
                             continue;
@@ -484,7 +488,7 @@ fn request(env: &Env, root_uri: String, file_type: String, req: String) -> Resul
     }
 }
 
-fn _notify(env: &Env, server: &mut LspServer, req: Notification) -> Result<Option<bool>> {
+fn _notify(env: &Env, server: &mut LspServer, req: Notification) -> Result<bool> {
     let method = req.method.clone();
 
     let write_result = server.write(Message::Notification(req));
@@ -492,19 +496,19 @@ fn _notify(env: &Env, server: &mut LspServer, req: Notification) -> Result<Optio
     match write_result {
         Ok(_) => {
             Logger::log(&format!("notify successfully: {}", method));
-            return Ok(Some(true));
+            return Ok(true);
         }
         Err(e) => {
             Logger::log(&format!("notify error {:#?}", e));
-            return Ok(None);
+            return Ok(false);
         }
     }
 
-    return Ok(None);
+    return Ok(false);
 }
 
 #[defun]
-fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result<Option<bool>> {
+fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result<bool> {
     let mut projects = projects().lock().unwrap();
     if let Some(mut p) = projects.get_mut(&root_uri) {
         if let Some(mut server) = p.servers.get_mut(&file_type) {
@@ -517,18 +521,74 @@ fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result
                 }
                 Err(e) => {
                     env.message(&format!("Invalid json string {}", &req));
-
-                    return Ok(None);
                 }
             }
         } else {
             env.message(&format!("No server for {}", &file_type));
-
-            return Ok(None);
         }
     } else {
         env.message(&format!("No project for {} {}", &root_uri, &file_type));
-
-        return Ok(None);
     }
+
+    return Ok(false);
+}
+
+#[defun]
+fn read_notifications(
+    env: &Env,
+    root_uri: String,
+    file_type: String,
+    req: String,
+) -> Result<Option<String>> {
+    let mut notifications: Vec<Notification> = vec![];
+
+    let projects = projects().lock().unwrap();
+    if let Some(p) = projects.get(&root_uri) {
+        if let Some(server) = p.servers.get(&file_type) {
+            // TODO 检查server是否初始化完成
+
+            loop {
+                let read_value = server.read_notification();
+                match read_value {
+                    Some(r) => {
+                        notifications.push(r);
+                    }
+                    None => {
+                        break;
+                    }
+                }
+            }
+        } else {
+            env.message(&format!("No server for {}", &file_type));
+        }
+    } else {
+        env.message(&format!("No project for {} {}", &root_uri, &file_type));
+    }
+
+    Ok(Some(serde_json::to_string(&notifications).unwrap()))
+}
+
+#[defun]
+fn read_request(
+    env: &Env,
+    root_uri: String,
+    file_type: String,
+    req: String,
+) -> Result<Option<String>> {
+    let projects = projects().lock().unwrap();
+    if let Some(p) = projects.get(&root_uri) {
+        if let Some(server) = p.servers.get(&file_type) {
+            // TODO 检查server是否初始化完成
+
+            if let Some(r) = server.read_request() {
+                return Ok(Some(serde_json::to_string(&r).unwrap()));
+            }
+        } else {
+            env.message(&format!("No server for {}", &file_type));
+        }
+    } else {
+        env.message(&format!("No project for {} {}", &root_uri, &file_type));
+    }
+
+    Ok(None)
 }
