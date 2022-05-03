@@ -2,6 +2,7 @@
 
 
 (add-to-list 'load-path "/mnt/Personal/VCS/bitbucket/lspce/rs/target/debug")
+(add-to-list 'load-path "/mnt/Personal/VCS/bitbucket/lspce/lisp")
 
 (require 'lspce-module)
 
