@@ -19,9 +19,9 @@ pub(crate) fn socket_transport(
     responses: Arc<Mutex<VecDeque<Response>>>,
     notifications: Arc<Mutex<VecDeque<Notification>>>,
     requests: Arc<Mutex<VecDeque<Request>>>,
-    exit_reader: Arc<Mutex<bool>>,
-    exit_writer: Arc<Mutex<bool>>,
+    exit: Arc<Mutex<bool>>,
 ) -> (Sender<Message>, Receiver<Message>, IoThreads) {
+    let exit_reader = Arc::clone(&exit);
     let (reader_receiver, reader) = make_reader(
         stream.try_clone().unwrap(),
         responses,
@@ -29,6 +29,7 @@ pub(crate) fn socket_transport(
         requests,
         exit_reader,
     );
+    let exit_writer = Arc::clone(&exit);
     let (writer_sender, writer) = make_writer(stream.try_clone().unwrap(), exit_writer);
     let io_threads = make_io_threads(reader, writer);
     (writer_sender, reader_receiver, io_threads)
@@ -39,7 +40,7 @@ fn make_reader(
     responses: Arc<Mutex<VecDeque<Response>>>,
     notifications: Arc<Mutex<VecDeque<Notification>>>,
     requests: Arc<Mutex<VecDeque<Request>>>,
-    exit_reader: Arc<Mutex<bool>>,
+    exit: Arc<Mutex<bool>>,
 ) -> (Receiver<Message>, thread::JoinHandle<io::Result<()>>) {
     let (reader_sender, reader_receiver) = bounded::<Message>(0);
     let reader = thread::spawn(move || {
@@ -57,7 +58,7 @@ fn make_reader(
                 }
             }
 
-            let exit = exit_reader.lock().unwrap();
+            let exit = exit.lock().unwrap();
             if *exit {
                 Logger::log("socket write finished.");
                 return Ok(());

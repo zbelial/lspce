@@ -30,8 +30,7 @@ pub struct Connection {
     responses: Arc<Mutex<VecDeque<Response>>>,
     notifications: Arc<Mutex<VecDeque<Notification>>>,
     requests: Arc<Mutex<VecDeque<Request>>>,
-    exit_reader: Arc<Mutex<bool>>,
-    exit_writer: Arc<Mutex<bool>>,
+    exit: Arc<Mutex<bool>>,
 }
 
 impl Connection {
@@ -63,18 +62,9 @@ impl Connection {
     }
 
     pub fn to_exit(&self) {
-        {
-            let mut exit_reader = self.exit_reader.lock().unwrap();
-            *exit_reader = true;
-            Logger::log("after exit_reader");
-        }
-
-        {
-            drop(&self.sender);
-            let mut exit_writer = self.exit_writer.lock().unwrap();
-            *exit_writer = true;
-            Logger::log("after exit_writer");
-        }
+        let mut exit = self.exit.lock().unwrap();
+        *exit = true;
+        Logger::log("after exit");
     }
 
     /// Create connection over standard in/standard out.
@@ -84,23 +74,16 @@ impl Connection {
         let responses = Arc::new(Mutex::new(VecDeque::new()));
         let notifications = Arc::new(Mutex::new(VecDeque::new()));
         let requests = Arc::new(Mutex::new(VecDeque::new()));
-        let exit_reader = Arc::new(Mutex::new(false));
+        let exit = Arc::new(Mutex::new(false));
         let exit_writer = Arc::new(Mutex::new(false));
 
         let responses2 = Arc::clone(&responses);
         let notifications2 = Arc::clone(&notifications);
         let requests2 = Arc::clone(&requests);
-        let exit_reader2 = Arc::clone(&exit_reader);
+        let exit2 = Arc::clone(&exit);
         let exit_writer2 = Arc::clone(&exit_writer);
-        let (sender, receiver, io_threads) = stdio::stdio_transport(
-            stdin,
-            stdout,
-            responses2,
-            notifications2,
-            requests2,
-            exit_reader2,
-            exit_writer2,
-        );
+        let (sender, receiver, io_threads) =
+            stdio::stdio_transport(stdin, stdout, responses2, notifications2, requests2, exit2);
         (
             Connection {
                 sender,
@@ -108,8 +91,7 @@ impl Connection {
                 responses,
                 notifications,
                 requests,
-                exit_reader,
-                exit_writer,
+                exit,
             },
             io_threads,
         )
@@ -123,24 +105,18 @@ impl Connection {
         let responses = Arc::new(Mutex::new(VecDeque::new()));
         let notifications = Arc::new(Mutex::new(VecDeque::new()));
         let requests = Arc::new(Mutex::new(VecDeque::new()));
-        let exit_reader = Arc::new(Mutex::new(false));
+        let exit = Arc::new(Mutex::new(false));
         let exit_writer = Arc::new(Mutex::new(false));
 
         let responses2 = Arc::clone(&responses);
         let notifications2 = Arc::clone(&notifications);
         let requests2 = Arc::clone(&requests);
-        let exit_reader2 = Arc::clone(&exit_reader);
-        let exit_writer2 = Arc::clone(&exit_reader);
+        let exit2 = Arc::clone(&exit);
+        let exit_writer2 = Arc::clone(&exit);
 
         let stream = TcpStream::connect(addr)?;
-        let (sender, receiver, io_threads) = socket::socket_transport(
-            stream,
-            responses2,
-            notifications2,
-            requests2,
-            exit_reader2,
-            exit_writer2,
-        );
+        let (sender, receiver, io_threads) =
+            socket::socket_transport(stream, responses2, notifications2, requests2, exit2);
         Ok((
             Connection {
                 sender,
@@ -148,8 +124,7 @@ impl Connection {
                 responses,
                 notifications,
                 requests,
-                exit_reader,
-                exit_writer,
+                exit,
             },
             io_threads,
         ))

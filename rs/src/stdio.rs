@@ -23,21 +23,19 @@ pub(crate) fn stdio_transport(
     responses: Arc<Mutex<VecDeque<Response>>>,
     notifications: Arc<Mutex<VecDeque<Notification>>>,
     requests: Arc<Mutex<VecDeque<Request>>>,
-    exit_reader: Arc<Mutex<bool>>,
-    exit_writer: Arc<Mutex<bool>>,
+    exit: Arc<Mutex<bool>>,
 ) -> (Sender<Message>, Receiver<Message>, IoThreads) {
+    let exit_writer = Arc::clone(&exit);
     let (writer_sender, writer_receiver) = bounded::<Message>(1);
     let writer = thread::spawn(move || {
         let mut stdin = child_stdin;
         loop {
             {
-                Logger::log(&format!("before exit_writer lock"));
                 let exit = exit_writer.lock().unwrap();
                 if *exit {
                     Logger::log(&format!("stdio write exited"));
                     break;
                 }
-                Logger::log(&format!("after exit_writer lock"));
             }
             let recv_value = writer_receiver.recv_timeout(std::time::Duration::from_millis(50));
             match recv_value {
@@ -53,6 +51,7 @@ pub(crate) fn stdio_transport(
         Ok(())
     });
 
+    let exit_reader = Arc::clone(&exit);
     let (reader_sender, reader_receiver) = bounded::<Message>(1);
     let reader = thread::spawn(move || {
         let mut stdout = child_stdout;
@@ -60,13 +59,11 @@ pub(crate) fn stdio_transport(
 
         loop {
             {
-                Logger::log(&format!("before exit_reader lock"));
                 let exit = exit_reader.lock().unwrap();
                 if *exit {
                     Logger::log(&format!("stdio read exited"));
                     break;
                 }
-                Logger::log(&format!("after exit_reader lock"));
             }
 
             if let Some(msg) = Message::read(&mut reader)? {
