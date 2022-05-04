@@ -26,42 +26,47 @@ pub(crate) fn stdio_transport(
     exit_reader: Arc<Mutex<bool>>,
     exit_writer: Arc<Mutex<bool>>,
 ) -> (Sender<Message>, Receiver<Message>, IoThreads) {
-    let (writer_sender, writer_receiver) = bounded::<Message>(0);
+    let (writer_sender, writer_receiver) = bounded::<Message>(1);
     let writer = thread::spawn(move || {
         let mut stdin = child_stdin;
         loop {
-            let exit = exit_writer.lock().unwrap();
-            if *exit {
-                Logger::log(&format!("stdio write exited"));
-                break;
+            {
+                Logger::log(&format!("before exit_writer lock"));
+                let exit = exit_writer.lock().unwrap();
+                if *exit {
+                    Logger::log(&format!("stdio write exited"));
+                    break;
+                }
+                Logger::log(&format!("after exit_writer lock"));
             }
-            let recv_value = writer_receiver.try_recv();
+            let recv_value = writer_receiver.recv_timeout(std::time::Duration::from_millis(50));
             match recv_value {
                 Ok(r) => {
                     Logger::log(&format!("stdio write {:#?}", &r));
 
                     r.write(&mut stdin)
                 }
-                Err(t) => {
-                    thread::sleep(std::time::Duration::from_millis(50));
-                    Ok(())
-                }
+                Err(t) => Ok(()),
             };
         }
         Logger::log(&format!("stdio write finished"));
         Ok(())
     });
 
-    let (reader_sender, reader_receiver) = bounded::<Message>(0);
+    let (reader_sender, reader_receiver) = bounded::<Message>(1);
     let reader = thread::spawn(move || {
         let mut stdout = child_stdout;
         let mut reader = std::io::BufReader::new(stdout);
 
         loop {
-            let exit = exit_reader.lock().unwrap();
-            if *exit {
-                Logger::log(&format!("stdio read exited"));
-                break;
+            {
+                Logger::log(&format!("before exit_reader lock"));
+                let exit = exit_reader.lock().unwrap();
+                if *exit {
+                    Logger::log(&format!("stdio read exited"));
+                    break;
+                }
+                Logger::log(&format!("after exit_reader lock"));
             }
 
             if let Some(msg) = Message::read(&mut reader)? {

@@ -63,16 +63,18 @@ impl Connection {
     }
 
     pub fn to_exit(&self) {
-        let mut exit_reader = self.exit_reader.lock().unwrap();
-        *exit_reader = true;
+        {
+            let mut exit_reader = self.exit_reader.lock().unwrap();
+            *exit_reader = true;
+            Logger::log("after exit_reader");
+        }
 
-        Logger::log("after exit_reader");
-
-        let mut exit_writer = self.exit_writer.lock().unwrap();
-        *exit_writer = true;
-
-        // drop(&self.sender);
-        Logger::log("after exit_writer");
+        {
+            drop(&self.sender);
+            let mut exit_writer = self.exit_writer.lock().unwrap();
+            *exit_writer = true;
+            Logger::log("after exit_writer");
+        }
     }
 
     /// Create connection over standard in/standard out.
