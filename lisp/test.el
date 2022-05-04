@@ -5,41 +5,38 @@
 (add-to-list 'load-path "/mnt/Personal/VCS/bitbucket/lspce/lisp")
 
 (require 'lspce-module)
-
-(require 'lspce-types)
-
-(defun lspce--path-to-uri (path)
-  "URIfy PATH."
-  (url-hexify-string
-   (concat "file://" (if (eq system-type 'windows-nt) "/") (file-truename path))
-   url-path-allowed-chars))
-(defvar lspce--jsonrpc-id 0)
-
-(defun lspce--jsonrpc-id ()
-  (let ((id lspce--jsonrpc-id))
-    (setq lspce--jsonrpc-id (1+ lspce--jsonrpc-id))
-    id))
-
-(setq lspce--initialize-params (list :processId (emacs-pid)
-                                     :rootUri (lspce--path-to-uri "/mnt/Personal/VCS/bitbucket/lspce/rs")
-                                     :initializationOptions (make-hash-table)
-                                     :capabilities (make-hash-table)
-                                     ))
+(require 'lspce)
 
 (defun lspce--initialize-request () (list 
                                      :id (lspce--jsonrpc-id)
                                      :method "initialize"
-                                     :params lspce--initialize-params))
+                                     :params (lspce--initialize-params (lspce--path-to-uri "/mnt/Personal/VCS/bitbucket/lspce/rs")
+                                                                       (lspce--client-capabilities)
+                                                                       nil
+                                                                       (lspce--client-info))))
 
 (defun lspce--shutdown-request () (list
                                    :id (lspce--jsonrpc-id)
                                    :method "shutdown"))
+
+(defun lspce--file-content (filePath)
+  "Return file content as string."
+  (with-temp-buffer
+    (insert-file-contents filePath)
+    (buffer-string)))
 
 (lspce-module-server-running "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust")
 (lspce-module-server-running "/home/lucency/lsp-bridge" "python")
 
 ;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" "rust-analyzer" "--log-file /tmp/ra.log -v" (json-encode (lspce--initialize-request)))
 ;; (lspce-module-shutdown "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" (json-encode (lspce--shutdown-request)))
+
+;; (lspce-module-notify "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" (json-encode (lspce--notification "textDocument/didOpen" (lspce--didOpen-params (lspce--textDocumentItem (lspce--path-to-uri "/mnt/Personal/VCS/bitbucket/lspce/rs/src/lib.rs") "rust" 1 (lspce--file-content "/mnt/Personal/VCS/bitbucket/lspce/rs/src/lib.rs"))))))
+
+;; (lspce-module-request "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" (json-encode (lspce--request "textDocument/declaration" nil (lspce--declaration-params (lspce--textDocumentIdenfitier (lspce--path-to-uri "/mnt/Personal/VCS/bitbucket/lspce/rs/src/lib.rs")) (lspce--position 127 19)))))
+;; (lspce-module-request "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" (json-encode (lspce--request "textDocument/definition" nil (lspce--definition-params (lspce--textDocumentIdenfitier (lspce--path-to-uri "/mnt/Personal/VCS/bitbucket/lspce/rs/src/lib.rs")) (lspce--position 127 19)))))
+;; (message "%S" (json-parse-string (lspce-module-request "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" (json-encode (lspce--request "textDocument/definition" nil (lspce--definition-params (lspce--textDocumentIdenfitier (lspce--path-to-uri "/mnt/Personal/VCS/bitbucket/lspce/rs/src/lib.rs")) (lspce--position 127 19)))))))
+;; (lspce-module-request "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" (json-encode (lspce--request "textDocument/references" nil (lspce--references-params (lspce--textDocumentIdenfitier (lspce--path-to-uri "/mnt/Personal/VCS/bitbucket/lspce/rs/src/lib.rs")) (lspce--position 127 19) (lspce--referenceContext)))))
 
 ;; (lspce-module-connect "/home/lucency/lsp-bridge" "python" "pyright-langserver" "--stdio" (json-encode (lspce--initialize-request)))
 

@@ -12,6 +12,7 @@ use crossbeam_channel::{bounded, Receiver, Sender};
 use lsp_types::notification;
 
 use crate::{
+    connection::{NOTIFICATION_MAX, REQUEST_MAX},
     logger::Logger,
     msg::{Message, Notification, Request, Response},
 };
@@ -71,10 +72,18 @@ pub(crate) fn stdio_transport(
 
                 match msg {
                     Message::Request(r) => {
-                        requests.lock().unwrap().push_back(r);
+                        let mut l = requests.lock().unwrap();
+                        if l.len() == REQUEST_MAX {
+                            l.pop_front();
+                        }
+                        l.push_back(r);
                     }
                     Message::Notification(r) => {
-                        notifications.lock().unwrap().push_back(r);
+                        let mut l = notifications.lock().unwrap();
+                        if l.len() == NOTIFICATION_MAX {
+                            l.pop_front();
+                        }
+                        l.push_back(r);
                     }
                     Message::Response(r) => {
                         responses.lock().unwrap().push_back(r);

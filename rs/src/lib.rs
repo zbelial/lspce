@@ -397,10 +397,11 @@ fn _request(env: &Env, server: &mut LspServer, req: String) -> Result<Option<Res
                     return Ok(None);
                 } else {
                     let read_value = server.read_response();
-                    Logger::log(&format!("initialize ok {:#?}", read_value));
 
                     match read_value {
                         Some(r) => {
+                            Logger::log(&format!("request {} ok {:#?}", &method, &r));
+
                             let ret_id = r.id.clone();
                             let latest_id = server.latest_id.lock().unwrap();
                             if id == *latest_id {
@@ -440,7 +441,7 @@ fn _request(env: &Env, server: &mut LspServer, req: String) -> Result<Option<Res
                 }
             },
             Err(e) => {
-                env.message(&format!("initialize error {:#?}", e));
+                env.message(&format!("request error {:#?}", e));
 
                 return Ok(None);
             }

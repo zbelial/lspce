@@ -23,6 +23,9 @@ use crate::{
 };
 use crate::{socket, stdio};
 
+pub const NOTIFICATION_MAX: usize = 10;
+pub const REQUEST_MAX: usize = 10;
+
 /// Connection is just a pair of channels of LSP messages.
 pub struct Connection {
     sender: Sender<Message>,
@@ -42,21 +45,27 @@ impl Connection {
 
     pub fn read_response(&self) -> Option<Response> {
         let msg = self.responses.lock().unwrap().pop_front();
-        Logger::log(&format!("Connection read response {:#?}", &msg));
+        // if msg.is_some() {
+        //     Logger::log(&format!("Connection read response {:#?}", &msg));
+        // }
 
         msg
     }
 
     pub fn read_notification(&self) -> Option<Notification> {
         let msg = self.notifications.lock().unwrap().pop_front();
-        Logger::log(&format!("Connection read notification {:#?}", &msg));
+        // if msg.is_some() {
+        //     Logger::log(&format!("Connection read notification {:#?}", &msg));
+        // }
 
         msg
     }
 
     pub fn read_request(&self) -> Option<Request> {
         let msg = self.requests.lock().unwrap().pop_front();
-        Logger::log(&format!("Connection read request {:#?}", &msg));
+        // if msg.is_some() {
+        //     Logger::log(&format!("Connection read request {:#?}", &msg));
+        // }
 
         msg
     }

@@ -4,16 +4,16 @@
 (require 'lspce-core)
 
 
-(cl-defun lspce--request (id method &optional params)
+(cl-defun lspce--make-request (method &optional id params)
   "jsonrpc is added in the module."
   (let ((request (make-hash-table)))
-    (puthash :id id request)
+    (puthash :id (or id (lspce--jsonrpc-id)) request)
     (puthash :method method request)
     (when params
       (puthash :params params request))
     request))
 
-(cl-defun lspce--notification (method &optional params)
+(cl-defun lspce--make-notification (method &optional params)
   "jsonrpc is added in the module."
   (let ((notification (make-hash-table)))
     (puthash :method method notification)
@@ -21,75 +21,80 @@
       (puthash :params params notification))
     notification))
 
-;; (cl-defun lspce--client-synchronization ()
-;;   (let ((params (make-hash-table)))
-;;     params))
-
-(cl-defun lspce--client-completion ()
+(cl-defun lspce--synchronizationClientCapabilities ()
   (let ((params (make-hash-table)))
-    (puthash :dynamicRegistration :json-false params)
     params))
 
-;; (cl-defun lspce--client-hover ()
-;;   (let ((params (make-hash-table)))
-;;     params))
-
-;; (cl-defun lspce--client-signatureHelp()
-;;   (let ((params (make-hash-table)))
-;;     params))
-
-(cl-defun lspce--client-declaration ()
+(cl-defun lspce--completionItem ()
   (let ((params (make-hash-table)))
-    (puthash :dynamicRegistration :json-false params)
-    (puthash :linkSupport :json-false params)
     params))
 
-(cl-defun lspce--client-definition ()
+(cl-defun lspce--completionClientCapabilities ()
   (let ((params (make-hash-table)))
     (puthash :dynamicRegistration :json-false params)
-    (puthash :linkSupport :json-false params)
+    (puthash :completionItem (lspce--completionItem) params)
     params))
 
-(cl-defun lspce--client-typeDefinition ()
+(cl-defun lspce--hoverClientCapabilities ()
+  (let ((params (make-hash-table)))
+    params))
+
+(cl-defun lspce--signatureHelpClientCapabilities()
+  (let ((params (make-hash-table)))
+    params))
+
+(cl-defun lspce--declarationClientCapabilities ()
   (let ((params (make-hash-table)))
     (puthash :dynamicRegistration :json-false params)
     (puthash :linkSupport :json-false params)
     params))
 
-(cl-defun lspce--client-implementation ()
+(cl-defun lspce--definitionClientCapabilities ()
   (let ((params (make-hash-table)))
     (puthash :dynamicRegistration :json-false params)
     (puthash :linkSupport :json-false params)
     params))
 
-(cl-defun lspce--client-references ()
+(cl-defun lspce--typeDefinitionClientCapabilities ()
+  (let ((params (make-hash-table)))
+    (puthash :dynamicRegistration :json-false params)
+    (puthash :linkSupport :json-false params)
+    params))
+
+(cl-defun lspce--implementationClientCapabilities ()
+  (let ((params (make-hash-table)))
+    (puthash :dynamicRegistration :json-false params)
+    (puthash :linkSupport :json-false params)
+    params))
+
+(cl-defun lspce--referencesClientCapabilities ()
   (let ((params (make-hash-table)))
     (puthash :dynamicRegistration :json-false params)
     params))
 
-(cl-defun lspce--client-codeAction ()
+(cl-defun lspce--codeActionClientCapabilities ()
   (let ((params (make-hash-table)))
     params))
 
-(cl-defun lspce--client-rename ()
+(cl-defun lspce--renameClientCapabitlities ()
   (let ((params (make-hash-table)))
     params))
 
-(cl-defun lspce--client-publishDiagnostics ()
+(cl-defun lspce--publishDiagnosticsClientCapabilities ()
   (let ((params (make-hash-table)))
     params))
 
-(cl-defun lspce--text-document-client-capabilities ()
+(cl-defun lspce--textDocumentClientCapabilities ()
   (let ((capabilities (make-hash-table)))
-    ;; (puthash :completion (lspce--client-completion) capabilities)
-    (puthash :declaration (lspce--client-declaration) capabilities)
-    (puthash :definition (lspce--client-definition) capabilities)
-    (puthash :typeDefinition (lspce--client-typeDefinition) capabilities)
-    (puthash :implementation (lspce--client-implementation) capabilities)
-    (puthash :references (lspce--client-references) capabilities)
-    ;; (puthash :codeAction (lspce--client-codeAction) capabilities)
-    ;; (puthash :rename (lspce--client-rename) capabilities)
-    ;; (puthash :publishDiagnostics (lspce--client-publishDiagnostics) capabilities)
+    (puthash :completion (lspce--completionClientCapabilities) capabilities)
+    (puthash :declaration (lspce--declarationClientCapabilities) capabilities)
+    (puthash :definition (lspce--definitionClientCapabilities) capabilities)
+    (puthash :typeDefinition (lspce--typeDefinitionClientCapabilities) capabilities)
+    (puthash :implementation (lspce--implementationClientCapabilities) capabilities)
+    (puthash :references (lspce--referencesClientCapabilities) capabilities)
+    ;; (puthash :codeAction (lspce--codeActionClientCapabilities) capabilities)
+    ;; (puthash :rename (lspce--renameClientCapabitlities) capabilities)
+    (puthash :publishDiagnostics (lspce--publishDiagnosticsClientCapabilities) capabilities)
     capabilities))
 
 (cl-defun lspce--client-info ()
@@ -113,7 +118,7 @@
 (cl-defun lspce--client-capabilities ()
   (let ((capabilities (make-hash-table)))
     ;; (puthash :workspace (lspce--workspace) capabilities)    
-    (puthash :textDocument (lspce--text-document-client-capabilities) capabilities)
+    (puthash :textDocument (lspce--textDocumentClientCapabilities) capabilities)
     ;; (puthash :window (lspce--window) capabilities)
     capabilities))
 
@@ -137,5 +142,62 @@
       (puthash :workspaceFolders workspaceFolders params))
     
     params))
+
+;; (cl-defun lspce--position (&optional pos)
+;;   (let ((params (make-hash-table))
+;;         line character)
+;;     (setq line (1- (line-number-at-pos pos t)))
+;;     (setq character (progn (when pos (goto-char pos))
+;;                            (funcall lspce-current-column-function)))
+;;     (puthash :line line params)
+;;     (puthash :character character params)
+;;     params))
+
+(cl-defun lspce--textDocumentItem (uri languageId version text)
+  (let ((params (make-hash-table)))
+    (puthash :uri uri params)
+    (puthash :languageId languageId params)
+    (puthash :version version params)
+    (puthash :text text params)
+    params))
+
+(cl-defun lspce--didOpen-params (textDocument)
+  (let ((params (make-hash-table)))
+    (puthash :textDocument textDocument params)
+    params))
+
+(cl-defun lspce--position (line character)
+  (let ((params (make-hash-table)))
+    (puthash :line line params)
+    (puthash :character character params)
+    params))
+
+(cl-defun lspce--range (start end)
+  (let ((params (make-hash-table)))
+    (puthash :start start params)
+    (puthash :end end params)
+    params))
+
+(cl-defun lspce--textDocumentIdenfitier (uri)
+  (let ((params (make-hash-table)))
+    (puthash :uri uri params)
+    params))
+
+(cl-defun lspce--referenceContext ()
+  (let ((params (make-hash-table)))
+    (puthash :includeDeclaration t params)
+    params))
+
+(cl-defun lspce--declaration-params (textDocument position &optional context)
+  (let ((params (make-hash-table)))
+    (puthash :textDocument textDocument params)
+    (puthash :position position params)
+    (when context
+      (puthash :context context params))
+    params))
+(defalias 'lspce--definition-params 'lspce--declaration-params "lspce--definition-params")
+(defalias 'lspce--references-params 'lspce--declaration-params "lspce--references-params")
+(defalias 'lspce--implementation-params 'lspce--declaration-params "lspce--implementation-params")
+
 
 (provide 'lspce-types)
