@@ -189,6 +189,7 @@
     params))
 
 (cl-defun lspce--declaration-params (textDocument position &optional context)
+  "context is only used when finding references."
   (let ((params (make-hash-table)))
     (puthash :textDocument textDocument params)
     (puthash :position position params)
