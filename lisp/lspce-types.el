@@ -1,7 +1,7 @@
 ;;; lspce.el --- LSP client for Emacs -*- lexical-binding: t; -*-
 
 (require 'cl-lib)
-(require 'lspce-core)
+(require 'lspce-util)
 
 
 (cl-defun lspce--make-request (method &optional id params)

@@ -3,43 +3,10 @@
 (defconst LSPCE-VERSION "0.1")
 (defconst LSPCE-NAME "lspce")
 
-;;; Constants
-;;;
-(defconst lspce--symbol-kind-names
-  `((1 . "File") (2 . "Module")
-    (3 . "Namespace") (4 . "Package") (5 . "Class")
-    (6 . "Method") (7 . "Property") (8 . "Field")
-    (9 . "Constructor") (10 . "Enum") (11 . "Interface")
-    (12 . "Function") (13 . "Variable") (14 . "Constant")
-    (15 . "String") (16 . "Number") (17 . "Boolean")
-    (18 . "Array") (19 . "Object") (20 . "Key")
-    (21 . "Null") (22 . "EnumMember") (23 . "Struct")
-    (24 . "Event") (25 . "Operator") (26 . "TypeParameter")))
-
-(defconst lspce--kind-names
-  `((1 . "Text") (2 . "Method") (3 . "Function") (4 . "Constructor")
-    (5 . "Field") (6 . "Variable") (7 . "Class") (8 . "Interface")
-    (9 . "Module") (10 . "Property") (11 . "Unit") (12 . "Value")
-    (13 . "Enum") (14 . "Keyword") (15 . "Snippet") (16 . "Color")
-    (17 . "File") (18 . "Reference") (19 . "Folder") (20 . "EnumMember")
-    (21 . "Constant") (22 . "Struct") (23 . "Event") (24 . "Operator")
-    (25 . "TypeParameter")))
-
-
 (defconst lspce--{} (make-hash-table) "The empty JSON object.")
 
 
 (defun lspce-current-column () (- (point) (point-at-bol)))
-
-(defvar lspce-current-column-function #'lspce-current-column
-  "Function to calculate the current column.
-
-This is the inverse operation of
-`lspce-move-to-column-function' (which see).  It is a function of
-no arguments returning a column number.  For buffers managed by
-fully LSP-compliant servers, this should be set to
-`lspce-lsp-abiding-column', and `lspce-current-column' (the default)
-for all others.")
 
 (defun lspce-lsp-abiding-column ()
   "Calculate current COLUMN as defined by the LSP spec."
@@ -59,19 +26,6 @@ for all others.")
    (list :line (1- (line-number-at-pos pos t)) ; F!@&#$CKING OFF-BY-ONE
          :character (progn (when pos (goto-char pos))
                            (funcall lspce-current-column-function)))))
-
-(defvar lspce-move-to-column-function #'lspce-move-to-column
-  "Function to move to a column reported by the LSP server.
-
-According to the standard, LSP column/character offsets are based
-on a count of UTF-16 code units, not actual visual columns.  So
-when LSP says position 3 of a line containing just \"aXbc\",
-where X is a multi-byte character, it actually means `b', not
-`c'. However, many servers don't follow the spec this closely.
-
-For buffers managed by fully LSP-compliant servers, this should
-be set to `lspce-move-to-lsp-abiding-column', and
-`lspce-move-to-column' (the default) for all others.")
 
 (defun lspce-move-to-column (column)
   "Move to COLUMN without closely following the LSP spec."
@@ -131,4 +85,4 @@ If optional MARKER, return a marker instead"
     id))
 
 
-(provide 'lspce-core)
+(provide 'lspce-util)
