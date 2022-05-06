@@ -50,6 +50,6 @@
 * Emacs如何跟LSP Server进程通信
 
 * jsonrpc
-
-* 支持TCP/HTTP
+  不使用三方库。
+* TODO 支持TCP/HTTP
 

@@ -27,6 +27,13 @@
 
 (cl-defun lspce--completionItem ()
   (let ((params (make-hash-table)))
+    ;; (puthash :snippetSupport :json-false params)
+    (puthash :snippetSupport t params)
+    (puthash :commitCharactersSupport :json-false params)
+    ;; (puthash :documentationFormat :json-false params)
+    (puthash :deprecatedSupport :json-false params)
+    (puthash :contextSupport :json-false params)
+    ;; TODO https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_completion
     params))
 
 (cl-defun lspce--completionClientCapabilities ()
@@ -94,16 +101,16 @@
     (puthash :references (lspce--referencesClientCapabilities) capabilities)
     ;; (puthash :codeAction (lspce--codeActionClientCapabilities) capabilities)
     ;; (puthash :rename (lspce--renameClientCapabitlities) capabilities)
-    (puthash :publishDiagnostics (lspce--publishDiagnosticsClientCapabilities) capabilities)
+    ;; (puthash :publishDiagnostics (lspce--publishDiagnosticsClientCapabilities) capabilities)
     capabilities))
 
-(cl-defun lspce--client-info ()
+(cl-defun lspce--clientInfo ()
   (let ((params (make-hash-table)))
     (puthash :name LSPCE-NAME params)
     (puthash :version LSPCE-VERSION params)
     params))
 
-(cl-defun lspce--file-operations ()
+(cl-defun lspce--fileOperations ()
   (let ((params (make-hash-table)))
     params))
 
@@ -115,14 +122,14 @@
   (let ((params (make-hash-table)))
     params))
 
-(cl-defun lspce--client-capabilities ()
+(cl-defun lspce--clientCapabilities ()
   (let ((capabilities (make-hash-table)))
     ;; (puthash :workspace (lspce--workspace) capabilities)    
     (puthash :textDocument (lspce--textDocumentClientCapabilities) capabilities)
     ;; (puthash :window (lspce--window) capabilities)
     capabilities))
 
-(cl-defun lspce--initialize-params (rootUri capabilities &optional initializationOptions clientInfo locale rootPath trace workspaceFolders)
+(cl-defun lspce--initializeParams (rootUri capabilities &optional initializationOptions clientInfo locale rootPath trace workspaceFolders)
   "初始化参数"
   (let ((params (make-hash-table)))
     (puthash :processId (emacs-pid) params)
@@ -161,7 +168,7 @@
     (puthash :text text params)
     params))
 
-(cl-defun lspce--didOpen-params (textDocument)
+(cl-defun lspce--didOpenParams (textDocument)
   (let ((params (make-hash-table)))
     (puthash :textDocument textDocument params)
     params))
@@ -188,17 +195,30 @@
     (puthash :includeDeclaration t params)
     params))
 
-(cl-defun lspce--declaration-params (textDocument position &optional context)
-  "context is only used when finding references."
+(cl-defun lspce--textDocumentPositionParams (textDocument position &optional context)
+  "context is only used when finding references and completion."
   (let ((params (make-hash-table)))
     (puthash :textDocument textDocument params)
     (puthash :position position params)
     (when context
       (puthash :context context params))
     params))
-(defalias 'lspce--definition-params 'lspce--declaration-params "lspce--definition-params")
-(defalias 'lspce--references-params 'lspce--declaration-params "lspce--references-params")
-(defalias 'lspce--implementation-params 'lspce--declaration-params "lspce--implementation-params")
 
+(defalias 'lspce--declarationParams 'lspce--textDocumentPositionParams "lspce--definitionParams")
+(defalias 'lspce--definitionParams 'lspce--textDocumentPositionParams "lspce--definitionParams")
+(defalias 'lspce--referencesParams 'lspce--textDocumentPositionParams "lspce--referencesParams")
+(defalias 'lspce--implementationParams 'lspce--textDocumentPositionParams "lspce--implementationParams")
+
+(defconst LSPCE-Invoked 1 "Completion was triggered by typing an identifier or via API")
+(defconst LSPCE-TriggerCharacter 2 "Completion was triggered by a trigger character")
+(defconst LSPCE-TriggerForIncompleteCompletions 3 "Completion was re-triggered as the current completion list is incomplete")
+(cl-defun lspce--completionContext (&optional trigger-kind trigger-character)
+  (let ((params (make-hash-table)))
+    (puthash :triggerKind (or trigger-kind LSPCE-Invoked) params)
+    (when trigger-character
+      (puthash :triggerCharacter trigger-character params)
+      )
+    params))
+(defalias 'lspce--completionParams 'lspce--textDocumentPositionParams "lspce--definitionParams")
 
 (provide 'lspce-types)
