@@ -1,4 +1,4 @@
-;;; lspce.el --- LSP client for Emacs -*- lexical-binding: t; -*-
+;;; lspce.el --- LSP Client for Emacs -*- lexical-binding: t; -*-
 
 
 ;;; Require
@@ -122,13 +122,79 @@ be set to `lspce-move-to-lsp-abiding-column', and
 Use `lspce-managed-p' to determine if current buffer is managed.")
 
 
-(defun lspce--request (method &optional id params)
-  (let ((request (lspce--make-request method id params))
-        response)
+(defun lspce--root-uri ()
+  (let ((proj (project-current)))
+    (if proj
+        (project-root proj)
+      buffer-file-name)))
+
+(defun lspce--lsp-type-default ()
+  (let ((suffix ""))
+    (when buffer-file-name
+      (setq suffix (file-name-extension buffer-file-name)))
+    (cond
+     ((member suffix '("c" "c++" "cpp" "h" "hpp" "cxx"))
+      "C")
+     (t
+      (symbol-name major-mode)))))
+
+(defvar lspce-lsp-type-function #'lspce--lsp-type-default
+  "Function to the lsp type of current buffer.")
+
+(cl-defun lspce--request (method &optional params)
+  (let ((request (lspce--make-request method params))
+        (root-uri (lspce--root-uri))
+        (lsp-type (funcall lspce-lsp-type-function))
+        response-str response response-error response-result)
+    (unless (and root-uri lsp-type)
+      (user-error "Can not get root-uri of lsp-type of current buffer.")
+      (cl-return-from lspce--request nil))
+
+    (setq response-str (lspce-module-request root-uri lsp-type (json-encode request)))
+    (when response-str
+      (progn
+        (setq response (json-parse-string response-str))
+        (setq response-error (gethash "error" response))
+        (if response-error
+            (message "LSP error %s" (gethash "message" response-error))
+          (setq response-result (gethash "result" response)))))
+    response-result))
+
+;;; Xref
+(defun lspce--xref-backend () 'xref-lspce)
+
+(defun lspce--locations-to-xref (locations)
+  (let (xref-items uri range start filename line column items)
+    (cond
+     ((arrayp locations)
+      (setq items locations)
+      )
+     ((hash-table-p locations)
+      (setq items (list locations)))
+     (t
+      (setq items nil)))
+    (condition-case err
+        (dolist (item items)
+          (setq uri (gethash "targetUri" item))
+          (setq range (gethash "targetRange" item))
+          (setq start (gethash "start" range))
+          (setq line (1+ (gethash "line" start)))
+          (setq column (gethash "character" start))
+          (setq filename (lspce--uri-to-path uri))
+
+          (cl-pushnew (xref-make filename (xref-make-file-location filename line column)) xref-items)
+
+          (let ((visiting (find-buffer-visiting filename)))
+            )
+          )
+      (error (lspce-warn "Failed to process xref entry for filename '%s': %s"
+                         filename (error-message-string err)))
+      (file-error (lspce-warn "Failed to process xref entry, file-error, '%s': %s"
+                              filename (error-message-string err)))
+      )
+    xref-items
     )
   )
-
-(defun lspce--xref-backend () 'xref-lspce)
 
 (cl-defmethod xref-backend-identifier-at-point ((_backend (eql xref-lspce)))
   (propertize (or (thing-at-point 'symbol) "")
@@ -136,10 +202,12 @@ Use `lspce-managed-p' to determine if current buffer is managed.")
 
 (cl-defmethod xref-backend-definitions ((_backend (eql xref-lspce)) identifier)
   (save-excursion
+    (lspce--locations-to-xref (lspce--request "textDocument/definition" nil (lspce--make-textDocumentPositionParams)))
     ))
 
 (cl-defmethod xref-backend-references ((_backend (eql xref-lspce)) identifier)
   (save-excursion
+    (lspce--locations-to-xref (lspce--request "textDocument/references" nil (lspce--make-textDocumentPositionParams)))
     ))
 
 

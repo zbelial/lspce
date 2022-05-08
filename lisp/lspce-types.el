@@ -1,4 +1,4 @@
-;;; lspce.el --- LSP client for Emacs -*- lexical-binding: t; -*-
+;;; lspce.el --- LSP Client for Emacs -*- lexical-binding: t; -*-
 
 (require 'cl-lib)
 (require 'lspce-util)
@@ -150,16 +150,6 @@
     
     params))
 
-;; (cl-defun lspce--position (&optional pos)
-;;   (let ((params (make-hash-table))
-;;         line character)
-;;     (setq line (1- (line-number-at-pos pos t)))
-;;     (setq character (progn (when pos (goto-char pos))
-;;                            (funcall lspce-current-column-function)))
-;;     (puthash :line line params)
-;;     (puthash :character character params)
-;;     params))
-
 (cl-defun lspce--textDocumentItem (uri languageId version text)
   (let ((params (make-hash-table)))
     (puthash :uri uri params)
@@ -220,5 +210,17 @@
       )
     params))
 (defalias 'lspce--completionParams 'lspce--textDocumentPositionParams "lspce--definitionParams")
+
+(defun lspce--make-position (&optional pos)
+  (let (line character)
+    (setq line (1- (line-number-at-pos pos t)))
+    (setq character (progn (when pos (goto-char pos))
+                           (funcall lspce-current-column-function)))
+    (lspce--position line character)))
+
+(defun lspce--make-textDocumentPositionParams ()
+  (lspce--definitionParams
+   (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
+   (lspce--make-position)))
 
 (provide 'lspce-types)

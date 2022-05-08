@@ -1,4 +1,4 @@
-;;; lspce.el --- LSP client for Emacs -*- lexical-binding: t; -*-
+;;; lspce.el --- LSP Client for Emacs -*- lexical-binding: t; -*-
 
 
 (add-to-list 'load-path "/mnt/Personal/VCS/bitbucket/lspce/rs/target/debug")

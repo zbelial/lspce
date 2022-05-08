@@ -1,4 +1,4 @@
-;;; lspce.el --- LSP client for Emacs -*- lexical-binding: t; -*-
+;;; lspce.el --- LSP Client for Emacs -*- lexical-binding: t; -*-
 
 (defconst LSPCE-VERSION "0.1")
 (defconst LSPCE-NAME "lspce")
@@ -84,5 +84,10 @@ If optional MARKER, return a marker instead"
     (setq lspce--jsonrpc-id (1+ lspce--jsonrpc-id))
     id))
 
+(defun lspce-warn (message &rest args)
+  "Display a warning message made from (`format-message' MESSAGE ARGS...).
+This is equivalent to `display-warning', using `lspce-mode' as the type and
+`:warning' as the level."
+  (display-warning 'lsp-mode (apply #'format-message message args)))
 
 (provide 'lspce-util)
