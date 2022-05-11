@@ -31,7 +31,7 @@
 ;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" "rust-analyzer" "--log-file /tmp/ra.log -v" (json-encode (lspce--initialize-request)))
 ;; (lspce-module-shutdown "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" (json-encode (lspce--shutdown-request)))
 
-;; (lspce-module-notify "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" (json-encode (lspce--make-notification "textDocument/didOpen" (lspce--didOpenParams (lspce--textDocumentItem (lspce--path-to-uri "/mnt/Personal/VCS/bitbucket/lspce/rs/src/lib.rs") "rust" 1 (lspce--file-content "/mnt/Personal/VCS/bitbucket/lspce/rs/src/lib.rs"))))))
+;; (lspce-module-notify "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" (json-encode (lspce--make-notification "textDocument/didOpen" (lspce--didOpenTextDocumentParams (lspce--textDocumentItem (lspce--path-to-uri "/mnt/Personal/VCS/bitbucket/lspce/rs/src/lib.rs") "rust" 1 (lspce--file-content "/mnt/Personal/VCS/bitbucket/lspce/rs/src/lib.rs"))))))
 
 ;; (lspce-module-request "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" (json-encode (lspce--make-request "textDocument/declaration" nil (lspce--declarationParams (lspce--textDocumentIdenfitier (lspce--path-to-uri "/mnt/Personal/VCS/bitbucket/lspce/rs/src/lib.rs")) (lspce--position 127 19)))))
 ;; (lspce-module-request "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" (json-encode (lspce--make-request "textDocument/definition" nil (lspce--definitionParams (lspce--textDocumentIdenfitier (lspce--path-to-uri "/mnt/Personal/VCS/bitbucket/lspce/rs/src/lib.rs")) (lspce--position 127 19)))))

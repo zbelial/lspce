@@ -19,6 +19,11 @@
   "Save excursion and restriction.  Widen.  Then run BODY." (declare (debug t))
   `(save-excursion (save-restriction (widen) ,@body)))
 
+(cl-defmacro lspce--when-live-buffer (buf &rest body)
+  "Check BUF live, then do BODY in it." (declare (indent 1) (debug t))
+  (let ((b (cl-gensym)))
+    `(let ((,b ,buf)) (if (buffer-live-p ,b) (with-current-buffer ,b ,@body)))))
+
 
 (defun lspce--pos-to-lsp-position (&optional pos)
   "Convert point POS to LSP position."
