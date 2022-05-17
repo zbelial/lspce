@@ -44,7 +44,7 @@ fn logger() -> &'static Arc<Mutex<dyn Write>> {
 
     ONCE.call_once(|| unsafe {
         let file_name = "/tmp/lspce.log";
-        if let Ok(f) = File::create(file_name) {
+        if let Ok(f) = File::options().create(true).append(true).open(file_name) {
             LOGGER.as_mut_ptr().write(Arc::new(Mutex::new(f)))
         } else {
             LOGGER.as_mut_ptr().write(Arc::new(Mutex::new(FakeFile {})))

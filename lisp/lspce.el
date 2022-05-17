@@ -73,6 +73,27 @@ Font format follow rule: fontname-fontsize."
     (25 . "TypeParameter")))
 
 
+;;; Variables and custom
+(defvar lspce-server-programs `(("rust-mode"  "rust-analyzer" "--log-file /tmp/ra.log -v")
+                                ("python-mode" "pyright-langserver" "--stdio")
+                                ("C" "clangd")
+                                ("go-mode"  "gopls")
+                                ("java-mode"  "jdtls"))
+  "How the command `lspce' gets the server to start.
+A list of (LSP-TYPE SERVER-COMMAND SERVER-PARAMS).  LSP-TYPE
+identifies the buffers that are to be managed by a specific
+language server, it is returned by `lspce-lsp-type-function'.
+The SERVER-COMMAND specifies which server is used for those buffers.
+
+SERVER-PARAMS can be:
+
+* nil, in this case, no param is required to start the lsp server;
+
+* In the most common case, a string such as --stdio;
+
+* A function that returns the params;
+")
+
 (defvar lspce-current-column-function #'lspce-current-column
   "Function to calculate the current column.
 
@@ -98,7 +119,6 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 
 ;;; Create LSP params
-
 (defun lspce--make-didOpenTextDocumentParams ()
   (let ((uri (lspce--path-to-uri buffer-file-name))
         (language-id (lspce--buffer-language-id))
@@ -135,20 +155,33 @@ be set to `lspce-move-to-lsp-abiding-column', and
                            (funcall lspce-current-column-function)))
     (lspce--position line character)))
 
-(defun lspce--make-textDocumentPositionParams ()
+(defun lspce--make-definitionParams (&optional context)
   (lspce--definitionParams
    (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
    (lspce--make-position)))
 
+(defun lspce--make-referenceParams ()
+  (lspce--referencesParams
+   (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
+   (lspce--make-position)
+   (lspce--referenceContext)))
+
+(defun lspce--make-initializeParams (root-uri)
+  (lspce--initializeParams root-uri (lspce--clientCapabilities)))
+
 
 ;;; LSP functions
 (defun lspce--root-uri ()
-  (let ((proj (project-current)))
-    (if proj
-        (project-root proj)
-      buffer-file-name)))
+  (let ((proj (project-current))
+        root-uri)
+    (setq root-uri (if proj
+                       (project-root proj)
+                     buffer-file-name))
+    (when root-uri
+      (lspce--path-to-uri root-uri))))
 
 (defun lspce--lsp-type-default ()
+  "The return value is also used as language-id."
   (let ((suffix ""))
     (when buffer-file-name
       (setq suffix (file-name-extension buffer-file-name)))
@@ -156,7 +189,10 @@ be set to `lspce-move-to-lsp-abiding-column', and
      ((member suffix '("c" "c++" "cpp" "h" "hpp" "cxx"))
       "C")
      (t
-      (symbol-name major-mode)))))
+      ;; (string-remove-suffix "-mode" (symbol-name major-mode))
+      (symbol-name major-mode)
+      ))))
+(defalias 'lspce--buffer-language-id 'lspce--lsp-type-default "lspce--buffer-language-id")
 
 (defvar lspce-lsp-type-function #'lspce--lsp-type-default
   "Function to the lsp type of current buffer.")
@@ -167,13 +203,13 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (lsp-type (funcall lspce-lsp-type-function))
         response-str response response-error response-result)
     (unless (and root-uri lsp-type)
-      (user-error "lspce--request: Can not get root-uri of lsp-type of current buffer.")
+      (user-error "lspce--request: Can not get root-uri or lsp-type of current buffer.")
       (cl-return-from lspce--request nil))
 
     (setq response-str (lspce-module-request root-uri lsp-type (json-encode request)))
     (when response-str
       (progn
-        (setq response (json-parse-string response-str))
+        (setq response (json-parse-string response-str :array-type 'list))
         (setq response-error (gethash "error" response))
         (if response-error
             (message "LSP error %s" (gethash "message" response-error))
@@ -186,7 +222,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (lsp-type (funcall lspce-lsp-type-function))
         )
     (unless (and root-uri lsp-type)
-      (user-error "lspce--notify: Can not get root-uri of lsp-type of current buffer.")
+      (user-error "lspce--notify: Can not get root-uri or lsp-type of current buffer.")
       (cl-return-from lspce--notify nil))
 
     (lspce-module-notify root-uri lsp-type (json-encode notification))))
@@ -200,7 +236,6 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (defun lspce--notify-textDocument/didOpen ()
   "Send textDocument/didOpen to server."
-  (setq lspce--recent-changes nil lspce--identifier-version 0)
   (lspce--notify
    "textDocument/didOpen" (lspce--make-didOpenTextDocumentParams)))
 
@@ -209,56 +244,170 @@ be set to `lspce-move-to-lsp-abiding-column', and
   (with-demoted-errors
       "[lspce] error sending textDocument/didClose: %s"
     (lspce--notify
-     "textDocument/didClose" (lspce--make-didCloseTextDocumentParams))))
+     "textDocument/didClose" (lspce--make-didCloseTextDocumentParams)))
+  (lspce--buffer-disable-lsp))
 
+(defun lspce--server-program (lsp-type)
+  (let ((server (assoc-default lsp-type lspce-server-programs)))
+    server))
 
-(defun lspce--connect ()
-  (let ((request (lspce--make-request method params))
-        (root-uri (lspce--root-uri))
+;; 返回server info.
+(cl-defun lspce--connect ()
+  (let ((root-uri (lspce--root-uri))
         (lsp-type (funcall lspce-lsp-type-function))
+        (initialize-params nil)
+        lsp-server
+        server server-cmd server-args 
         response-str response response-error response-result)
-    (unless (and root-uri lsp-type)
-      (user-error "lspce--request: Can not get root-uri of lsp-type of current buffer.")
-      (cl-return-from lspce--request nil))
+    (setq lsp-server (lspce-module-server-running root-uri lsp-type))
+    (when lsp-server
+      (message "lspce--connect: Server for %S: %S is running." root-uri lsp-type)
+      (cl-return-from lspce--connect lsp-server))
 
-    (setq response-str (lspce-module-request root-uri lsp-type (json-encode request)))
-    (when response-str
-      (progn
-        (setq response (json-parse-string response-str))
-        (setq response-error (gethash "error" response))
-        (if response-error
-            (message "LSP error %s" (gethash "message" response-error))
-          (setq response-result (gethash "result" response)))))
-    response-result)
-  )
+    (unless (and root-uri lsp-type)
+      (user-error "lspce--connect: Can not get root-uri or lsp-type of current buffer.")
+      (cl-return-from lspce--connect nil))
+
+    (setq server (lspce--server-program lsp-type))
+    (unless server
+      (user-error "lspce--connect: Do not support current buffer.")
+      (cl-return-from lspce--connect nil))
+
+    (message "server %S" server)
+    (setq server-cmd (nth 0 server)
+          server-args (nth 1 server))
+    (if (functionp server-args)
+        (setq server-args (funcall server-args)))
+    (unless server-args
+      (setq server-args ""))
+
+    (setq initialize-params (lspce--make-initializeParams root-uri))
+
+    (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params))))
+
+    response-str))
+
+(defun lspce--shutdown ()
+  (let ((root-uri (lspce--root-uri))
+        (lsp-type (funcall lspce-lsp-type-function))
+        response-str)
+    (unless (and root-uri lsp-type)
+      (user-error "lspce--shutdown: Can not get root-uri or lsp-type of current buffer.")
+      (cl-return-from lspce--shutdown nil))
+
+    (setq response-str (lspce-module-shutdown root-uri lsp-type (json-encode (lspce--make-request "shutdown"))))
+
+    response-str))
 
 ;;; Minor modes
 ;;;
+(cl-defstruct lspce--hash-key
+  (root-uri)
+  (lsp-type)
+  )
+
+(defun lspce--hash-key-test-fn (k1 k2)
+  (and (string-equal (lspce--hash-key-root-uri k1)
+                     (lspce--hash-key-root-uri k2))
+       (string-equal (lspce--hash-key-lsp-type k1)
+                     (lspce--hash-key-lsp-type k2))))
+
+(defun lspce--hash-key-hash-fn (k)
+  (let ((root-uri (lspce--hash-key-root-uri k))
+        (lsp-type (lspce--hash-key-lsp-type k))
+        (hash 0))
+    (seq-do (lambda (c)
+              (setq hash (+ (* 31 hash) c))
+              (setq hash (% hash (max-char))))
+            (concat root-uri lsp-type))
+    hash))
+
+(define-hash-table-test 'lspce--hash-equal 'lspce--hash-key-test-fn 'lspce--hash-key-hash-fn)
+
+(defvar lspce--managed-buffers (make-hash-table :test 'lspce--hash-equal)
+  "All files that enable lspce-mode. The key is `lspce--hash-key'.
+The value is also a hash table, with uri as the key and the value is just t.")
+
+(defvar-local lspce--uri nil)
+(defvar-local lspce--root-uri nil)
+(defvar-local lspce--lsp-type nil)
+(defvar-local lspce--server-info nil)
+
 (defvar lspce-mode-map (make-sparse-keymap))
 
+(cl-defun lspce--buffer-enable-lsp ()
+  (let ((root-uri (lspce--root-uri))
+        (lsp-type (funcall lspce-lsp-type-function))
+        server-info server-key server-managed-buffers)
+    (unless (and root-uri lsp-type)
+      (cl-return-from lspce--buffer-enable-lsp nil))
+
+    (setq-local lspce--root-uri root-uri)
+    (setq-local lspce--lsp-type lsp-type)
+    (setq-local lspce--recent-changes nil
+                lspce--identifier-version 0
+                lspce--uri (lspce--path-to-uri buffer-file-name))
+
+    (setq server-info (lspce--connect))
+    (unless server-info
+      (cl-return-from lspce--buffer-enable-lsp nil))
+    (message "server-info: %s" server-info)
+
+    (when (lspce--notify-textDocument/didOpen)
+      (setq-local lspce--server-info server-info)
+      (setq server-key (make-lspce--hash-key :root-uri root-uri :lsp-type lsp-type))
+      (setq server-managed-buffers (gethash server-key lspce--managed-buffers))
+      (unless server-managed-buffers
+        (setq server-managed-buffers (make-hash-table :test 'equal)))
+      (puthash lspce--uri t server-managed-buffers)
+      (puthash server-key server-managed-buffers lspce--managed-buffers))))
+
+(cl-defun lspce--buffer-disable-lsp ()
+  (when (not lspce-mode)
+    (cl-return-from lspce--buffer-disable-lsp nil))
+
+  (let (server-key server-managed-buffers)
+    (setq server-key (make-lspce--hash-key :root-uri lspce--root-uri :lsp-type lspce--lsp-type))
+    (setq server-managed-buffers (gethash server-key lspce--managed-buffers))
+    (when server-managed-buffers
+      (remhash lspce--uri server-managed-buffers)
+      (when (= (hash-table-count server-managed-buffers) 0)
+        (lspce--shutdown))
+      (puthash server-key server-managed-buffers lspce--managed-buffers)
+
+      (setq-local lspce--server-info nil))))
+
 (define-minor-mode lspce-mode
-  "Mode for source buffers managed by some LSPCE project."
-  :init-value nil :lighter nil :keymap lspce-mode-map
+"Mode for source buffers managed by some LSPCE project."
+:init-value nil :lighter nil :keymap lspce-mode-map
+(cond
+ (lspce-mode
   (cond
-   (lspce-mode
-    (cond
-     ((not buffer-file-name)
-      (user-error "Lspce can not be used in non-file buffers.")
-      (setq lspce-mode nil))
-     (t
-      (add-hook 'after-change-functions 'lspce--after-change nil t)
-      (add-hook 'before-change-functions 'lspce--before-change nil t)
-      (add-hook 'kill-buffer-hook 'lspce--notify-textDocument/didClose nil t)
-      (add-hook 'before-revert-hook 'lspce--notify-textDocument/didClose nil t)
-      (add-hook 'after-revert-hook 'lspce--after-revert-hook nil t)
-      (add-hook 'xref-backend-functions 'lspce-xref-backend nil t))))
+   ((not buffer-file-name)
+    (user-error "Lspce can not be used in non-file buffers.")
+    (setq lspce-mode nil))
    (t
-    (remove-hook 'after-change-functions 'lspce--after-change t)
-    (remove-hook 'before-change-functions 'lspce--before-change t)
-    (remove-hook 'kill-buffer-hook 'lspce--notify-textDocument/didClose t)
-    (remove-hook 'before-revert-hook 'lspce--notify-textDocument/didClose t)
-    (remove-hook 'after-revert-hook 'lspce--after-revert-hook t)
-    (remove-hook 'xref-backend-functions 'lspce-xref-backend t))))
+    (add-hook 'after-change-functions 'lspce--after-change nil t)
+    (add-hook 'before-change-functions 'lspce--before-change nil t)
+    (add-hook 'kill-buffer-hook 'lspce--notify-textDocument/didClose nil t)
+    (add-hook 'before-revert-hook 'lspce--notify-textDocument/didClose nil t)
+    (add-hook 'after-revert-hook 'lspce--after-revert-hook nil t)
+    (add-hook 'xref-backend-functions 'lspce-xref-backend nil t)
+    (lspce--buffer-enable-lsp)
+    (if lspce--server-info
+        (message "Connected to lsp server %s" lspce--server-info)
+      (message "Failed to connect to lsp server.")
+      (setq lspce-mode nil)))
+   ))
+ (t
+  (remove-hook 'after-change-functions 'lspce--after-change t)
+  (remove-hook 'before-change-functions 'lspce--before-change t)
+  (remove-hook 'kill-buffer-hook 'lspce--notify-textDocument/didClose t)
+  (remove-hook 'before-revert-hook 'lspce--notify-textDocument/didClose t)
+  (remove-hook 'after-revert-hook 'lspce--after-revert-hook t)
+  (remove-hook 'xref-backend-functions 'lspce-xref-backend t)
+  (lspce--buffer-disable-lsp)
+  )))
 
 ;;; Hooks
 (defvar-local lspce--recent-changes nil
@@ -341,12 +490,14 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
       )
      ((hash-table-p locations)
       (setq items (list locations)))
+     ((listp locations)
+      (setq items locations))
      (t
       (setq items nil)))
     (condition-case err
         (dolist (item items)
-          (setq uri (gethash "targetUri" item))
-          (setq range (gethash "targetRange" item))
+          (setq uri (gethash "uri" item))
+          (setq range (gethash "range" item))
           (setq start (gethash "start" range))
           (setq line (1+ (gethash "line" start)))
           (setq column (gethash "character" start))
@@ -372,14 +523,42 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
 
 (cl-defmethod xref-backend-definitions ((_backend (eql xref-lspce)) identifier)
   (save-excursion
-    (lspce--locations-to-xref (lspce--request "textDocument/definition" nil (lspce--make-textDocumentPositionParams)))
+    (lspce--locations-to-xref (lspce--request "textDocument/definition" (lspce--make-definitionParams)))
     ))
 
 (cl-defmethod xref-backend-references ((_backend (eql xref-lspce)) identifier)
   (save-excursion
-    (lspce--locations-to-xref (lspce--request "textDocument/references" nil (lspce--make-textDocumentPositionParams)))
+    (lspce--locations-to-xref (lspce--request "textDocument/references" (lspce--make-referenceParams)))
     ))
 
+(cl-defmethod xref-backend-identifier-completion-table ((_backend (eql xref-lspce)))
+  (list (propertize (or (thing-at-point 'symbol) "")
+                    'identifier-at-point t)))
 
+
+;;; capf
+(defvar-local lspce--last-inserted-char nil
+  "If non-nil, value of the last inserted character in buffer.")
+
+(defun lspce--post-self-insert-hook ()
+  "Set `lspce--last-inserted-char'."
+  (setq lspce--last-inserted-char last-input-event))
+
+(defun lspce--pre-command-hook ()
+  "Reset `lspce--last-inserted-char'."
+  (setq lspce--last-inserted-char nil))
+
+
+(defun lspce--make-completionParams()
+  (let (context)
+    (lspce--completionParams (lspce--textDocumentIdenfitier lspce--uri)
+                             (lspce--make-position)
+                             (lspce--completionContext))))
+
+(defun lspce--request-completion ()
+  )
+
+(defun lspce-completion-at-point()
+  )
 
 (provide 'lspce)

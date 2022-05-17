@@ -52,4 +52,4 @@
 * jsonrpc
   不使用三方库。
 * TODO 支持TCP/HTTP
-
+* Emacs completion table

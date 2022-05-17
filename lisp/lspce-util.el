@@ -95,4 +95,9 @@ This is equivalent to `display-warning', using `lspce-mode' as the type and
 `:warning' as the level."
   (display-warning 'lsp-mode (apply #'format-message message args)))
 
+(defun lspce--message (format &rest args)
+  "Message out with FORMAT with ARGS."
+  (message "[lspce] %s" (apply #'format format args)))
+
+
 (provide 'lspce-util)

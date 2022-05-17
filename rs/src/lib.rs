@@ -23,6 +23,8 @@ use msg::Notification;
 use msg::Request;
 use msg::RequestId;
 use msg::Response;
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::json;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -48,12 +50,31 @@ struct FileInfo {
     pub uri: String, // 文件名
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct LspServerInfo {
+    pub name: String,
+    pub version: String,
+    pub id: String, // pid at the moment
+    pub capabilities: String,
+}
+
+impl LspServerInfo {
+    pub fn new(name: String, version: String, id: String, capabilities: String) -> LspServerInfo {
+        LspServerInfo {
+            name,
+            version,
+            id,
+            capabilities,
+        }
+    }
+}
+
 struct LspServer {
     pub child: Option<Child>,
-    pub nick_name: String,
-    pub initialized: bool,               // 是否已经启动完
-    pub capabilities: String,            // TODO 类型
-    pub server_capabilites: String,      // TODO
+    pub server_info: Option<LspServerInfo>,
+    pub initialized: u8,      // 是否已经启动完 0：待启动，1：启动中，2：启动完成
+    pub capabilities: String, // TODO 类型
+    pub server_capabilites: String, // TODO
     pub uris: HashMap<String, FileInfo>, // key: uri
     latest_id: Mutex<RequestId>,
     transport: Option<Connection>,
@@ -65,7 +86,7 @@ impl LspServer {
         root_uri: String,
         cmd: String,
         cmd_args: String,
-        lsp_args: String,
+        initialize_params: String,
     ) -> Option<LspServer> {
         let args = cmd_args.split_ascii_whitespace().collect::<Vec<&str>>();
 
@@ -78,8 +99,8 @@ impl LspServer {
         if let Ok(mut c) = child {
             let mut server = LspServer {
                 child: None,
-                nick_name: "".to_string(),
-                initialized: false,
+                server_info: None,
+                initialized: 0,
                 capabilities: "".to_string(),
                 server_capabilites: "".to_string(),
                 latest_id: Mutex::new(RequestId::from(-1)),
@@ -206,36 +227,41 @@ fn connect(
     file_type: String,
     cmd: String,
     cmd_args: String,
-    lsp_args: String,
-) -> Result<String> {
+    initialize_params: String,
+) -> Result<Option<String>> {
     Logger::log(&format!(
         "start initializing server for file_type {} in project {}",
         file_type, root_uri
     ));
-    if (server_running(env, root_uri.clone(), file_type.clone()).unwrap()) {
-        Logger::log(&format!(
-            "server created already for file_type {} in project {}",
-            file_type, root_uri
-        ));
-        return Ok("server created already, return now.".to_string());
+
+    let mut projects = projects().lock().unwrap();
+
+    if let Some(p) = projects.get(&root_uri) {
+        if let Some(s) = p.servers.get(&file_type) {
+            Logger::log(&format!(
+                "server created already for file_type {} in project {}",
+                file_type, root_uri
+            ));
+
+            return Ok(Some("server created already, return now.".to_string()));
+        }
     }
 
     let mut server = LspServer::new(
         root_uri.clone(),
         cmd.clone(),
         cmd_args.clone(),
-        lsp_args.clone(),
+        initialize_params.clone(),
     );
     if let Some(mut s) = server {
-        let mut projects = projects().lock().unwrap();
         let mut project = projects.get_mut(&root_uri);
         if let Some(p) = project.as_mut() {
-            initialize(env, root_uri.clone(), &mut s, lsp_args);
+            initialize(env, root_uri.clone(), &mut s, initialize_params);
 
             p.servers.insert(file_type, s);
         } else {
             let mut proj = Project::new(root_uri.clone(), "".to_string());
-            initialize(env, root_uri.clone(), &mut s, lsp_args);
+            initialize(env, root_uri.clone(), &mut s, initialize_params);
 
             proj.servers.insert(file_type, s);
 
@@ -245,20 +271,21 @@ fn connect(
         Logger::log(&format!("connected to server."));
     } else {
         Logger::log(&format!("connect failed"));
+        return Ok(None);
     }
 
-    Ok("server created".to_string())
+    Ok(Some("server created".to_string()))
 }
 
 fn initialize(
     env: &Env,
     root_uri: String,
     server: &mut LspServer,
-    lsp_args: String,
+    initialize_params: String,
 ) -> Result<Option<String>> {
-    Logger::log(&format!("initialize request {:#?}", lsp_args));
+    Logger::log(&format!("initialize request {:#?}", initialize_params));
 
-    let resp_value = _request(env, server, lsp_args);
+    let resp_value = _request(env, server, initialize_params);
 
     match resp_value {
         Ok(resp) => match resp {
