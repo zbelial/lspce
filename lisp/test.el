@@ -25,8 +25,8 @@
     (insert-file-contents filePath)
     (buffer-string)))
 
-(lspce-module-server-running "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust-mode")
-(lspce-module-server-running "/home/lucency/lsp-bridge" "python-mode")
+(lspce-module-server "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust-mode")
+(lspce-module-server "/home/lucency/lsp-bridge" "python-mode")
 
 ;; (lspce-module-connect "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" "rust-analyzer" "--log-file /tmp/ra.log -v" (json-encode (lspce--initialize-request)))
 ;; (lspce-module-shutdown "/mnt/Personal/VCS/bitbucket/lspce/rs" "rust" (json-encode (lspce--shutdown-request)))

@@ -17,6 +17,7 @@ use error::LspceError;
 use logger::Logger;
 use lsp_types::request::Shutdown;
 use lsp_types::InitializeParams;
+use lsp_types::InitializeResult;
 use lsp_types::InitializedParams;
 use msg::Message;
 use msg::Notification;
@@ -71,10 +72,8 @@ impl LspServerInfo {
 
 struct LspServer {
     pub child: Option<Child>,
-    pub server_info: Option<LspServerInfo>,
-    pub initialized: u8,      // 是否已经启动完 0：待启动，1：启动中，2：启动完成
-    pub capabilities: String, // TODO 类型
-    pub server_capabilites: String, // TODO
+    pub server_info: LspServerInfo,
+    pub initialized: u8, // 是否已经启动完 0：待启动，1：启动中，2：启动完成
     pub uris: HashMap<String, FileInfo>, // key: uri
     latest_id: Mutex<RequestId>,
     transport: Option<Connection>,
@@ -99,10 +98,13 @@ impl LspServer {
         if let Ok(mut c) = child {
             let mut server = LspServer {
                 child: None,
-                server_info: None,
+                server_info: LspServerInfo::new(
+                    "".to_string(),
+                    "".to_string(),
+                    "".to_string(),
+                    "".to_string(),
+                ),
                 initialized: 0,
-                capabilities: "".to_string(),
-                server_capabilites: "".to_string(),
                 latest_id: Mutex::new(RequestId::from(-1)),
                 uris: HashMap::new(),
                 transport: None,
@@ -114,6 +116,7 @@ impl LspServer {
 
             let (mut transport, mut threads) = Connection::stdio(stdin, stdout);
 
+            server.server_info.id = c.id().to_string();
             server.child = Some(c);
             server.transport = Some(transport);
             server.threads = Some(threads);
@@ -254,27 +257,33 @@ fn connect(
         initialize_params.clone(),
     );
     if let Some(mut s) = server {
+        let server_info: LspServerInfo;
         let mut project = projects.get_mut(&root_uri);
         if let Some(p) = project.as_mut() {
-            initialize(env, root_uri.clone(), &mut s, initialize_params);
-
-            p.servers.insert(file_type, s);
+            if let Some(_) = initialize(env, root_uri.clone(), &mut s, initialize_params) {
+                server_info = s.server_info.clone();
+                p.servers.insert(file_type, s);
+            } else {
+                return Ok(None);
+            }
         } else {
             let mut proj = Project::new(root_uri.clone(), "".to_string());
-            initialize(env, root_uri.clone(), &mut s, initialize_params);
+            if let Some(_) = initialize(env, root_uri.clone(), &mut s, initialize_params) {
+                server_info = s.server_info.clone();
+                proj.servers.insert(file_type, s);
 
-            proj.servers.insert(file_type, s);
-
-            projects.insert(root_uri.clone(), proj);
+                projects.insert(root_uri.clone(), proj);
+            } else {
+                return Ok(None);
+            }
         }
 
-        Logger::log(&format!("connected to server."));
+        Logger::log(&format!("Connected to server successfully."));
+        return Ok(Some(serde_json::to_string(&server_info).unwrap()));
     } else {
-        Logger::log(&format!("connect failed"));
+        Logger::log(&format!("Failed to connect to server."));
         return Ok(None);
     }
-
-    Ok(Some("server created".to_string()))
 }
 
 fn initialize(
@@ -282,7 +291,7 @@ fn initialize(
     root_uri: String,
     server: &mut LspServer,
     initialize_params: String,
-) -> Result<Option<String>> {
+) -> Option<bool> {
     Logger::log(&format!("initialize request {:#?}", initialize_params));
 
     let resp_value = _request(env, server, initialize_params);
@@ -290,31 +299,43 @@ fn initialize(
     match resp_value {
         Ok(resp) => match resp {
             Some(m) => {
-                // TODO 处理server返回
+                if m.error.is_some() {
+                    // 有错误
+                    env.message(&format!("Lsp error {:?}", m.error));
+                    return None;
+                }
 
-                let n: InitializedParams = InitializedParams {};
-                let initialized: Notification = Notification {
-                    method: "initialized".to_string(),
-                    params: serde_json::to_value(n).unwrap(),
-                };
+                if let Ok(ir) = serde_json::from_value::<InitializeResult>(m.result.unwrap()) {
+                    let n: InitializedParams = InitializedParams {};
+                    let initialized: Notification = Notification {
+                        method: "initialized".to_string(),
+                        params: serde_json::to_value(n).unwrap(),
+                    };
 
-                _notify(env, server, initialized);
+                    _notify(env, server, initialized);
 
-                // TODO 记录server初始化完成
+                    // TODO 记录server初始化完成
+                    if let Some(si) = ir.server_info {
+                        server.server_info.name = si.name.clone();
+                        server.server_info.version = si.version.expect("");
+                    }
+                    server.server_info.capabilities =
+                        serde_json::to_string(&ir.capabilities).unwrap();
 
-                return Ok(Some(serde_json::to_string(&m).unwrap()));
+                    return Some(true);
+                } else {
+                    return None;
+                }
             }
             None => {
-                return Ok(None);
+                return None;
             }
         },
         Err(e) => {
             env.message(&format!("Response error {}", e.to_string()));
-            return Ok(None);
+            return None;
         }
     }
-
-    Ok(Some("initialized".to_string()))
 }
 
 #[defun]
@@ -337,6 +358,7 @@ fn shutdown(
                             params: json!({}),
                         };
 
+                        // FIXME 同时有多个lsp server子进程时，可能会卡住。线程里结束子进程？
                         _notify(env, server, exit);
 
                         server.exit_transport();
@@ -378,25 +400,17 @@ fn shutdown(
     Ok(None)
 }
 
-// 返回server信息 TODO
 #[defun]
-fn server(env: &Env, root_uri: String, file_type: String) -> Result<bool> {
-    let projects = projects().lock().unwrap();
-
-    Ok(false)
-}
-
-#[defun]
-fn server_running(env: &Env, root_uri: String, file_type: String) -> Result<bool> {
+fn server(env: &Env, root_uri: String, file_type: String) -> Result<Option<String>> {
     let projects = projects().lock().unwrap();
 
     if let Some(p) = projects.get(&root_uri) {
         if let Some(s) = p.servers.get(&file_type) {
-            return Ok(true);
+            return Ok(Some(serde_json::to_string(&s.server_info).unwrap()));
         }
     }
 
-    Ok(false)
+    Ok(None)
 }
 
 fn _server(root_uri: String, file_type: String) -> Option<&'static LspServer> {

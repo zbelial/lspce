@@ -202,6 +202,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (root-uri (lspce--root-uri))
         (lsp-type (funcall lspce-lsp-type-function))
         response-str response response-error response-result)
+    (message "lspce--request: %s %S" method params)
     (unless (and root-uri lsp-type)
       (user-error "lspce--request: Can not get root-uri or lsp-type of current buffer.")
       (cl-return-from lspce--request nil))
@@ -259,7 +260,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
         lsp-server
         server server-cmd server-args 
         response-str response response-error response-result)
-    (setq lsp-server (lspce-module-server-running root-uri lsp-type))
+    (setq lsp-server (lspce-module-server root-uri lsp-type))
     (when lsp-server
       (message "lspce--connect: Server for %S: %S is running." root-uri lsp-type)
       (cl-return-from lspce--connect lsp-server))
@@ -482,8 +483,57 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
 ;;; Xref
 (defun lspce-xref-backend () 'xref-lspce)
 
+(cl-defstruct lspce--xref-item
+  (filename)
+  (start-line)
+  (start-column)
+  (end-line)
+  (end-column)
+  )
+
+(defun lspce--location-before-p (left right)
+  "Sort first by file, then by line, then by column."
+  (let ((left-uri (lspce--xref-item-filename left))
+        (right-uri (lspce--xref-item-filename right))
+        (left-start-line (lspce--xref-item-start-line left))
+        (right-start-line (lspce--xref-item-start-line right))
+        (left-start-column (lspce--xref-item-start-column left))
+        (right-start-column (lspce--xref-item-start-column right)))
+    (if (not (string= left-uri right-uri))
+        (string< left-uri right-uri)
+      (if (= left-start-line right-start-line)
+          (< left-start-column right-start-column)
+        (< left-start-line right-start-line)))))
+
+(defun lspce--extract-line-from-buffer (pos)
+  "Return the line pointed to by POS (a Position object) in the current buffer."
+  (let* ((point (lsp--position-to-point pos))
+         (inhibit-field-text-motion t))
+    (save-excursion
+      (goto-char point)
+      (buffer-substring (line-beginning-position) (line-end-position)))))
+
+(defun lspce--lsp-position-to-point (line column)
+  "Convert LSP position to Emacs point."
+  (save-excursion
+    (save-restriction
+      (widen)
+      (goto-char (point-min))
+      (forward-line (1- line))
+      (unless (eobp) ;; if line was excessive leave point at eob
+        (let ((tab-width 1)
+              (col column))
+          (unless (wholenump col)
+            (lspce--warn
+             "Caution: LSP server sent invalid character position %s. Using 0 instead."
+             col)
+            (setq col 0))
+          (funcall lspce-move-to-column-function col)))
+      (point))))
+
 (defun lspce--locations-to-xref (locations)
-  (let (xref-items uri range start filename line column items)
+  (message "locations: %S" locations)
+  (let (xrefs uri range start end filename start-line start-column end-line end-column items xref-items groups)
     (cond
      ((arrayp locations)
       (setq items locations)
@@ -495,27 +545,56 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
      (t
       (setq items nil)))
     (condition-case err
-        (dolist (item items)
-          (setq uri (gethash "uri" item))
-          (setq range (gethash "range" item))
-          (setq start (gethash "start" range))
-          (setq line (1+ (gethash "line" start)))
-          (setq column (gethash "character" start))
-          (setq filename (lspce--uri-to-path uri))
+        (progn
+          (dolist (item items)
+            (setq uri (gethash "uri" item))
+            (setq range (gethash "range" item))
+            (setq start (gethash "start" range))
+            (setq end (gethash "end" range))
+            (setq start-line (1+ (gethash "line" start)))
+            (setq start-column (gethash "character" start))
+            (setq end-line (1+ (gethash "line" end)))
+            (setq end-column (gethash "character" end))
+            (setq filename (lspce--uri-to-path uri))
 
-          (cl-pushnew (xref-make filename (xref-make-file-location filename line column)) xref-items)
-
-          (let ((visiting (find-buffer-visiting filename)))
+            (cl-pushnew (make-lspce--xref-item :filename filename :start-line start-line :start-column start-column :end-line end-line :end-column end-column) xref-items)
             )
-          )
+
+          (setq groups (seq-group-by (lambda (x) (lspce--xref-item-filename x))
+                                     (seq-sort #'lspce--location-before-p xref-items)))
+          (message "groups: %S" groups)
+          (dolist (group groups)
+            (let* ((filename (car group))
+                   (items (cdr group))
+                   (visiting (find-buffer-visiting filename))
+                   (collect (lambda (item)
+                              (message "item %S" item)
+                              (lspce--widening
+                               (let* ((beg (lspce--lsp-position-to-point (lspce--xref-item-start-line item)
+                                                                         (lspce--xref-item-start-column item)))
+                                      (end (lspce--lsp-position-to-point (lspce--xref-item-end-line item)
+                                                                         (lspce--xref-item-end-column item)))
+                                      (bol (progn (goto-char beg) (point-at-bol)))
+                                      (substring (buffer-substring bol (point-at-eol)))
+                                      (hi-beg (- beg bol))
+                                      (hi-end (- (min (point-at-eol) end) bol)))
+                                 (add-face-text-property hi-beg hi-end 'xref-match t substring)
+                                 (cl-pushnew (xref-make substring (xref-make-file-location filename (lspce--xref-item-start-line item) (lspce--xref-item-start-column item))) xrefs))))))
+              (message "file %s, items %S" filename items)
+              (if visiting
+                  (with-current-buffer visiting
+                    (seq-map collect items))
+                (when (file-readable-p filename)
+                  (with-temp-buffer
+                    (insert-file-contents-literally filename)
+                    (seq-map collect items)))))))
+      
       (error (lspce-warn "Failed to process xref entry for filename '%s': %s"
                          filename (error-message-string err)))
       (file-error (lspce-warn "Failed to process xref entry, file-error, '%s': %s"
                               filename (error-message-string err)))
       )
-    xref-items
-    )
-  )
+    (nreverse xrefs)))
 
 (cl-defmethod xref-backend-identifier-at-point ((_backend (eql xref-lspce)))
   (propertize (or (thing-at-point 'symbol) "")
@@ -527,6 +606,7 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
     ))
 
 (cl-defmethod xref-backend-references ((_backend (eql xref-lspce)) identifier)
+  (message "xref-backend-references")
   (save-excursion
     (lspce--locations-to-xref (lspce--request "textDocument/references" (lspce--make-referenceParams)))
     ))
