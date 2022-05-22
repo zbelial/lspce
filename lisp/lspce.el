@@ -3,6 +3,7 @@
 
 ;;; Require
 (require 'json)
+(require 'jsonrpc)
 (require 'cl-lib)
 (require 'project)
 (require 'url-util)
@@ -171,6 +172,9 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 
 ;;; LSP functions
+(defun lspce--server-capable (capability)
+  (gethash capability lspce--server-capabilities))
+
 (defun lspce--root-uri ()
   (let ((proj (project-current))
         root-uri)
@@ -202,7 +206,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (root-uri (lspce--root-uri))
         (lsp-type (funcall lspce-lsp-type-function))
         response-str response response-error response-result)
-    (message "lspce--request: %s %S" method params)
+    ;; (message "lspce--request: %s %S" method params)
     (unless (and root-uri lsp-type)
       (user-error "lspce--request: Can not get root-uri or lsp-type of current buffer.")
       (cl-return-from lspce--request nil))
@@ -262,7 +266,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
         response-str response response-error response-result)
     (setq lsp-server (lspce-module-server root-uri lsp-type))
     (when lsp-server
-      (message "lspce--connect: Server for %S: %S is running." root-uri lsp-type)
+      (message "lspce--connect: Server for (%s %s) is running." root-uri lsp-type)
       (cl-return-from lspce--connect lsp-server))
 
     (unless (and root-uri lsp-type)
@@ -333,6 +337,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
 (defvar-local lspce--root-uri nil)
 (defvar-local lspce--lsp-type nil)
 (defvar-local lspce--server-info nil)
+(defvar-local lspce--server-capabilities nil)
 
 (defvar lspce-mode-map (make-sparse-keymap))
 
@@ -341,6 +346,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
         (lsp-type (funcall lspce-lsp-type-function))
         server-info server-key server-managed-buffers)
     (unless (and root-uri lsp-type)
+      (message "Can not get root-uri or lsp-type of current buffer.")
       (cl-return-from lspce--buffer-enable-lsp nil))
 
     (setq-local lspce--root-uri root-uri)
@@ -355,7 +361,11 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (message "server-info: %s" server-info)
 
     (when (lspce--notify-textDocument/didOpen)
-      (setq-local lspce--server-info server-info)
+      (setq-local lspce--server-info (json-parse-string server-info :array-type 'list))
+      (if-let (capabilities (gethash "capabilities" lspce--server-info))
+          (progn
+            (setq lspce--server-capabilities (json-parse-string capabilities :array-type 'list)))
+        (setq lspce--server-capabilities (make-hash-table :test #'equal)))
       (setq server-key (make-lspce--hash-key :root-uri root-uri :lsp-type lsp-type))
       (setq server-managed-buffers (gethash server-key lspce--managed-buffers))
       (unless server-managed-buffers
@@ -394,12 +404,12 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (add-hook 'before-revert-hook 'lspce--notify-textDocument/didClose nil t)
     (add-hook 'after-revert-hook 'lspce--after-revert-hook nil t)
     (add-hook 'xref-backend-functions 'lspce-xref-backend nil t)
+    (add-hook 'completion-at-point-functions #'lspce-completion-at-point nil t)
     (lspce--buffer-enable-lsp)
     (if lspce--server-info
-        (message "Connected to lsp server %s" lspce--server-info)
+        (message "Connected to lsp server.")
       (message "Failed to connect to lsp server.")
-      (setq lspce-mode nil)))
-   ))
+      (setq lspce-mode nil)))))
  (t
   (remove-hook 'after-change-functions 'lspce--after-change t)
   (remove-hook 'before-change-functions 'lspce--before-change t)
@@ -407,8 +417,8 @@ The value is also a hash table, with uri as the key and the value is just t.")
   (remove-hook 'before-revert-hook 'lspce--notify-textDocument/didClose t)
   (remove-hook 'after-revert-hook 'lspce--after-revert-hook t)
   (remove-hook 'xref-backend-functions 'lspce-xref-backend t)
-  (lspce--buffer-disable-lsp)
-  )))
+  (remove-hook 'completion-at-point-functions #'lspce-completion-at-point t)
+  (lspce--buffer-disable-lsp))))
 
 ;;; Hooks
 (defvar-local lspce--recent-changes nil
@@ -532,7 +542,6 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
       (point))))
 
 (defun lspce--locations-to-xref (locations)
-  (message "locations: %S" locations)
   (let (xrefs uri range start end filename start-line start-column end-line end-column items xref-items groups)
     (cond
      ((arrayp locations)
@@ -562,13 +571,11 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
 
           (setq groups (seq-group-by (lambda (x) (lspce--xref-item-filename x))
                                      (seq-sort #'lspce--location-before-p xref-items)))
-          (message "groups: %S" groups)
           (dolist (group groups)
             (let* ((filename (car group))
                    (items (cdr group))
                    (visiting (find-buffer-visiting filename))
                    (collect (lambda (item)
-                              (message "item %S" item)
                               (lspce--widening
                                (let* ((beg (lspce--lsp-position-to-point (lspce--xref-item-start-line item)
                                                                          (lspce--xref-item-start-column item)))
@@ -580,7 +587,6 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
                                       (hi-end (- (min (point-at-eol) end) bol)))
                                  (add-face-text-property hi-beg hi-end 'xref-match t substring)
                                  (cl-pushnew (xref-make substring (xref-make-file-location filename (lspce--xref-item-start-line item) (lspce--xref-item-start-column item))) xrefs))))))
-              (message "file %s, items %S" filename items)
               (if visiting
                   (with-current-buffer visiting
                     (seq-map collect items))
@@ -605,8 +611,10 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
     (lspce--locations-to-xref (lspce--request "textDocument/definition" (lspce--make-definitionParams)))
     ))
 
+;; NOTE if you use `ivy-xref-show-xrefs' as the `xref-show-xrefs-function',
+;; you will find `xref-backend-references' is called twice.
+;; See https://github.com/alexmurray/ivy-xref/issues/2
 (cl-defmethod xref-backend-references ((_backend (eql xref-lspce)) identifier)
-  (message "xref-backend-references")
   (save-excursion
     (lspce--locations-to-xref (lspce--request "textDocument/references" (lspce--make-referenceParams)))
     ))
@@ -635,10 +643,110 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
                              (lspce--make-position)
                              (lspce--completionContext))))
 
-(defun lspce--request-completion ()
-  )
+(cl-defun lspce--request-completion ()
+  (let ((params (lspce--make-completionParams))
+        response items complete?)
+    (setq response (lspce--request "textDocument/completion" params))
+    (unless response
+      (message "lspce--request-completion response-str is null")
+      (cl-return-from lspce--request-completion nil))
+
+    ;; (message "lspce--request-completion response: %S" response)
+    (cond
+     ((arrayp response)
+      (setq complete? t
+            items response))
+     ((hash-table-p response)
+      (setq complete? (gethash "isIncomplete" response)
+            items (gethash "items" response))
+      )
+     (t
+      (message "Unknown response type: %s" (type-of response))
+      (cl-return-from lspce--request-completion nil)))
+    (list complete? items)))
+
+(defun lspce--completions (items)
+  (let (completions)
+    (dolist (item items)
+      (cl-pushnew (gethash "label" item) completions))
+    (message "completions: %S" completions)
+    completions))
 
 (defun lspce-completion-at-point()
-  )
+  (let* ((bounds (bounds-of-thing-at-point 'symbol))
+         (completion-capability (lspce--server-capable "completionProvider"))
+         (sort-completions
+          (lambda (completions)
+            (cl-sort completions
+                     #'string-lessp
+                     :key (lambda (c)
+                            (or (gethash "sortText"
+                                         (get-text-property 0 'lspce--lsp-item c))
+                                "")))))
+         (metadata `(metadata (category . lspce)
+                              (display-sort-function . ,sort-completions)))
+         (cached-proxies :none)
+         items
+         (proxies
+          (lambda ()
+            (if (listp cached-proxies) cached-proxies
+              (setq items (nth 1 (lspce--request-completion)))
+              (setq cached-proxies
+                    (mapcar
+                     (lambda (item)
+                       (let* ((label (gethash "label" item))
+                              (insertText (gethash "insertText" item))
+                              (proxy
+                               (cond 
+                                ((and insertText
+                                      (not (string-empty-p insertText)))
+                                 insertText)
+                                (t
+                                 (string-trim-left label)))))
+                         (unless (zerop (length proxy))
+                           (put-text-property 0 1 'lspce--lsp-item item proxy))
+                         proxy))
+                     items)))))
+         completions)
+    (list
+     (or (car bounds) (point))
+     (or (cdr bounds) (point))
+     ;; (lspce--completions items)
+     (lambda (probe pred action)
+       (cond
+        ((eq action 'metadata) metadata)               ; metadata
+        ((eq action 'lambda)                           ; test-completion
+         nil)
+        ((eq (car-safe action) 'boundaries) nil)       ; boundaries
+        ((null action)                                 ; try-completion
+         (try-completion probe (funcall proxies)))
+        ((eq action t)                                 ; all-completions
+         (all-completions
+          ""
+          (funcall proxies)
+          (lambda (proxy)
+            (let* ((item (get-text-property 0 'lspce--lsp-item proxy))
+                   (filterText (gethash "filterText" item)))
+              (and (or (null pred) (funcall pred proxy))
+                   (string-prefix-p
+                    probe (or filterText proxy) completion-ignore-case))))))))
+     :company-require-match 'never
+     :exclusive 'no
+     :company-prefix-length
+     (save-excursion
+       (when (car bounds)
+         (goto-char (car bounds)))
+       (when (hash-table-p completion-capability)
+         (looking-back
+          (regexp-opt
+           (cl-coerce (gethash "triggerCharacters" completion-capability) 'list))
+          (line-beginning-position))))
+     :exit-function
+     (lambda (proxy status)
+       (when (memq status '(finished exact))
+         (lspce--notify-textDocument/didChange)
+         )
+       )
+     )))
 
 (provide 'lspce)

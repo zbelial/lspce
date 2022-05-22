@@ -215,7 +215,7 @@
 
 (cl-defun lspce--referenceContext ()
   (let ((params (make-hash-table)))
-    (puthash :includeDeclaration :json-false params)
+    (puthash :includeDeclaration t params)
     params))
 
 (cl-defun lspce--textDocumentPositionParams (textDocument position &optional context)

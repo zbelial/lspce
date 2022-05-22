@@ -71,16 +71,29 @@
 ;;         (funcall lspce-move-to-column-function col)))
 ;;     (if marker (copy-marker (point-marker)) (point))))
 
+(defconst lspce--uri-path-allowed-chars
+  (let ((vec (copy-sequence url-path-allowed-chars)))
+    (aset vec ?: nil) ;; see github#639
+    vec)
+  "Like `url-path-allows-chars' but more restrictive.")
+
 (defun lspce--path-to-uri (path)
   "URIfy PATH."
-  (url-hexify-string
-   (concat "file://" (if (eq system-type 'windows-nt) "/") (file-truename path))
-   url-path-allowed-chars))
+  (let ((truepath (file-truename path)))
+    (concat "file://"
+            ;; Add a leading "/" for local MS Windows-style paths.
+            (if (and (eq system-type 'windows-nt)
+                     (not (file-remote-p truepath)))
+                "/")
+            (url-hexify-string
+             ;; Again watch out for trampy paths.
+             (directory-file-name (file-local-name truepath))
+             lspce--uri-path-allowed-chars))))
 
 (defun lspce--uri-to-path (uri)
   "Convert URI to a file path."
   (when (keywordp uri) (setq uri (substring (symbol-name uri) 1)))
-  (let ((retval (url-filename (url-generic-parse-url (url-unhex-string uri)))))
+  (let ((retval (url-unhex-string (url-filename (url-generic-parse-url uri)))))
     (if (eq system-type 'windows-nt) (substring retval 1) retval)))
 
 (defvar lspce--jsonrpc-id 0)
