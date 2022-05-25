@@ -25,19 +25,29 @@
     params))
 
 (cl-defun lspce--documentationFormat ()
-  )
+  (let (format)
+    (setq format (vector "plaintext"))
+    (when (fboundp 'markdown-mode)
+      (setq format (vector "markdown" "plaintext")))
+    format))
+
+(cl-defun lspce--resolveSupport ()
+  (let ((params (make-hash-table)))
+    (puthash :properties (vector "documentation" "detail") params)
+    params))
 
 (cl-defun lspce--completionItem ()
   (let ((params (make-hash-table)))
     (puthash :snippetSupport :json-false params)
     ;; (puthash :snippetSupport t params)
     (puthash :commitCharactersSupport :json-false params)
-    ;; (puthash :documentationFormat :json-false params)
+    (puthash :documentationFormat (lspce--documentationFormat) params)
     (puthash :deprecatedSupport :json-false params)
-    (puthash :contextSupport :json-false params)
+    (puthash :contextSupport t params)
     ;; TODO https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_completion
     (puthash :preselectSupoort :json-false params)
     (puthash :insertReplaceSupport :json-false params)
+    (puthash :resolveSupport (lspce--resolveSupport) params)
     params))
 
 (cl-defun lspce--completionClientCapabilities ()
@@ -235,12 +245,12 @@
 (defconst LSPCE-Invoked 1 "Completion was triggered by typing an identifier or via API")
 (defconst LSPCE-TriggerCharacter 2 "Completion was triggered by a trigger character")
 (defconst LSPCE-TriggerForIncompleteCompletions 3 "Completion was re-triggered as the current completion list is incomplete")
-(cl-defun lspce--completionContext (&optional trigger-kind trigger-character)
+(cl-defun lspce--completionContext (trigger-kind trigger-character)
   (let ((params (make-hash-table)))
-    (puthash :triggerKind (or trigger-kind LSPCE-Invoked) params)
+    (when trigger-kind
+      (puthash :triggerKind trigger-kind params))
     (when trigger-character
-      (puthash :triggerCharacter trigger-character params)
-      )
+      (puthash :triggerCharacter trigger-character params))
     params))
 (defalias 'lspce--completionParams 'lspce--textDocumentPositionParams "lspce--definitionParams")
 

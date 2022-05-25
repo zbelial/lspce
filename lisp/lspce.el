@@ -3,7 +3,6 @@
 
 ;;; Require
 (require 'json)
-(require 'jsonrpc)
 (require 'cl-lib)
 (require 'project)
 (require 'url-util)
@@ -50,6 +49,9 @@ Font format follow rule: fontname-fontsize."
   "If non-nil, ignore case when completing."
   :type 'boolean)
 
+;; Customizable via `completion-category-overrides'.
+(when (assoc 'flex completion-styles-alist)
+  (add-to-list 'completion-category-defaults '(lspce-capf (styles flex basic))))
 
 ;;; Constants
 ;;;
@@ -175,6 +177,13 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defun lspce--server-capable (capability)
   (gethash capability lspce--server-capabilities))
 
+(defun lspce--server-capable-chain (&rest cs)
+  (let ((capabilities lspce--server-capabilities))
+    (dolist (c cs)
+      (when capabilities
+        (setq capabilities (gethash c capabilities))))
+    capabilities))
+
 (defun lspce--root-uri ()
   (let ((proj (project-current))
         root-uri)
@@ -206,10 +215,11 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (root-uri (lspce--root-uri))
         (lsp-type (funcall lspce-lsp-type-function))
         response-str response response-error response-result)
-    ;; (message "lspce--request: %s %S" method params)
     (unless (and root-uri lsp-type)
       (user-error "lspce--request: Can not get root-uri or lsp-type of current buffer.")
       (cl-return-from lspce--request nil))
+
+    (lspce--notify-textDocument/didChange)
 
     (setq response-str (lspce-module-request root-uri lsp-type (json-encode request)))
     (when response-str
@@ -404,7 +414,9 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (add-hook 'before-revert-hook 'lspce--notify-textDocument/didClose nil t)
     (add-hook 'after-revert-hook 'lspce--after-revert-hook nil t)
     (add-hook 'xref-backend-functions 'lspce-xref-backend nil t)
-    (add-hook 'completion-at-point-functions #'lspce-completion-at-point nil t)
+    (add-hook 'completion-at-point-functions 'lspce-completion-at-point nil t)
+    (add-hook 'pre-command-hook 'lspce--pre-command-hook nil t)
+    (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
     (lspce--buffer-enable-lsp)
     (if lspce--server-info
         (message "Connected to lsp server.")
@@ -418,6 +430,8 @@ The value is also a hash table, with uri as the key and the value is just t.")
   (remove-hook 'after-revert-hook 'lspce--after-revert-hook t)
   (remove-hook 'xref-backend-functions 'lspce-xref-backend t)
   (remove-hook 'completion-at-point-functions #'lspce-completion-at-point t)
+  (remove-hook 'pre-command-hook 'lspce--pre-command-hook t)
+  (remove-hook 'post-self-insert-hook 'lspce--post-self-insert-hook t)
   (lspce--buffer-disable-lsp))))
 
 ;;; Hooks
@@ -625,6 +639,7 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
 
 
 ;;; capf
+(defvar-local lspce--completion-complete? nil) ;; 1 incomplete 2 complete
 (defvar-local lspce--last-inserted-char nil
   "If non-nil, value of the last inserted character in buffer.")
 
@@ -637,11 +652,24 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
   (setq lspce--last-inserted-char nil))
 
 
+(defun lspce--make-completionContext ()
+  (let ((trigger (and (characterp lspce--last-inserted-char)
+                      (cl-find lspce--last-inserted-char
+                               (lspce--server-capable-chain "completionProvider"
+                                                            "triggerCharacters")
+                               :key (lambda (str) (aref str 0))
+                               :test #'char-equal))))
+    (if trigger
+        (lspce--completionContext LSPCE-TriggerCharacter trigger)
+      (if (and lspce--completion-complete? (= lspce--completion-complete? 1))
+          (lspce--completionContext LSPCE-TriggerForIncompleteCompletions nil)
+        (lspce--completionContext LSPCE-Invoked nil)))))
+
 (defun lspce--make-completionParams()
   (let (context)
     (lspce--completionParams (lspce--textDocumentIdenfitier lspce--uri)
                              (lspce--make-position)
-                             (lspce--completionContext))))
+                             (lspce--make-completionContext))))
 
 (cl-defun lspce--request-completion ()
   (let ((params (lspce--make-completionParams))
@@ -652,12 +680,13 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
       (cl-return-from lspce--request-completion nil))
 
     ;; (message "lspce--request-completion response: %S" response)
+    ;; (message "lspce--request-completion response type-of: %s" (type-of response))
     (cond
      ((arrayp response)
       (setq complete? t
             items response))
      ((hash-table-p response)
-      (setq complete? (gethash "isIncomplete" response)
+      (setq complete? (not (gethash "isIncomplete" response))
             items (gethash "items" response))
       )
      (t
@@ -669,84 +698,116 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
   (let (completions)
     (dolist (item items)
       (cl-pushnew (gethash "label" item) completions))
-    (message "completions: %S" completions)
     completions))
 
+(defun lspce--test-completions ()
+  (let (completions (lspce--completions (nth 1 (lspce--request-completion))))
+    (message "completions: %S" completions)))
+
 (defun lspce-completion-at-point()
-  (let* ((bounds (bounds-of-thing-at-point 'symbol))
-         (completion-capability (lspce--server-capable "completionProvider"))
-         (sort-completions
-          (lambda (completions)
-            (cl-sort completions
-                     #'string-lessp
-                     :key (lambda (c)
-                            (or (gethash "sortText"
-                                         (get-text-property 0 'lspce--lsp-item c))
-                                "")))))
-         (metadata `(metadata (category . lspce)
-                              (display-sort-function . ,sort-completions)))
-         (cached-proxies :none)
-         items
-         (proxies
-          (lambda ()
-            (if (listp cached-proxies) cached-proxies
-              (setq items (nth 1 (lspce--request-completion)))
-              (setq cached-proxies
-                    (mapcar
-                     (lambda (item)
-                       (let* ((label (gethash "label" item))
-                              (insertText (gethash "insertText" item))
-                              (proxy
-                               (cond 
-                                ((and insertText
-                                      (not (string-empty-p insertText)))
-                                 insertText)
-                                (t
-                                 (string-trim-left label)))))
-                         (unless (zerop (length proxy))
-                           (put-text-property 0 1 'lspce--lsp-item item proxy))
-                         proxy))
-                     items)))))
-         completions)
-    (list
-     (or (car bounds) (point))
-     (or (cdr bounds) (point))
-     ;; (lspce--completions items)
-     (lambda (probe pred action)
-       (cond
-        ((eq action 'metadata) metadata)               ; metadata
-        ((eq action 'lambda)                           ; test-completion
-         nil)
-        ((eq (car-safe action) 'boundaries) nil)       ; boundaries
-        ((null action)                                 ; try-completion
-         (try-completion probe (funcall proxies)))
-        ((eq action t)                                 ; all-completions
-         (all-completions
-          ""
-          (funcall proxies)
-          (lambda (proxy)
-            (let* ((item (get-text-property 0 'lspce--lsp-item proxy))
-                   (filterText (gethash "filterText" item)))
-              (and (or (null pred) (funcall pred proxy))
-                   (string-prefix-p
-                    probe (or filterText proxy) completion-ignore-case))))))))
-     :company-require-match 'never
-     :exclusive 'no
-     :company-prefix-length
-     (save-excursion
-       (when (car bounds)
-         (goto-char (car bounds)))
-       (when (hash-table-p completion-capability)
-         (looking-back
-          (regexp-opt
-           (cl-coerce (gethash "triggerCharacters" completion-capability) 'list))
-          (line-beginning-position))))
-     :exit-function
-     (lambda (proxy status)
-       (when (memq status '(finished exact))
-         (lspce--notify-textDocument/didChange)
+  (when-let (completion-capability (lspce--server-capable "completionProvider"))
+    (let* ((bounds (bounds-of-thing-at-point 'symbol))
+           items
+           completions
+           complete?
+           (cached-proxies :none)
+           (proxies
+            (lambda ()
+              (if (and complete? (listp cached-proxies))
+                  cached-proxies
+                (setq completions (lspce--request-completion))
+                (setq complete? (nth 0 completions)
+                      items (nth 1 completions))
+                (if complete?
+                    (setq-local lspce--completion-complete? 2)
+                  (setq-local lspce--completion-complete? 1))
+                (setq cached-proxies
+                      (mapcar
+                       (lambda (item)
+                         (let* ((label (gethash "label" item))
+                                (insertText (gethash "insertText" item))
+                                (proxy
+                                 (cond 
+                                  ((and insertText
+                                        (not (string-empty-p insertText)))
+                                   insertText)
+                                  (t
+                                   (string-trim-left label)))))
+                           (unless (zerop (length proxy))
+                             (put-text-property 0 1 'lspce--lsp-item item proxy))
+                           proxy))
+                       items))
+                cached-proxies))))
+      (list
+       (or (car bounds) (point))
+       (or (cdr bounds) (point))
+       (lambda (probe pred action)
+         (let (collection)
+           (cond
+            ((eq action 'metadata) `(metadata (category . lspce-capf)
+                                              (display-sort-function . identity)
+                                              (cycle-sort-function . identity)))               ; metadata
+            ((eq (car-safe action) 'boundaries) nil)       ; boundaries
+            ((eq action 'lambda)                           ; test-completion
+             (setq collection (funcall proxies))
+             (test-completion probe collection))
+            ((null action)                                 ; try-completion
+             (setq collection (funcall proxies))
+             (try-completion probe collection))
+            ((eq action t)                                 ; all-completions
+             (setq collection (funcall proxies))
+             (all-completions
+              probe
+              collection
+              (lambda (proxy)
+                (let* ((item (get-text-property 0 'lspce--lsp-item proxy))
+                       (filterText (gethash "filterText" item)))
+                  (and (or (null pred) (funcall pred proxy))
+                       (string-prefix-p
+                        probe (or filterText proxy) lspce-completion-ignore-case))))
+              ))
+            ))
          )
-       )
-     )))
+       :annotation-function
+       (lambda (proxy)
+         (let* ((item (get-text-property 0 'lspce--lsp-item proxy))
+                (detail (gethash "detail" item))
+                (kind (gethash "kind" item))
+                annotation)
+           (setq detail (and (stringp detail)
+                             (not (string-equal detail ""))
+                             detail))
+           (setq annotation (or detail
+                                (cdr (assoc kind lspce--kind-names))))
+           (when annotation
+             (concat " "
+                     (propertize annotation
+                                 'face 'font-lock-function-name-face)))))       
+       :company-require-match 'never
+       :company-kind
+       ;; Associate each lsp-item with a lsp-kind symbol.
+       (lambda (proxy)
+         (when-let* ((lsp-item (get-text-property 0 'lspce--lsp-item proxy))
+                     (kind (alist-get (gethash "kind" lsp-item)
+                                      lspce--kind-names)))
+           (intern (downcase kind))))
+       :company-prefix-length
+       (save-excursion
+         (when (car bounds)
+           (goto-char (car bounds)))
+         (when (hash-table-p completion-capability)
+           (looking-back
+            (regexp-opt
+             (cl-coerce (gethash "triggerCharacters" completion-capability) 'list))
+            (line-beginning-position))))
+       :exit-function
+       (lambda (proxy status)
+         (setq-local lspce--completion-complete? nil)
+         (when (memq status '(finished exact))
+           (lspce--notify-textDocument/didChange)
+           )
+         )
+       )))
+  )
 
 (provide 'lspce)

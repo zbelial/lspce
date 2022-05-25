@@ -38,7 +38,7 @@ pub struct Connection {
 
 impl Connection {
     pub fn write(&self, req: Message) -> Result<(), SendError<Message>> {
-        Logger::log(&format!("Connection write {:#?}", &req));
+        // Logger::log(&format!("Connection write {:#?}", &req));
 
         self.sender.send(req)
     }

@@ -441,7 +441,7 @@ fn _request(env: &Env, server: &mut LspServer, req: String) -> Result<Option<Res
 
                     match read_value {
                         Some(r) => {
-                            Logger::log(&format!("request {} ok {:#?}", &method, &r));
+                            // Logger::log(&format!("request {} ok {:#?}", &method, &r));
 
                             let ret_id = r.id.clone();
                             let latest_id = server.latest_id.lock().unwrap();
