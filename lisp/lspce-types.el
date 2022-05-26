@@ -58,10 +58,23 @@
 
 (cl-defun lspce--hoverClientCapabilities ()
   (let ((params (make-hash-table)))
+    (puthash :dynamicRegistration :json-false params)
+    (puthash :contentFormat (lspce--documentationFormat) params)
     params))
 
 (cl-defun lspce--signatureHelpClientCapabilities()
-  (let ((params (make-hash-table)))
+  (let ((params (make-hash-table))
+        (signatureInformation (make-hash-table))
+        (parameterInformation (make-hash-table)))
+    (puthash :labelOffsetSupport :json-false parameterInformation)
+
+    (puthash :documentationFormat (lspce--documentationFormat) signatureInformation)
+    (puthash :parameterInformation parameterInformation signatureInformation)
+    (puthash :activeParameterSupport :json-false signatureInformation)
+
+    (puthash :dynamicRegistration :json-false params)
+    (puthash :signatureInformation signatureInformation params)
+    (puthash :contextSupport :json-false params)
     params))
 
 (cl-defun lspce--declarationClientCapabilities ()
@@ -112,7 +125,10 @@
 
 (cl-defun lspce--textDocumentClientCapabilities ()
   (let ((capabilities (make-hash-table)))
+    (puthash :synchronization (lspce--textDocumentSyncClientCapabilities) capabilities)
     (puthash :completion (lspce--completionClientCapabilities) capabilities)
+    (puthash :hover (lspce--hoverClientCapabilities) capabilities)
+    (puthash :signatureHelp (lspce--signatureHelpClientCapabilities) capabilities)
     (puthash :declaration (lspce--declarationClientCapabilities) capabilities)
     (puthash :definition (lspce--definitionClientCapabilities) capabilities)
     (puthash :typeDefinition (lspce--typeDefinitionClientCapabilities) capabilities)
@@ -121,7 +137,6 @@
     ;; (puthash :codeAction (lspce--codeActionClientCapabilities) capabilities)
     ;; (puthash :rename (lspce--renameClientCapabitlities) capabilities)
     ;; (puthash :publishDiagnostics (lspce--publishDiagnosticsClientCapabilities) capabilities)
-    (puthash :synchronization (lspce--textDocumentSyncClientCapabilities) capabilities)
     capabilities))
 
 (cl-defun lspce--clientInfo ()
@@ -241,6 +256,7 @@
 (defalias 'lspce--definitionParams 'lspce--textDocumentPositionParams "lspce--definitionParams")
 (defalias 'lspce--referencesParams 'lspce--textDocumentPositionParams "lspce--referencesParams")
 (defalias 'lspce--implementationParams 'lspce--textDocumentPositionParams "lspce--implementationParams")
+(defalias 'lspce--hoverParams 'lspce--textDocumentPositionParams "lspce--hoverParams")
 
 (defconst LSPCE-Invoked 1 "Completion was triggered by typing an identifier or via API")
 (defconst LSPCE-TriggerCharacter 2 "Completion was triggered by a trigger character")

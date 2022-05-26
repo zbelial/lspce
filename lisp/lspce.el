@@ -8,6 +8,8 @@
 (require 'url-util)
 (require 'compile)                      ; for some faces
 (require 'warnings)
+(require 'posframe-plus)
+(require 'markdown-mode)
 
 (require 'lspce-util)
 (require 'lspce-types)
@@ -80,7 +82,7 @@ Font format follow rule: fontname-fontsize."
 (defvar lspce-server-programs `(("rust-mode"  "rust-analyzer" "--log-file /tmp/ra.log -v")
                                 ("python-mode" "pyright-langserver" "--stdio")
                                 ("C" "clangd")
-                                ("go-mode"  "gopls")
+                                ("go-mode"  "gopls" "-logfile=/tmp/gopls.log -v")
                                 ("java-mode"  "jdtls"))
   "How the command `lspce' gets the server to start.
 A list of (LSP-TYPE SERVER-COMMAND SERVER-PARAMS).  LSP-TYPE
@@ -169,6 +171,11 @@ be set to `lspce-move-to-lsp-abiding-column', and
    (lspce--make-position)
    (lspce--referenceContext)))
 
+(defun lspce--make-hoverParams (&optional context)
+  (lspce--hoverParams
+   (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
+   (lspce--make-position)))
+
 (defun lspce--make-initializeParams (root-uri)
   (lspce--initializeParams root-uri (lspce--clientCapabilities)))
 
@@ -214,7 +221,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
   (let ((request (lspce--make-request method params))
         (root-uri (lspce--root-uri))
         (lsp-type (funcall lspce-lsp-type-function))
-        response-str response response-error response-result)
+        response-str response response-error response-data)
     (unless (and root-uri lsp-type)
       (user-error "lspce--request: Can not get root-uri or lsp-type of current buffer.")
       (cl-return-from lspce--request nil))
@@ -228,8 +235,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (setq response-error (gethash "error" response))
         (if response-error
             (message "LSP error %s" (gethash "message" response-error))
-          (setq response-result (gethash "result" response)))))
-    response-result))
+          (setq response-data (gethash "result" response)))))
+    response-data))
 
 (cl-defun lspce--notify (method &optional params)
   (let ((notification (lspce--make-notification method params))
@@ -405,7 +412,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
  (lspce-mode
   (cond
    ((not buffer-file-name)
-    (user-error "Lspce can not be used in non-file buffers.")
+    (message "Lspce can not be used in non-file buffers.")
     (setq lspce-mode nil))
    (t
     (add-hook 'after-change-functions 'lspce--after-change nil t)
@@ -809,5 +816,61 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
          )
        )))
   )
+
+;;; hover
+(defvar lspce--doc-buffer-name "*lspce-hover*")
+(defvar lspce--doc-max-width 100)
+(defvar lspce--doc-max-height 80)
+(defun lspce--display-help (kind content)
+  (let* ((theme-mode (format "%s" (frame-parameter nil 'background-mode)))
+         (background-color (if (string-equal theme-mode "dark")
+                               "#191a1b"
+                             "#f0f0f0"))
+         (height 1)
+         (lines 1))
+    (with-current-buffer (get-buffer-create lspce--doc-buffer-name)
+      (read-only-mode -1)
+      (erase-buffer)
+      (setq-local markdown-fontify-code-blocks-natively t)
+      (insert content)
+      (if (fboundp 'gfm-view-mode)
+          (let ((view-inhibit-help-message t))
+            (gfm-view-mode))
+        (gfm-mode))
+      (font-lock-ensure)
+      (save-excursion
+        (goto-char (point-max))
+        (setq lines (line-number-at-pos))
+        (if (> lines height)
+            (setq height (min lines lspce--doc-max-height)))))
+    (if (posframe-workable-p)
+        (posframe-plus-show lspce--doc-buffer-name t t
+                            :position (point)
+                            :timeout 30
+                            :internal-border-color "orange"
+                            :internal-border-width 1
+                            :background-color background-color
+                            :accept-focus nil
+                            :width lspce--doc-max-width
+                            :height height
+                            :left-fringe 10
+                            :right-fringe 10)
+      (switch-to-buffer-other-window lspce--doc-buffer-name))))
+
+(defun lspce-help-at-point ()
+  "Show document of the symbol at the point using LSP's hover."
+  (interactive)
+  (if lspce-mode
+      (let* ((params (lspce--make-hoverParams))
+             (response (lspce--request "textDocument/hover" params))
+             contents kind content)
+        (when response
+          (setq contents (gethash "contents" response))
+          (when contents
+            (setq kind (gethash "kind" contents))
+            (setq content (gethash "value" contents))
+            (when (and kind content)
+              (lspce--display-help kind content)))))
+    (user-error "Lspce mode is not enabled.")))
 
 (provide 'lspce)
