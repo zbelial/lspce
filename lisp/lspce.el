@@ -13,6 +13,7 @@
 
 (require 'lspce-util)
 (require 'lspce-types)
+(require 'lspce-lang-options)
 
 ;;; User tweakable stuff
 (defgroup lspce nil
@@ -79,11 +80,11 @@ Font format follow rule: fontname-fontsize."
 
 
 ;;; Variables and custom
-(defvar lspce-server-programs `(("rust-mode"  "rust-analyzer" "--log-file /tmp/ra.log -v")
+(defvar lspce-server-programs `(("rust-mode"  "rust-analyzer" "--log-file /tmp/ra.log -v" lspce-ra-initializationOptions)
                                 ("python-mode" "pyright-langserver" "--stdio")
-                                ("C" "clangd")
+                                ("C" "clangd" "")
                                 ("go-mode"  "gopls" "-logfile=/tmp/gopls.log -v")
-                                ("java-mode"  "jdtls"))
+                                ("java-mode"  "jdtls" lspce-jdtls-cmd-args lspce-jdtls-initializationOptions))
   "How the command `lspce' gets the server to start.
 A list of (LSP-TYPE SERVER-COMMAND SERVER-PARAMS).  LSP-TYPE
 identifies the buffers that are to be managed by a specific
@@ -176,8 +177,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
    (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
    (lspce--make-position)))
 
-(defun lspce--make-initializeParams (root-uri)
-  (lspce--initializeParams root-uri (lspce--clientCapabilities)))
+(defun lspce--make-initializeParams (root-uri initializationOptions)
+  (lspce--initializeParams root-uri (lspce--clientCapabilities) initializationOptions))
 
 
 ;;; LSP functions
@@ -217,10 +218,11 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defvar lspce-lsp-type-function #'lspce--lsp-type-default
   "Function to the lsp type of current buffer.")
 
-(cl-defun lspce--request (method &optional params)
+(cl-defun lspce--request (method &optional params timeout)
   (let ((request (lspce--make-request method params))
         (root-uri (lspce--root-uri))
         (lsp-type (funcall lspce-lsp-type-function))
+        (timeout (max (or timeout 3) 3))
         response-str response response-error response-data)
     (unless (and root-uri lsp-type)
       (user-error "lspce--request: Can not get root-uri or lsp-type of current buffer.")
@@ -228,7 +230,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
     (lspce--notify-textDocument/didChange)
 
-    (setq response-str (lspce-module-request root-uri lsp-type (json-encode request)))
+    (setq response-str (lspce-module-request root-uri lsp-type (json-encode request) timeout))
     (when response-str
       (progn
         (setq response (json-parse-string response-str :array-type 'list))
@@ -279,7 +281,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (lsp-type (funcall lspce-lsp-type-function))
         (initialize-params nil)
         lsp-server
-        server server-cmd server-args 
+        server server-cmd server-args initialize-options
         response-str response response-error response-result)
     (setq lsp-server (lspce-module-server root-uri lsp-type))
     (when lsp-server
@@ -297,13 +299,19 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
     (message "server %S" server)
     (setq server-cmd (nth 0 server)
-          server-args (nth 1 server))
-    (if (functionp server-args)
-        (setq server-args (funcall server-args)))
+          server-args (nth 1 server)
+          initialize-options (nth 2 server))
+    (when (functionp server-args)
+      (setq server-args (funcall server-args)))
     (unless server-args
       (setq server-args ""))
+    (when (functionp initialize-options)
+      (setq initialize-options (funcall initialize-options)))
 
-    (setq initialize-params (lspce--make-initializeParams root-uri))
+    (message "server-args: %s" server-args)
+    (message "initialize-options: %s" initialize-options)
+
+    (setq initialize-params (lspce--make-initializeParams root-uri initialize-options))
 
     (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params))))
 
@@ -375,7 +383,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (setq server-info (lspce--connect))
     (unless server-info
       (cl-return-from lspce--buffer-enable-lsp nil))
-    (message "server-info: %s" server-info)
+    ;; (message "server-info: %s" server-info)
 
     (when (lspce--notify-textDocument/didOpen)
       (setq-local lspce--server-info (json-parse-string server-info :array-type 'list))
@@ -391,9 +399,6 @@ The value is also a hash table, with uri as the key and the value is just t.")
       (puthash server-key server-managed-buffers lspce--managed-buffers))))
 
 (cl-defun lspce--buffer-disable-lsp ()
-  (when (not lspce-mode)
-    (cl-return-from lspce--buffer-disable-lsp nil))
-
   (let (server-key server-managed-buffers)
     (setq server-key (make-lspce--hash-key :root-uri lspce--root-uri :lsp-type lspce--lsp-type))
     (setq server-managed-buffers (gethash server-key lspce--managed-buffers))
@@ -405,41 +410,42 @@ The value is also a hash table, with uri as the key and the value is just t.")
 
       (setq-local lspce--server-info nil))))
 
+;; TODO add kill-emacs-hook to kill all lsp servers.
 (define-minor-mode lspce-mode
-"Mode for source buffers managed by some LSPCE project."
-:init-value nil :lighter nil :keymap lspce-mode-map
-(cond
- (lspce-mode
+  "Mode for source buffers managed by some LSPCE project."
+  :init-value nil :lighter nil :keymap lspce-mode-map
   (cond
-   ((not buffer-file-name)
-    (message "Lspce can not be used in non-file buffers.")
-    (setq lspce-mode nil))
+   (lspce-mode
+    (cond
+     ((not buffer-file-name)
+      (message "Lspce can not be used in non-file buffers.")
+      (setq lspce-mode nil))
+     (t
+      (add-hook 'after-change-functions 'lspce--after-change nil t)
+      (add-hook 'before-change-functions 'lspce--before-change nil t)
+      (add-hook 'kill-buffer-hook 'lspce--notify-textDocument/didClose nil t)
+      (add-hook 'before-revert-hook 'lspce--notify-textDocument/didClose nil t)
+      (add-hook 'after-revert-hook 'lspce--after-revert-hook nil t)
+      (add-hook 'xref-backend-functions 'lspce-xref-backend nil t)
+      (add-hook 'completion-at-point-functions 'lspce-completion-at-point nil t)
+      (add-hook 'pre-command-hook 'lspce--pre-command-hook nil t)
+      (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
+      (lspce--buffer-enable-lsp)
+      (if lspce--server-info
+          (message "Connected to lsp server.")
+        (message "Failed to connect to lsp server.")
+        (setq lspce-mode nil)))))
    (t
-    (add-hook 'after-change-functions 'lspce--after-change nil t)
-    (add-hook 'before-change-functions 'lspce--before-change nil t)
-    (add-hook 'kill-buffer-hook 'lspce--notify-textDocument/didClose nil t)
-    (add-hook 'before-revert-hook 'lspce--notify-textDocument/didClose nil t)
-    (add-hook 'after-revert-hook 'lspce--after-revert-hook nil t)
-    (add-hook 'xref-backend-functions 'lspce-xref-backend nil t)
-    (add-hook 'completion-at-point-functions 'lspce-completion-at-point nil t)
-    (add-hook 'pre-command-hook 'lspce--pre-command-hook nil t)
-    (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
-    (lspce--buffer-enable-lsp)
-    (if lspce--server-info
-        (message "Connected to lsp server.")
-      (message "Failed to connect to lsp server.")
-      (setq lspce-mode nil)))))
- (t
-  (remove-hook 'after-change-functions 'lspce--after-change t)
-  (remove-hook 'before-change-functions 'lspce--before-change t)
-  (remove-hook 'kill-buffer-hook 'lspce--notify-textDocument/didClose t)
-  (remove-hook 'before-revert-hook 'lspce--notify-textDocument/didClose t)
-  (remove-hook 'after-revert-hook 'lspce--after-revert-hook t)
-  (remove-hook 'xref-backend-functions 'lspce-xref-backend t)
-  (remove-hook 'completion-at-point-functions #'lspce-completion-at-point t)
-  (remove-hook 'pre-command-hook 'lspce--pre-command-hook t)
-  (remove-hook 'post-self-insert-hook 'lspce--post-self-insert-hook t)
-  (lspce--buffer-disable-lsp))))
+    (remove-hook 'after-change-functions 'lspce--after-change t)
+    (remove-hook 'before-change-functions 'lspce--before-change t)
+    (remove-hook 'kill-buffer-hook 'lspce--notify-textDocument/didClose t)
+    (remove-hook 'before-revert-hook 'lspce--notify-textDocument/didClose t)
+    (remove-hook 'after-revert-hook 'lspce--after-revert-hook t)
+    (remove-hook 'xref-backend-functions 'lspce-xref-backend t)
+    (remove-hook 'completion-at-point-functions #'lspce-completion-at-point t)
+    (remove-hook 'pre-command-hook 'lspce--pre-command-hook t)
+    (remove-hook 'post-self-insert-hook 'lspce--post-self-insert-hook t)
+    (lspce--buffer-disable-lsp))))
 
 ;;; Hooks
 (defvar-local lspce--recent-changes nil
@@ -820,7 +826,7 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
 ;;; hover
 (defvar lspce--doc-buffer-name "*lspce-hover*")
 (defvar lspce--doc-max-width 100)
-(defvar lspce--doc-max-height 80)
+(defvar lspce--doc-max-height 30)
 (defun lspce--display-help (kind content)
   (let* ((theme-mode (format "%s" (frame-parameter nil 'background-mode)))
          (background-color (if (string-equal theme-mode "dark")
@@ -843,7 +849,7 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
         (setq lines (line-number-at-pos))
         (if (> lines height)
             (setq height (min lines lspce--doc-max-height)))))
-    (if (posframe-workable-p)
+    (if (and (fboundp #'posframe-workable-p) (posframe-workable-p))
         (posframe-plus-show lspce--doc-buffer-name t t
                             :position (point)
                             :timeout 30
@@ -866,11 +872,31 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
              contents kind content)
         (when response
           (setq contents (gethash "contents" response))
+          ;; TODO 处理其它类型
           (when contents
             (setq kind (gethash "kind" contents))
             (setq content (gethash "value" contents))
             (when (and kind content)
               (lspce--display-help kind content)))))
     (user-error "Lspce mode is not enabled.")))
+
+
+;;; Mode-line
+;;;
+(defvar lspce--mode-line-format `(:eval (lspce--mode-line-format)))
+
+(put 'lspce--mode-line-format 'risky-local-variable t)
+
+(defun lspce--mode-line-format ()
+  "Compose the LSPCE's mode-line."
+  (let* ((server lspce--server-info)
+         name id)
+    (when server
+      (setq id (gethash "id" server))
+      (propertize (concat "lspce:" id) 'face 'lspce-mode-line))))
+
+(add-to-list 'mode-line-misc-info
+             `(lspce-mode (" [" lspce--mode-line-format "] ")))
+
 
 (provide 'lspce)

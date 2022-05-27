@@ -127,6 +127,13 @@ impl LspServer {
         }
     }
 
+    pub fn kill(&mut self) {
+        if self.child.is_some() {
+            self.child.take().unwrap().kill();
+            self.child = None;
+        }
+    }
+
     pub fn update_latest_id(&self, id: RequestId) {
         let mut latest_id = self.latest_id.lock().unwrap();
         if *latest_id < id {
@@ -264,6 +271,7 @@ fn connect(
                 server_info = s.server_info.clone();
                 p.servers.insert(file_type, s);
             } else {
+                s.kill();
                 return Ok(None);
             }
         } else {
@@ -274,6 +282,7 @@ fn connect(
 
                 projects.insert(root_uri.clone(), proj);
             } else {
+                s.kill();
                 return Ok(None);
             }
         }
@@ -294,7 +303,7 @@ fn initialize(
 ) -> Option<bool> {
     Logger::log(&format!("initialize request {:#?}", initialize_params));
 
-    let resp_value = _request(env, server, initialize_params);
+    let resp_value = _request(env, server, initialize_params, 30);
 
     match resp_value {
         Ok(resp) => match resp {
@@ -348,7 +357,7 @@ fn shutdown(
     let mut projects = projects().lock().unwrap();
     if let Some(mut p) = projects.get_mut(&root_uri) {
         if let Some(mut server) = p.servers.get_mut(&file_type) {
-            let resp_value = _request(env, server, shutdown);
+            let resp_value = _request(env, server, shutdown, 10);
 
             match resp_value {
                 Ok(resp) => match resp {
@@ -419,7 +428,12 @@ fn _server(root_uri: String, file_type: String) -> Option<&'static LspServer> {
     None
 }
 
-fn _request(env: &Env, server: &mut LspServer, req: String) -> Result<Option<Response>> {
+fn _request(
+    env: &Env,
+    server: &mut LspServer,
+    req: String,
+    timeout: i32,
+) -> Result<Option<Response>> {
     if let Ok(msg) = serde_json::from_str::<Request>(&req) {
         let start_time = Instant::now();
         let method = msg.method.clone();
@@ -432,7 +446,10 @@ fn _request(env: &Env, server: &mut LspServer, req: String) -> Result<Option<Res
 
         match write_result {
             Ok(_) => loop {
-                if Instant::now().duration_since(start_time).as_millis() > 2000 {
+                if timeout > 0
+                    && Instant::now().duration_since(start_time).as_millis()
+                        > timeout as u128 * 1000
+                {
                     env.message(&format!("timeout in {}", method));
 
                     return Ok(None);
@@ -497,13 +514,19 @@ fn _request(env: &Env, server: &mut LspServer, req: String) -> Result<Option<Res
 }
 
 #[defun]
-fn request(env: &Env, root_uri: String, file_type: String, req: String) -> Result<Option<String>> {
+fn request(
+    env: &Env,
+    root_uri: String,
+    file_type: String,
+    req: String,
+    timeout: i32,
+) -> Result<Option<String>> {
     let mut projects = projects().lock().unwrap();
     if let Some(mut p) = projects.get_mut(&root_uri) {
         if let Some(mut server) = p.servers.get_mut(&file_type) {
             // TODO 检查server是否初始化完成
 
-            let resp_value = _request(env, server, req);
+            let resp_value = _request(env, server, req, timeout);
             match resp_value {
                 Ok(resp) => match resp {
                     Some(m) => {

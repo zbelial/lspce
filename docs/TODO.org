@@ -3,24 +3,26 @@
 #+STARTUP: hideblocks
 
 
-* initializationOptions
+* DONE initializationOptions
 
+  - State "DONE"       from              [2022-05-27 五 23:21]
+* DONE modeline
+
+  - State "DONE"       from              [2022-05-27 五 23:40]
 * 诊断
   使用flymake。
+
+* server启动进度
 
 * codeAction
 
 * DONE hover
 
   - State "DONE"       from              [2022-05-26 四 16:43]
-* signatureHelp
-  支持eldoc。
-
 * 补全支持snippet
 
-* modeline
-
 * autoImport
-
-* server启动进度
+* signatureHelp
+  支持eldoc。
+* java支持
 

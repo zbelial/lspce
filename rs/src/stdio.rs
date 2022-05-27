@@ -70,7 +70,7 @@ pub(crate) fn stdio_transport(
             if let Some(msg) = Message::read(&mut reader)? {
                 match msg {
                     Message::Request(r) => {
-                        // Logger::log(&format!("stdio read request {:#?}", &r));
+                        Logger::log(&format!("stdio read request {:#?}", &r));
                         let mut l = requests.lock().unwrap();
                         if l.len() == REQUEST_MAX {
                             l.pop_front();
@@ -78,7 +78,7 @@ pub(crate) fn stdio_transport(
                         l.push_back(r);
                     }
                     Message::Notification(r) => {
-                        // Logger::log(&format!("stdio read notification {:#?}", &r));
+                        Logger::log(&format!("stdio read notification {:#?}", &r));
                         let mut l = notifications.lock().unwrap();
                         if l.len() == NOTIFICATION_MAX {
                             l.pop_front();

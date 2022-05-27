@@ -164,7 +164,7 @@
     ;; (puthash :window (lspce--window) capabilities)
     capabilities))
 
-(cl-defun lspce--initializeParams (rootUri capabilities &optional initializationOptions clientInfo locale rootPath trace workspaceFolders)
+(cl-defun lspce--initializeParams (rootUri capabilities &optional initializationOptions trace workspaceFolders)
   "初始化参数"
   (let ((params (make-hash-table)))
     (puthash :processId (emacs-pid) params)
@@ -172,12 +172,7 @@
     (puthash :capabilities capabilities params)
     (when initializationOptions
       (puthash :initializationOptions initializationOptions params))
-    (when clientInfo
-      (puthash :clientInfo clientInfo params))
-    (when locale
-      (puthash :locale locale params))
-    (when rootPath
-      (puthash :rootPath rootPath params))
+    (puthash :clientInfo (lspce--clientInfo) params)
     (when trace
       (puthash :trace trace params))
     (when workspaceFolders
