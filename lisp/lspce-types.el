@@ -116,6 +116,11 @@
 
 (cl-defun lspce--publishDiagnosticsClientCapabilities ()
   (let ((params (make-hash-table)))
+    (puthash :relatedInformation :json-false params)
+    (puthash :versionSupport :json-false params)
+    (puthash :codeDescriptionSupport :json-false params)
+    (puthash :dataSupport :json-false params)
+    (puthash :tagSupport (list :valueSet (vector 1 2)) params)
     params))
 
 (cl-defun lspce--textDocumentSyncClientCapabilities ()
@@ -136,7 +141,7 @@
     (puthash :references (lspce--referencesClientCapabilities) capabilities)
     ;; (puthash :codeAction (lspce--codeActionClientCapabilities) capabilities)
     ;; (puthash :rename (lspce--renameClientCapabitlities) capabilities)
-    ;; (puthash :publishDiagnostics (lspce--publishDiagnosticsClientCapabilities) capabilities)
+    (puthash :publishDiagnostics (lspce--publishDiagnosticsClientCapabilities) capabilities)
     capabilities))
 
 (cl-defun lspce--clientInfo ()

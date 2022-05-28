@@ -10,6 +10,7 @@
 (require 'warnings)
 (require 'posframe-plus)
 (require 'markdown-mode)
+(require 'flymake)
 
 (require 'lspce-util)
 (require 'lspce-types)
@@ -430,6 +431,8 @@ The value is also a hash table, with uri as the key and the value is just t.")
       (add-hook 'completion-at-point-functions 'lspce-completion-at-point nil t)
       (add-hook 'pre-command-hook 'lspce--pre-command-hook nil t)
       (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
+      (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
+      (flymake-mode 1)
       (lspce--buffer-enable-lsp)
       (if lspce--server-info
           (message "Connected to lsp server.")
@@ -445,6 +448,8 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (remove-hook 'completion-at-point-functions #'lspce-completion-at-point t)
     (remove-hook 'pre-command-hook 'lspce--pre-command-hook t)
     (remove-hook 'post-self-insert-hook 'lspce--post-self-insert-hook t)
+    (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
+    (flymake-mode -1)
     (lspce--buffer-disable-lsp))))
 
 ;;; Hooks
@@ -879,6 +884,73 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
             (when (and kind content)
               (lspce--display-help kind content)))))
     (user-error "Lspce mode is not enabled.")))
+
+;;; diagnostics
+(put 'lspce-note 'flymake-category 'flymake-note)
+(put 'lspce-warning 'flymake-category 'flymake-warning)
+(put 'lspce-error 'flymake-category 'flymake-error)
+
+(defalias 'lspce--make-diag 'flymake-make-diagnostic)
+(defalias 'lspce--diag-data 'flymake-diagnostic-data)
+
+(defvar-local lspce--diagnostics nil
+  "Flymake diagnostics for this buffer.")
+(defvar-local lspce--current-flymake-report-fn nil
+  "Current flymake report function for this buffer.")
+
+(defun lspce--diag-type (sev)
+  (cond ((null sev) 'lspce-error)
+        ((<= sev 1) 'lspce-error)
+        ((= sev 2)  'lspce-warning)
+        (t          'lspce-note)))
+
+(defun lspce--read-diagnostics ()
+  (if lspce-mode
+      (let (diagnostics
+            flymake-diags range start end severity message)
+        (setq diagnostics (lspce-module-read-file-diagnostics lspce--root-uri lspce--lsp-type lspce--uri))
+        ;; (message "diagnostics: %S" diagnostics)
+        (when diagnostics
+          (dolist (d (json-parse-string diagnostics :array-type 'list))
+            ;; (message "d %S" d)
+            (setq range (gethash "range" d)
+                  severity (gethash "severity" d)
+                  message (gethash "message" d))
+            (setq start (gethash "start" range)
+                  end (gethash "end" range))
+            (push (flymake-make-diagnostic (current-buffer)
+                                           (lspce--lsp-position-to-point (+ 1 (gethash "line" start))
+                                                                         (gethash "character" start))
+                                           (lspce--lsp-position-to-point (+ 1 (gethash "line" end))
+                                                                         (gethash "character" end))
+                                           (lspce--diag-type severity)
+                                           message) flymake-diags)))
+        flymake-diags)))
+
+(defun lspce-flymake-backend (report-fn &rest _more)
+  "A Flymake backend for Lspce."
+  (let ((diagnostics (lspce--read-diagnostics)))
+    (cond (lspce-mode
+           (setq lspce--current-flymake-report-fn report-fn)
+           (lspce--report-to-flymake diagnostics))
+          (t
+           (funcall report-fn nil))))
+  )
+
+(defun lspce--report-to-flymake (diags)
+  "Internal helper for `lspce-flymake-backend'."
+  (save-restriction
+    (widen)
+    (funcall lspce--current-flymake-report-fn diags
+             ;; If the buffer hasn't changed since last
+             ;; call to the report function, flymake won't
+             ;; delete old diagnostics.  Using :region
+             ;; keyword forces flymake to delete
+             ;; them (github#159).
+             :region (cons (point-min) (point-max))))
+  (setq lspce--diagnostics diags))
+
+;; (flymake-make-diagnostic)
 
 
 ;;; Mode-line

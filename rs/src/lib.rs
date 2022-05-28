@@ -16,9 +16,11 @@ use emacs::{defun, Env, IntoLisp, Result, Value};
 use error::LspceError;
 use logger::Logger;
 use lsp_types::request::Shutdown;
+use lsp_types::Diagnostic;
 use lsp_types::InitializeParams;
 use lsp_types::InitializeResult;
 use lsp_types::InitializedParams;
+use lsp_types::PublishDiagnosticsParams;
 use msg::Message;
 use msg::Notification;
 use msg::Request;
@@ -30,6 +32,7 @@ use serde_json::json;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::fs::File;
+use std::io::Result as IoResult;
 use std::ptr::read_volatile;
 use std::result::Result as RustResult;
 use std::str::Utf8Error;
@@ -49,6 +52,16 @@ use std::{
 #[derive(Debug)]
 struct FileInfo {
     pub uri: String, // 文件名
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+impl FileInfo {
+    pub fn new(uri: String) -> FileInfo {
+        FileInfo {
+            uri,
+            diagnostics: Vec::new(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -73,11 +86,13 @@ impl LspServerInfo {
 struct LspServer {
     pub child: Option<Child>,
     pub server_info: LspServerInfo,
-    pub initialized: u8, // 是否已经启动完 0：待启动，1：启动中，2：启动完成
-    pub uris: HashMap<String, FileInfo>, // key: uri
+    pub initialized: u8, // 是否已经启动完 0：待启动，1：启动中，2：启动完成 TODO
     latest_id: Mutex<RequestId>,
-    transport: Option<Connection>,
     threads: Option<IoThreads>,
+    dispatcher: Option<thread::JoinHandle<()>>,
+    transport: Arc<Mutex<Option<Connection>>>,
+    file_infos: Arc<Mutex<HashMap<String, FileInfo>>>, // key: uri
+    exit: Arc<Mutex<bool>>,
 }
 
 impl LspServer {
@@ -106,9 +121,11 @@ impl LspServer {
                 ),
                 initialized: 0,
                 latest_id: Mutex::new(RequestId::from(-1)),
-                uris: HashMap::new(),
-                transport: None,
+                file_infos: Arc::new(Mutex::new(HashMap::new())),
+                transport: Arc::new(Mutex::new(None)),
                 threads: None,
+                dispatcher: None,
+                exit: Arc::new(Mutex::new(false)),
             };
 
             let mut stdin = c.stdin.take().unwrap();
@@ -118,13 +135,66 @@ impl LspServer {
 
             server.server_info.id = c.id().to_string();
             server.child = Some(c);
-            server.transport = Some(transport);
+            server.transport = Arc::new(Mutex::new(Some(transport)));
+            server.file_infos = Arc::new(Mutex::new(HashMap::new()));
             server.threads = Some(threads);
+            server.dispatcher = Some(LspServer::start_dispatcher(
+                Arc::clone(&server.transport),
+                Arc::clone(&server.exit),
+                Arc::clone(&server.file_infos),
+            ));
 
             Some(server)
         } else {
             None
         }
+    }
+
+    fn start_dispatcher(
+        transport2: Arc<Mutex<Option<Connection>>>,
+        exit2: Arc<Mutex<bool>>,
+        file_infos2: Arc<Mutex<HashMap<String, FileInfo>>>,
+    ) -> thread::JoinHandle<()> {
+        let handle = thread::spawn(move || loop {
+            {
+                let exit = exit2.lock().unwrap();
+                if *exit {
+                    break;
+                }
+            }
+
+            let mut notification: Option<Notification> = None;
+            {
+                let transport = transport2.lock().unwrap();
+                notification = transport.as_ref().unwrap().read_notification();
+            }
+
+            if let Some(n) = notification {
+                if n.method.eq("textDocument/publishDiagnostics") {
+                    let params =
+                        serde_json::from_value::<PublishDiagnosticsParams>(n.params).unwrap();
+
+                    let uri = params.uri.as_str().to_string();
+                    let mut file_info = FileInfo::new(uri.clone());
+                    file_info.diagnostics = params.diagnostics;
+
+                    let mut file_infos = file_infos2.lock().unwrap();
+
+                    file_infos.insert(uri.clone(), file_info);
+                } else {
+                    // other notifications NOTE
+                }
+            } else {
+                thread::sleep(std::time::Duration::from_millis(100));
+            }
+        });
+
+        return handle;
+    }
+
+    pub fn stop_dispatcher(&mut self) {
+        let exit = self.exit.lock().unwrap();
+        *exit = true;
     }
 
     pub fn kill(&mut self) {
@@ -148,14 +218,16 @@ impl LspServer {
     }
 
     pub fn exit_transport(&self) {
-        if self.transport.is_some() {
-            self.transport.as_ref().unwrap().to_exit();
+        let transport = self.transport.lock().unwrap();
+        if transport.is_some() {
+            transport.as_ref().unwrap().to_exit();
         }
     }
 
     pub fn write(&self, request: Message) -> RustResult<(), LspceError> {
-        if self.transport.is_some() {
-            let result = self.transport.as_ref().unwrap().write(request);
+        let transport = self.transport.lock().unwrap();
+        if transport.is_some() {
+            let result = transport.as_ref().unwrap().write(request);
             match result {
                 Ok(_) => Ok(()),
                 Err(e) => Err(LspceError(e.to_string())),
@@ -166,24 +238,27 @@ impl LspServer {
     }
 
     pub fn read_response(&self) -> Option<Response> {
-        if self.transport.is_some() {
-            self.transport.as_ref().unwrap().read_response()
+        let transport = self.transport.lock().unwrap();
+        if transport.is_some() {
+            transport.as_ref().unwrap().read_response()
         } else {
             None
         }
     }
 
     pub fn read_notification(&self) -> Option<Notification> {
-        if self.transport.is_some() {
-            self.transport.as_ref().unwrap().read_notification()
+        let transport = self.transport.lock().unwrap();
+        if transport.is_some() {
+            transport.as_ref().unwrap().read_notification()
         } else {
             None
         }
     }
 
     pub fn read_request(&self) -> Option<Request> {
-        if self.transport.is_some() {
-            self.transport.as_ref().unwrap().read_request()
+        let transport = self.transport.lock().unwrap();
+        if transport.is_some() {
+            transport.as_ref().unwrap().read_request()
         } else {
             None
         }
@@ -370,6 +445,7 @@ fn shutdown(
                         // FIXME 同时有多个lsp server子进程时，可能会卡住。线程里结束子进程？
                         _notify(env, server, exit);
 
+                        server.stop_dispatcher();
                         server.exit_transport();
                         Logger::log("after exit transport.");
                         // 等待读写线程结束
@@ -598,55 +674,83 @@ fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result
     return Ok(false);
 }
 
+// #[defun]
+// fn read_notifications(
+//     env: &Env,
+//     root_uri: String,
+//     file_type: String,
+//     req: String,
+// ) -> Result<Option<String>> {
+//     let mut notifications: Vec<Notification> = vec![];
+
+//     let projects = projects().lock().unwrap();
+//     if let Some(p) = projects.get(&root_uri) {
+//         if let Some(server) = p.servers.get(&file_type) {
+//             // TODO 检查server是否初始化完成
+
+//             loop {
+//                 let read_value = server.read_notification();
+//                 match read_value {
+//                     Some(r) => {
+//                         notifications.push(r);
+//                     }
+//                     None => {
+//                         break;
+//                     }
+//                 }
+//             }
+//         } else {
+//             env.message(&format!("No server for {}", &file_type));
+//         }
+//     } else {
+//         env.message(&format!("No project for {} {}", &root_uri, &file_type));
+//     }
+
+//     Ok(Some(serde_json::to_string(&notifications).unwrap()))
+// }
+
+// #[defun]
+// fn read_request(
+//     env: &Env,
+//     root_uri: String,
+//     file_type: String,
+//     req: String,
+// ) -> Result<Option<String>> {
+//     let projects = projects().lock().unwrap();
+//     if let Some(p) = projects.get(&root_uri) {
+//         if let Some(server) = p.servers.get(&file_type) {
+//             // TODO 检查server是否初始化完成
+
+//             if let Some(r) = server.read_request() {
+//                 return Ok(Some(serde_json::to_string(&r).unwrap()));
+//             }
+//         } else {
+//             env.message(&format!("No server for {}", &file_type));
+//         }
+//     } else {
+//         env.message(&format!("No project for {} {}", &root_uri, &file_type));
+//     }
+
+//     Ok(None)
+// }
+
 #[defun]
-fn read_notifications(
+fn read_file_diagnostics(
     env: &Env,
     root_uri: String,
     file_type: String,
-    req: String,
+    uri: String,
 ) -> Result<Option<String>> {
-    let mut notifications: Vec<Notification> = vec![];
-
     let projects = projects().lock().unwrap();
     if let Some(p) = projects.get(&root_uri) {
         if let Some(server) = p.servers.get(&file_type) {
-            // TODO 检查server是否初始化完成
+            let mut file_infos = server.file_infos.lock().unwrap();
+            if let Some(file_info) = file_infos.get(&uri) {
+                let result = serde_json::to_string(&file_info.diagnostics);
 
-            loop {
-                let read_value = server.read_notification();
-                match read_value {
-                    Some(r) => {
-                        notifications.push(r);
-                    }
-                    None => {
-                        break;
-                    }
+                if result.is_ok() {
+                    return Ok(Some(result.unwrap()));
                 }
-            }
-        } else {
-            env.message(&format!("No server for {}", &file_type));
-        }
-    } else {
-        env.message(&format!("No project for {} {}", &root_uri, &file_type));
-    }
-
-    Ok(Some(serde_json::to_string(&notifications).unwrap()))
-}
-
-#[defun]
-fn read_request(
-    env: &Env,
-    root_uri: String,
-    file_type: String,
-    req: String,
-) -> Result<Option<String>> {
-    let projects = projects().lock().unwrap();
-    if let Some(p) = projects.get(&root_uri) {
-        if let Some(server) = p.servers.get(&file_type) {
-            // TODO 检查server是否初始化完成
-
-            if let Some(r) = server.read_request() {
-                return Ok(Some(serde_json::to_string(&r).unwrap()));
             }
         } else {
             env.message(&format!("No server for {}", &file_type));
