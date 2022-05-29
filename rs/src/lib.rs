@@ -193,7 +193,7 @@ impl LspServer {
     }
 
     pub fn stop_dispatcher(&mut self) {
-        let exit = self.exit.lock().unwrap();
+        let mut exit = self.exit.lock().unwrap();
         *exit = true;
     }
 
