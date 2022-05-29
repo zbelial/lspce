@@ -38,8 +38,8 @@
 
 (cl-defun lspce--completionItem ()
   (let ((params (make-hash-table)))
-    (puthash :snippetSupport :json-false params)
-    ;; (puthash :snippetSupport t params)
+    ;; (puthash :snippetSupport :json-false params)
+    (puthash :snippetSupport t params)
     (puthash :commitCharactersSupport :json-false params)
     (puthash :documentationFormat (lspce--documentationFormat) params)
     (puthash :deprecatedSupport :json-false params)

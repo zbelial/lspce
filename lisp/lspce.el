@@ -31,14 +31,8 @@
   "Don't tell server of changes before Emacs's been idle for this many seconds."
   :type 'number)
 
-(defcustom lspce-doc-tooltip-font nil
-  "The font of documentation tooltip.
-
-Font format follow rule: fontname-fontsize."
-  :type 'string)
-
-(defcustom lspce-doc-tooltip-border-width 15
-  "The border width of lspce tooltip, default is 15 px."
+(defcustom lspce-doc-tooltip-border-width 1
+  "The border width of lspce tooltip, default is 1 px."
   :type 'integer)
 
 (defcustom lspce-doc-tooltip-timeout 30
@@ -82,7 +76,7 @@ Font format follow rule: fontname-fontsize."
 
 ;;; Variables and custom
 (defvar lspce-server-programs `(("rust-mode"  "rust-analyzer" "--log-file /tmp/ra.log -v" lspce-ra-initializationOptions)
-                                ("python-mode" "pyright-langserver" "--stdio")
+                                ("python-mode" "pyright-langserver" "--stdio" lspce-pyright-initializationOptions)
                                 ("C" "clangd" "")
                                 ("go-mode"  "gopls" "-logfile=/tmp/gopls.log -v")
                                 ("java-mode"  "jdtls" lspce-jdtls-cmd-args lspce-jdtls-initializationOptions))
@@ -298,7 +292,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
       (user-error "lspce--connect: Do not support current buffer.")
       (cl-return-from lspce--connect nil))
 
-    (message "server %S" server)
+    ;; (message "server %S" server)
     (setq server-cmd (nth 0 server)
           server-args (nth 1 server)
           initialize-options (nth 2 server))
@@ -309,8 +303,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (when (functionp initialize-options)
       (setq initialize-options (funcall initialize-options)))
 
-    (message "server-args: %s" server-args)
-    (message "initialize-options: %s" initialize-options)
+    ;; (message "server-args: %s" server-args)
+    ;; (message "initialize-options: %s" initialize-options)
 
     (setq initialize-params (lspce--make-initializeParams root-uri initialize-options))
 
@@ -555,16 +549,16 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
       (goto-char point)
       (buffer-substring (line-beginning-position) (line-end-position)))))
 
-(defun lspce--lsp-position-to-point (line column)
+(defun lspce--lsp-position-to-point (line character)
   "Convert LSP position to Emacs point."
   (save-excursion
     (save-restriction
       (widen)
       (goto-char (point-min))
-      (forward-line (1- line))
+      (forward-line line)
       (unless (eobp) ;; if line was excessive leave point at eob
         (let ((tab-width 1)
-              (col column))
+              (col character))
           (unless (wholenump col)
             (lspce--warn
              "Caution: LSP server sent invalid character position %s. Using 0 instead."
@@ -572,6 +566,20 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
             (setq col 0))
           (funcall lspce-move-to-column-function col)))
       (point))))
+
+(defun lspce--lsp-position-to-point2 (pos)
+  (let ((line (gethash "line" pos))
+        (character (gethash "character" pos)))
+    (lspce--lsp-position-to-point line character)))
+
+(defun lspce--range-region (range)
+  "Return region (BEG . END) that represents LSP RANGE.
+If optional MARKERS, make markers."
+  (let* ((start (gethash "start" range))
+         (end (gethash "end" range))
+         (beg (lspce--lsp-position-to-point2 start))
+         (end (lspce--lsp-position-to-point2 end)))
+    (cons beg end)))
 
 (defun lspce--locations-to-xref (locations)
   (let (xrefs uri range start end filename start-line start-column end-line end-column items xref-items groups)
@@ -592,9 +600,9 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
             (setq range (gethash "range" item))
             (setq start (gethash "start" range))
             (setq end (gethash "end" range))
-            (setq start-line (1+ (gethash "line" start)))
+            (setq start-line (gethash "line" start))
             (setq start-column (gethash "character" start))
-            (setq end-line (1+ (gethash "line" end)))
+            (setq end-line (gethash "line" end))
             (setq end-column (gethash "character" end))
             (setq filename (lspce--uri-to-path uri))
 
@@ -618,7 +626,7 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
                                       (hi-beg (- beg bol))
                                       (hi-end (- (min (point-at-eol) end) bol)))
                                  (add-face-text-property hi-beg hi-end 'xref-match t substring)
-                                 (cl-pushnew (xref-make substring (xref-make-file-location filename (lspce--xref-item-start-line item) (lspce--xref-item-start-column item))) xrefs))))))
+                                 (cl-pushnew (xref-make substring (xref-make-file-location filename (+ (lspce--xref-item-start-line item) 1) (lspce--xref-item-start-column item))) xrefs))))))
               (if visiting
                   (with-current-buffer visiting
                     (seq-map collect items))
@@ -700,7 +708,7 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
     ;; (message "lspce--request-completion response: %S" response)
     ;; (message "lspce--request-completion response type-of: %s" (type-of response))
     (cond
-     ((arrayp response)
+     ((listp response)
       (setq complete? t
             items response))
      ((hash-table-p response)
@@ -722,6 +730,13 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
   (let (completions (lspce--completions (nth 1 (lspce--request-completion))))
     (message "completions: %S" completions)))
 
+(defun lspce--snippet-expansion-fn ()
+  "Compute a function to expand snippets.
+Doubles as an indicator of snippet support."
+  (and (boundp 'yas-minor-mode)
+       (symbol-value 'yas-minor-mode)
+       'yas-expand-snippet))
+
 (defun lspce-completion-at-point()
   (when-let (completion-capability (lspce--server-capable "completionProvider"))
     (let* ((bounds (bounds-of-thing-at-point 'symbol))
@@ -731,7 +746,9 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
            (cached-proxies :none)
            (proxies
             (lambda ()
-              (if (and complete? (listp cached-proxies))
+              (if (and
+                   complete?
+                   (listp cached-proxies))
                   cached-proxies
                 (setq completions (lspce--request-completion))
                 (setq complete? (nth 0 completions)
@@ -743,9 +760,13 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
                       (mapcar
                        (lambda (item)
                          (let* ((label (gethash "label" item))
+                                (insertTextFormat (or (gethash "insertTextFormat" item) 1))
                                 (insertText (gethash "insertText" item))
                                 (proxy
                                  (cond 
+                                  ((and (eql insertTextFormat 2)
+                                        (lspce--snippet-expansion-fn))
+                                   (string-trim-left label))
                                   ((and insertText
                                         (not (string-empty-p insertText)))
                                    insertText)
@@ -822,7 +843,49 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
        (lambda (proxy status)
          (setq-local lspce--completion-complete? nil)
          (when (memq status '(finished exact))
-           (lspce--notify-textDocument/didChange)
+           (with-current-buffer (if (minibufferp)
+                                    (window-buffer (minibuffer-selected-window))
+                                  (current-buffer))
+             (let* ((lsp-item (get-text-property 0 'lspce--lsp-item proxy))
+                    (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
+                    (insertText (gethash "insertText" lsp-item))
+                    (textEdit (gethash "textEdit" lsp-item))
+                    (snippet-fn (and (eql insertTextFormat 2)
+                                     (lspce--snippet-expansion-fn))))
+               ;; (message "lsp-item %S" (json-encode lsp-item))
+               (cond (textEdit
+                      ;; Undo (yes, undo) the newly inserted completion.
+                      ;; If before completion the buffer was "foo.b" and
+                      ;; now is "foo.bar", `proxy' will be "bar".  We
+                      ;; want to delete only "ar" (`proxy' minus the
+                      ;; symbol whose bounds we've calculated before)
+                      ;; (github#160).
+                      (delete-region (+ (- (point) (length proxy))
+                                        (if bounds
+                                            (- (cdr bounds) (car bounds))
+                                          0))
+                                     (point))
+                      (let ((range (gethash "range" textEdit))
+                            (newText (gethash "newText" textEdit)))
+                        ;; (message "range %S" range)
+                        (pcase-let ((`(,beg . ,end)
+                                     (lspce--range-region range)))
+                          ;; (message "beg %s, end %s" beg end)
+                          (delete-region beg end)
+                          (goto-char beg)
+                          (funcall (or snippet-fn #'insert) newText))
+                        )
+                      )
+                     (snippet-fn
+                      ;; A snippet should be inserted, but using plain
+                      ;; `insertText'.  This requires us to delete the
+                      ;; whole completion, since `insertText' is the full
+                      ;; completion's text.
+                      (delete-region (- (point) (length proxy)) (point))
+                      (funcall snippet-fn (or insertText label))))
+               )
+             (lspce--notify-textDocument/didChange)
+             )
            )
          )
        )))
@@ -857,9 +920,9 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
     (if (and (fboundp #'posframe-workable-p) (posframe-workable-p))
         (posframe-plus-show lspce--doc-buffer-name t t
                             :position (point)
-                            :timeout 30
+                            :timeout lspce-doc-tooltip-timeout
                             :internal-border-color "orange"
-                            :internal-border-width 1
+                            :internal-border-width lspce-doc-tooltip-border-width
                             :background-color background-color
                             :accept-focus nil
                             :width lspce--doc-max-width
@@ -874,15 +937,37 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
   (if lspce-mode
       (let* ((params (lspce--make-hoverParams))
              (response (lspce--request "textDocument/hover" params))
-             contents kind content)
+             contents kind content language)
         (when response
           (setq contents (gethash "contents" response))
-          ;; TODO 处理其它类型
-          (when contents
+          (cond
+           ((hash-table-p contents)
             (setq kind (gethash "kind" contents))
+            (setq language (gethash "language" contents))
             (setq content (gethash "value" contents))
+            (when (and (null kind)
+                       language)
+              (setq kind "markdown"
+                    content (concat "```" language "\n" content "\n```")))
             (when (and kind content)
-              (lspce--display-help kind content)))))
+              (lspce--display-help kind content))
+            )
+           ((listp contents)
+            (setq kind "markdown")
+            (setq content nil)
+            (dolist (c contents)
+              (cond
+               ((stringp c)
+                (setq content (concat content "\n" c)))
+               ((hash-table-p c)
+                (setq content (concat "```" (gethash "language" c) "\n" (gethash "value" c) "\n```")))
+               (t
+                )))
+            (when (and kind content)
+              (lspce--display-help kind content)))
+           (t
+            ;; nothing
+            ))))
     (user-error "Lspce mode is not enabled.")))
 
 ;;; diagnostics
@@ -911,6 +996,7 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
         (setq diagnostics (lspce-module-read-file-diagnostics lspce--root-uri lspce--lsp-type lspce--uri))
         ;; (message "diagnostics: %S" diagnostics)
         (when diagnostics
+          ;; FIXME 根据diag-type和位置排序。
           (dolist (d (json-parse-string diagnostics :array-type 'list))
             ;; (message "d %S" d)
             (setq range (gethash "range" d)
@@ -919,9 +1005,9 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
             (setq start (gethash "start" range)
                   end (gethash "end" range))
             (push (flymake-make-diagnostic (current-buffer)
-                                           (lspce--lsp-position-to-point (+ 1 (gethash "line" start))
+                                           (lspce--lsp-position-to-point (gethash "line" start)
                                                                          (gethash "character" start))
-                                           (lspce--lsp-position-to-point (+ 1 (gethash "line" end))
+                                           (lspce--lsp-position-to-point (gethash "line" end)
                                                                          (gethash "character" end))
                                            (lspce--diag-type severity)
                                            message) flymake-diags)))
