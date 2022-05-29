@@ -841,11 +841,11 @@ Doubles as an indicator of snippet support."
             (line-beginning-position))))
        :exit-function
        (lambda (proxy status)
-         (setq-local lspce--completion-complete? nil)
          (when (memq status '(finished exact))
            (with-current-buffer (if (minibufferp)
                                     (window-buffer (minibuffer-selected-window))
                                   (current-buffer))
+             (setq-local lspce--completion-complete? nil)
              (let* ((lsp-item (get-text-property 0 'lspce--lsp-item proxy))
                     (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
                     (insertText (gethash "insertText" lsp-item))
