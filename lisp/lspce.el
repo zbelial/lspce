@@ -264,7 +264,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
       "[lspce] error sending textDocument/didClose: %s"
     (lspce--notify
      "textDocument/didClose" (lspce--make-didCloseTextDocumentParams)))
-  (lspce--buffer-disable-lsp))
+  )
 
 (defun lspce--server-program (lsp-type)
   (let ((server (assoc-default lsp-type lspce-server-programs)))
@@ -402,8 +402,13 @@ The value is also a hash table, with uri as the key and the value is just t.")
       (when (= (hash-table-count server-managed-buffers) 0)
         (lspce--shutdown))
       (puthash server-key server-managed-buffers lspce--managed-buffers)
-
+      
       (setq-local lspce--server-info nil))))
+
+(defun lspce--kill-buffer-hook ()
+  (lspce--notify-textDocument/didClose)
+  (lspce--buffer-disable-lsp)
+  )
 
 ;; TODO add kill-emacs-hook to kill all lsp servers.
 (define-minor-mode lspce-mode
@@ -418,8 +423,8 @@ The value is also a hash table, with uri as the key and the value is just t.")
      (t
       (add-hook 'after-change-functions 'lspce--after-change nil t)
       (add-hook 'before-change-functions 'lspce--before-change nil t)
-      (add-hook 'kill-buffer-hook 'lspce--notify-textDocument/didClose nil t)
-      (add-hook 'before-revert-hook 'lspce--notify-textDocument/didClose nil t)
+      (add-hook 'kill-buffer-hook 'lspce--kill-buffer-hook nil t)
+      (add-hook 'before-revert-hook 'lspce--before-revert-hook nil t)
       (add-hook 'after-revert-hook 'lspce--after-revert-hook nil t)
       (add-hook 'xref-backend-functions 'lspce-xref-backend nil t)
       (add-hook 'completion-at-point-functions 'lspce-completion-at-point nil t)
@@ -435,16 +440,18 @@ The value is also a hash table, with uri as the key and the value is just t.")
    (t
     (remove-hook 'after-change-functions 'lspce--after-change t)
     (remove-hook 'before-change-functions 'lspce--before-change t)
-    (remove-hook 'kill-buffer-hook 'lspce--notify-textDocument/didClose t)
-    (remove-hook 'before-revert-hook 'lspce--notify-textDocument/didClose t)
+    (remove-hook 'kill-buffer-hook 'lspce--kill-buffer-hook t)
+    (remove-hook 'before-revert-hook 'lspce--before-revert-hook t)
     (remove-hook 'after-revert-hook 'lspce--after-revert-hook t)
     (remove-hook 'xref-backend-functions 'lspce-xref-backend t)
     (remove-hook 'completion-at-point-functions #'lspce-completion-at-point t)
     (remove-hook 'pre-command-hook 'lspce--pre-command-hook t)
     (remove-hook 'post-self-insert-hook 'lspce--post-self-insert-hook t)
     (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
+    (lspce--notify-textDocument/didClose)
     (flymake-mode -1)
-    (lspce--buffer-disable-lsp))))
+    (lspce--buffer-disable-lsp)
+    )))
 
 ;;; Hooks
 (defvar-local lspce--recent-changes nil
@@ -510,6 +517,10 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
                             (when lspce-mode
                               (lspce--notify-textDocument/didChange)
                               (setq lspce--change-idle-timer nil))))))))
+
+(defun lspce--before-revert-hook ()
+  (lspce--notify-textDocument/didClose)
+  )
 
 (defun lspce--after-revert-hook ()
   "Lspce's `after-revert-hook'."
