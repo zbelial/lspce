@@ -296,6 +296,11 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (setq server-cmd (nth 0 server)
           server-args (nth 1 server)
           initialize-options (nth 2 server))
+    (when (functionp server-cmd)
+      (setq server-cmd (funcall server-cmd)))
+    (unless server-cmd
+      (user-error "lspce--connect: Can not find lsp server progrom.")
+      (cl-return-from lspce--connect nil))
     (when (functionp server-args)
       (setq server-args (funcall server-args)))
     (unless server-args

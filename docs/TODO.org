@@ -30,4 +30,5 @@
 * signatureHelp
   支持eldoc。
 * rename
+* xref查找引用导致发送didOpen的问题
 
