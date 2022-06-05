@@ -65,6 +65,18 @@ impl FileInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+struct Response4E {
+    pub code: i32, // 0: 成功返回，-1：server未返回，-9：其它错误
+    pub msg: Option<Response>,
+}
+
+impl Response4E {
+    pub fn new(code: i32, msg: Option<Response>) -> Response4E {
+        Response4E { code, msg }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct LspServerInfo {
     pub name: String,
     pub version: String,
@@ -292,6 +304,7 @@ impl LspServer {
         responses.pop_front()
     }
 
+    //
     pub fn read_response_exact(&self, id: RequestId) -> Option<Response> {
         let mut responses = self.responses.lock().unwrap();
         loop {
@@ -697,66 +710,6 @@ fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result
     return Ok(None);
 }
 
-// #[defun]
-// fn read_notifications(
-//     env: &Env,
-//     root_uri: String,
-//     file_type: String,
-//     req: String,
-// ) -> Result<Option<String>> {
-//     let mut notifications: Vec<Notification> = vec![];
-
-//     let projects = projects().lock().unwrap();
-//     if let Some(p) = projects.get(&root_uri) {
-//         if let Some(server) = p.servers.get(&file_type) {
-//             // TODO 检查server是否初始化完成
-
-//             loop {
-//                 let read_value = server.read_notification();
-//                 match read_value {
-//                     Some(r) => {
-//                         notifications.push(r);
-//                     }
-//                     None => {
-//                         break;
-//                     }
-//                 }
-//             }
-//         } else {
-//             env.message(&format!("No server for {}", &file_type));
-//         }
-//     } else {
-//         env.message(&format!("No project for {} {}", &root_uri, &file_type));
-//     }
-
-//     Ok(Some(serde_json::to_string(&notifications).unwrap()))
-// }
-
-// #[defun]
-// fn read_request(
-//     env: &Env,
-//     root_uri: String,
-//     file_type: String,
-//     req: String,
-// ) -> Result<Option<String>> {
-//     let projects = projects().lock().unwrap();
-//     if let Some(p) = projects.get(&root_uri) {
-//         if let Some(server) = p.servers.get(&file_type) {
-//             // TODO 检查server是否初始化完成
-
-//             if let Some(r) = server.read_request() {
-//                 return Ok(Some(serde_json::to_string(&r).unwrap()));
-//             }
-//         } else {
-//             env.message(&format!("No server for {}", &file_type));
-//         }
-//     } else {
-//         env.message(&format!("No project for {} {}", &root_uri, &file_type));
-//     }
-
-//     Ok(None)
-// }
-
 #[defun]
 fn read_response_exact(
     env: &Env,
@@ -769,49 +722,21 @@ fn read_response_exact(
     let projects = projects().lock().unwrap();
     if let Some(p) = projects.get(&root_uri) {
         if let Some(server) = p.servers.get(&file_type) {
+            let lrid = server.latest_response_id.lock().unwrap();
+            if lrid.lt(&req_id) {
+                let r4e = Response4E::new(-1, None);
+                return Ok(Some(serde_json::to_string(&r4e).unwrap()));
+            }
+
             let response = server.read_response_exact(req_id);
             match response {
                 Some(r) => {
-                    //
+                    let r4e = Response4E::new(0, Some(r));
+                    return Ok(Some(serde_json::to_string(&r4e).unwrap()));
                 }
                 None => {
-                    //
-                }
-            }
-        } else {
-            env.message(&format!("No server for {}", &file_type));
-        }
-    } else {
-        env.message(&format!("No project for {} {}", &root_uri, &file_type));
-    }
-
-    Ok(None)
-}
-
-#[defun]
-fn read_response(
-    env: &Env,
-    root_uri: String,
-    file_type: String,
-    id: String,
-) -> Result<Option<String>> {
-    let req_id = RequestId::from(id);
-
-    let projects = projects().lock().unwrap();
-    if let Some(p) = projects.get(&root_uri) {
-        if let Some(server) = p.servers.get(&file_type) {
-            let response = server.read_response();
-            match response {
-                Some(r) => {
-                    //
-                    if r.id.eq(&req_id) {
-                        return Ok(Some(serde_json::to_string(&r).unwrap()));
-                    } else {
-                    }
-                }
-                None => {
-                    //
-                    return Ok(None);
+                    let r4e = Response4E::new(-9, None);
+                    return Ok(Some(serde_json::to_string(&r4e).unwrap()));
                 }
             }
         } else {
@@ -842,6 +767,29 @@ fn read_file_diagnostics(
                     return Ok(Some(result.unwrap()));
                 }
             }
+        } else {
+            env.message(&format!("No server for {}", &file_type));
+        }
+    } else {
+        env.message(&format!("No project for {} {}", &root_uri, &file_type));
+    }
+
+    Ok(None)
+}
+
+#[defun]
+fn read_latest_response_id(
+    env: &Env,
+    root_uri: String,
+    file_type: String,
+    uri: String,
+) -> Result<Option<String>> {
+    let projects = projects().lock().unwrap();
+    if let Some(p) = projects.get(&root_uri) {
+        if let Some(server) = p.servers.get(&file_type) {
+            let lrid = server.latest_response_id.lock().unwrap();
+
+            return Ok(Some(lrid.to_string()));
         } else {
             env.message(&format!("No server for {}", &file_type));
         }
