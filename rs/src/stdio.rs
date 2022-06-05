@@ -9,25 +9,22 @@ use std::{
 
 use bytes::BytesMut;
 use crossbeam_channel::{bounded, Receiver, Sender};
-use lsp_types::notification;
 
 use crate::{
     connection::{NOTIFICATION_MAX, REQUEST_MAX},
     logger::Logger,
-    msg::{Message, Notification, Request, Response},
+    msg::Message,
 };
 
 /// Creates an LSP connection via stdio.
 pub(crate) fn stdio_transport(
     mut child_stdin: ChildStdin,
     mut child_stdout: ChildStdout,
-    responses: Arc<Mutex<VecDeque<Response>>>,
-    notifications: Arc<Mutex<VecDeque<Notification>>>,
-    requests: Arc<Mutex<VecDeque<Request>>>,
+    message_queue: Arc<Mutex<VecDeque<Message>>>,
     exit: Arc<Mutex<bool>>,
 ) -> (Sender<Message>, Receiver<Message>, IoThreads) {
     let exit_writer = Arc::clone(&exit);
-    let (writer_sender, writer_receiver) = bounded::<Message>(1);
+    let (writer_sender, writer_receiver) = bounded::<Message>(10);
     let writer = thread::spawn(move || {
         let mut stdin = child_stdin;
         loop {
@@ -53,7 +50,7 @@ pub(crate) fn stdio_transport(
     });
 
     let exit_reader = Arc::clone(&exit);
-    let (reader_sender, reader_receiver) = bounded::<Message>(1);
+    let (reader_sender, reader_receiver) = bounded::<Message>(10);
     let reader = thread::spawn(move || {
         let mut stdout = child_stdout;
         let mut reader = std::io::BufReader::new(stdout);
@@ -68,28 +65,10 @@ pub(crate) fn stdio_transport(
             }
 
             if let Some(msg) = Message::read(&mut reader)? {
-                match msg {
-                    Message::Request(r) => {
-                        Logger::log(&format!("stdio read request {:#?}", &r));
-                        let mut l = requests.lock().unwrap();
-                        if l.len() == REQUEST_MAX {
-                            l.pop_front();
-                        }
-                        l.push_back(r);
-                    }
-                    Message::Notification(r) => {
-                        Logger::log(&format!("stdio read notification {:#?}", &r));
-                        let mut l = notifications.lock().unwrap();
-                        if l.len() == NOTIFICATION_MAX {
-                            l.pop_front();
-                        }
-                        l.push_back(r);
-                    }
-                    Message::Response(r) => {
-                        Logger::log(&format!("stdio read response {:#?}", &r));
-                        responses.lock().unwrap().push_back(r);
-                    }
-                }
+                let mut queue = message_queue.lock().unwrap();
+
+                Logger::log(&format!("stdio read {:#?}", &msg));
+                queue.push_back(msg);
             }
         }
 

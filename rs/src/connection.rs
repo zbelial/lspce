@@ -30,9 +30,7 @@ pub const REQUEST_MAX: usize = 10;
 pub struct Connection {
     sender: Sender<Message>,
     receiver: Receiver<Message>,
-    responses: Arc<Mutex<VecDeque<Response>>>,
-    notifications: Arc<Mutex<VecDeque<Notification>>>,
-    requests: Arc<Mutex<VecDeque<Request>>>,
+    messages: Arc<Mutex<VecDeque<Message>>>,
     exit: Arc<Mutex<bool>>,
 }
 
@@ -43,29 +41,8 @@ impl Connection {
         self.sender.send(req)
     }
 
-    pub fn read_response(&self) -> Option<Response> {
-        let msg = self.responses.lock().unwrap().pop_front();
-        // if msg.is_some() {
-        //     Logger::log(&format!("Connection read response {:#?}", &msg));
-        // }
-
-        msg
-    }
-
-    pub fn read_notification(&self) -> Option<Notification> {
-        let msg = self.notifications.lock().unwrap().pop_front();
-        // if msg.is_some() {
-        //     Logger::log(&format!("Connection read notification {:#?}", &msg));
-        // }
-
-        msg
-    }
-
-    pub fn read_request(&self) -> Option<Request> {
-        let msg = self.requests.lock().unwrap().pop_front();
-        // if msg.is_some() {
-        //     Logger::log(&format!("Connection read request {:#?}", &msg));
-        // }
+    pub fn read(&self) -> Option<Message> {
+        let msg = self.messages.lock().unwrap().pop_front();
 
         msg
     }
@@ -80,26 +57,18 @@ impl Connection {
     ///
     /// Use this to create a real language server.
     pub fn stdio(mut stdin: ChildStdin, mut stdout: ChildStdout) -> (Connection, IoThreads) {
-        let responses = Arc::new(Mutex::new(VecDeque::new()));
-        let notifications = Arc::new(Mutex::new(VecDeque::new()));
-        let requests = Arc::new(Mutex::new(VecDeque::new()));
+        let messages = Arc::new(Mutex::new(VecDeque::new()));
         let exit = Arc::new(Mutex::new(false));
-        let exit_writer = Arc::new(Mutex::new(false));
 
-        let responses2 = Arc::clone(&responses);
-        let notifications2 = Arc::clone(&notifications);
-        let requests2 = Arc::clone(&requests);
+        let messages2 = Arc::clone(&messages);
         let exit2 = Arc::clone(&exit);
-        let exit_writer2 = Arc::clone(&exit_writer);
         let (sender, receiver, io_threads) =
-            stdio::stdio_transport(stdin, stdout, responses2, notifications2, requests2, exit2);
+            stdio::stdio_transport(stdin, stdout, messages2, exit2);
         (
             Connection {
                 sender,
                 receiver,
-                responses,
-                notifications,
-                requests,
+                messages,
                 exit,
             },
             io_threads,
@@ -111,28 +80,19 @@ impl Connection {
     ///
     /// Use this to create a real language server.
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<(Connection, IoThreads)> {
-        let responses = Arc::new(Mutex::new(VecDeque::new()));
-        let notifications = Arc::new(Mutex::new(VecDeque::new()));
-        let requests = Arc::new(Mutex::new(VecDeque::new()));
+        let messages = Arc::new(Mutex::new(VecDeque::new()));
         let exit = Arc::new(Mutex::new(false));
-        let exit_writer = Arc::new(Mutex::new(false));
 
-        let responses2 = Arc::clone(&responses);
-        let notifications2 = Arc::clone(&notifications);
-        let requests2 = Arc::clone(&requests);
+        let messages2 = Arc::clone(&messages);
         let exit2 = Arc::clone(&exit);
-        let exit_writer2 = Arc::clone(&exit);
 
         let stream = TcpStream::connect(addr)?;
-        let (sender, receiver, io_threads) =
-            socket::socket_transport(stream, responses2, notifications2, requests2, exit2);
+        let (sender, receiver, io_threads) = socket::socket_transport(stream, messages2, exit2);
         Ok((
             Connection {
                 sender,
                 receiver,
-                responses,
-                notifications,
-                requests,
+                messages,
                 exit,
             },
             io_threads,
