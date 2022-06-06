@@ -464,13 +464,12 @@ fn initialize(env: &Env, root_uri: String, server: &mut LspServer, req_str: Stri
                     }
 
                     if let Ok(ir) = serde_json::from_value::<InitializeResult>(m.result.unwrap()) {
-                        let n: InitializedParams = InitializedParams {};
-                        let status: Notification = Notification {
-                            method: "status".to_string(),
-                            params: serde_json::to_value(n).unwrap(),
+                        let initialized: Notification = Notification {
+                            method: "initialized".to_string(),
+                            params: serde_json::to_value(InitializedParams {}).unwrap(),
                         };
 
-                        _notify(env, server, status);
+                        _notify(env, server, initialized);
 
                         // 记录server初始化完成
                         server.status = SERVER_STATUS_RUNNING;
@@ -664,7 +663,6 @@ fn _notify(env: &Env, server: &mut LspServer, req: Notification) -> Result<Optio
 
     match write_result {
         Ok(_) => {
-            Logger::log(&format!("notify successfully: {}", method));
             return Ok(Some(true));
         }
         Err(e) => {
