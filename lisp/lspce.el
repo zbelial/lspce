@@ -235,6 +235,56 @@ be set to `lspce-move-to-lsp-abiding-column', and
           (setq response-data (gethash "result" response)))))
     response-data))
 
+(cl-defun lspce--request-async (method &optional params)
+  (let* ((request (lspce--make-request method params))
+         (root-uri lspce--root-uri)
+         (lsp-type lspce--lsp-type)
+         (request-id (gethash :id request)))
+
+    (lspce--notify-textDocument/didChange)
+    (when (lspce-module-request-async root-uri lsp-type (json-encode request))
+      request-id)))
+
+(cl-defun lspce--get-response (request-id)
+  (let ((trying t)
+        lrid
+        response code msg response-error response-data)
+    (message "lspce--get-response for request-id %d" request-id)
+    (while trying
+      (if (sit-for 0.1 t)
+          (progn
+            (setq lrid (lspce-module-read-latest-response-id lspce--root-uri lspce--lsp-type))
+            (message "lrid %S" lrid)
+            (unless lrid
+              (cl-return-from lspce--get-response nil))
+
+            (setq lrid (string-to-number lrid))
+            (when (> lrid request-id)
+              (message "lrid is bigger than request-id")
+              (setq trying nil))
+            (when (= lrid request-id)
+              (setq response (lspce-module-read-response-exact lspce--root-uri lspce--lsp-type request-id))
+              (message "response %s" response)
+              (unless response
+                (cl-return-from lspce--get-response nil))
+
+              (setq response (json-parse-string response :array-type 'list))
+              (setq code (gethash "code" response))
+              (setq msg (gethash "msg" response))
+              (message "code %d, msg %s" code msg)
+              (unless (= code 0)
+                (cl-return-from lspce--get-response nil))
+
+              (setq response-error (gethash "error" msg))
+              (if response-error
+                  (message "LSP error %s" (gethash "message" response-error))
+                (setq response-data (gethash "result" msg)))
+              (setq trying nil))
+            )
+        (message "sit-for is interrupted.")
+        (setq trying nil)))
+    response-data))
+
 (cl-defun lspce--notify (method &optional params)
   (let ((notification (lspce--make-notification method params))
         (root-uri lspce--root-uri)
@@ -656,16 +706,24 @@ If optional MARKERS, make markers."
 
 (cl-defmethod xref-backend-definitions ((_backend (eql xref-lspce)) identifier)
   (save-excursion
-    (lspce--locations-to-xref (lspce--request "textDocument/definition" (lspce--make-definitionParams)))
-    ))
+    (let ((request-id (lspce--request-async "textDocument/definition" (lspce--make-referenceParams)))
+          response)
+      (when request-id
+        (setq response (lspce--get-response request-id))
+        (when response
+          (lspce--locations-to-xref response))))))
 
 ;; NOTE if you use `ivy-xref-show-xrefs' as the `xref-show-xrefs-function',
 ;; you will find `xref-backend-references' is called twice.
 ;; See https://github.com/alexmurray/ivy-xref/issues/2
 (cl-defmethod xref-backend-references ((_backend (eql xref-lspce)) identifier)
   (save-excursion
-    (lspce--locations-to-xref (lspce--request "textDocument/references" (lspce--make-referenceParams)))
-    ))
+    (let ((request-id (lspce--request-async "textDocument/references" (lspce--make-referenceParams)))
+          response)
+      (when request-id
+        (setq response (lspce--get-response request-id))
+        (when response
+          (lspce--locations-to-xref response))))))
 
 (cl-defmethod xref-backend-identifier-completion-table ((_backend (eql xref-lspce)))
   (list (propertize (or (thing-at-point 'symbol) "")
@@ -944,8 +1002,11 @@ Doubles as an indicator of snippet support."
   (interactive)
   (if lspce-mode
       (let* ((params (lspce--make-hoverParams))
-             (response (lspce--request "textDocument/hover" params))
+             (request-id (lspce--request-async "textDocument/hover" params))
+             response
              contents kind content language)
+        (when request-id
+          (setq response (lspce--get-response request-id)))
         (when response
           (setq contents (gethash "contents" response))
           (cond

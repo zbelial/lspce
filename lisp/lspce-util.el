@@ -97,10 +97,11 @@
     (if (eq system-type 'windows-nt) (substring retval 1) retval)))
 
 (defvar lspce--jsonrpc-id 0)
-(defun lspce--jsonrpc-id ()
-  (let ((id lspce--jsonrpc-id))
-    (setq lspce--jsonrpc-id (1+ lspce--jsonrpc-id))
-    id))
+(defsubst lspce--next-jsonrpc-id ()
+  (setq lspce--jsonrpc-id (1+ lspce--jsonrpc-id))
+  lspce--jsonrpc-id)
+(defsubst lspce--current-jsonrpc-id ()
+  lspce--jsonrpc-id)
 
 (defun lspce-warn (message &rest args)
   "Display a warning message made from (`format-message' MESSAGE ARGS...).

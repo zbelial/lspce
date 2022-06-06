@@ -8,7 +8,7 @@
 (require 'lspce)
 
 (defun lspce--initialize-request () (list 
-                                     :id (lspce--jsonrpc-id)
+                                     :id (lspce--next-jsonrpc-id)
                                      :method "initialize"
                                      :params (lspce--initializeParams (lspce--path-to-uri "/mnt/Personal/VCS/bitbucket/lspce")
                                                                       (lspce--clientCapabilities)
@@ -16,7 +16,7 @@
                                                                       (lspce--clientInfo))))
 
 (defun lspce--shutdown-request () (list
-                                   :id (lspce--jsonrpc-id)
+                                   :id (lspce--next-jsonrpc-id)
                                    :method "shutdown"))
 
 (defun lspce--file-content (filePath)

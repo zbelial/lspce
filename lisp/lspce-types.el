@@ -6,7 +6,7 @@
 (cl-defun lspce--make-request (method &optional params)
   "jsonrpc is added in the module."
   (let ((request (make-hash-table)))
-    (puthash :id (lspce--jsonrpc-id) request)
+    (puthash :id (lspce--next-jsonrpc-id) request)
     (puthash :method method request)
     (when params
       (puthash :params params request))

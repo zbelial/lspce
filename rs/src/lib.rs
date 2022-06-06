@@ -302,12 +302,13 @@ impl LspServer {
         let mut responses = self.responses.lock().unwrap();
         loop {
             let resp = responses.pop_front();
+            Logger::log(&format!("read_response_exact {}, get {:?}", id, resp));
             if resp.is_some() {
                 let resp = resp.unwrap();
 
                 if id.eq(&resp.id) {
                     return Some(resp);
-                } else if id.gt(&resp.id) {
+                } else if id.lt(&resp.id) {
                     responses.push_front(resp);
                     return None;
                 }
@@ -776,7 +777,6 @@ fn read_latest_response_id(
     env: &Env,
     root_uri: String,
     file_type: String,
-    uri: String,
 ) -> Result<Option<String>> {
     let projects = projects().lock().unwrap();
     if let Some(p) = projects.get(&root_uri) {
