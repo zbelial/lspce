@@ -265,13 +265,6 @@ impl LspServer {
         }
     }
 
-    pub fn update_latest_response_id(&self, id: RequestId) {
-        let mut latest_response_id = self.latest_response_id.lock().unwrap();
-        if *latest_response_id < id {
-            *latest_response_id = id;
-        }
-    }
-
     pub fn get_latest_response_id(&self) -> RequestId {
         let lrid = self.latest_response_id.lock().unwrap();
 
@@ -318,6 +311,8 @@ impl LspServer {
                     responses.push_front(resp);
                     return None;
                 }
+            } else {
+                return None;
             }
         }
     }
@@ -338,15 +333,13 @@ impl LspServer {
 struct Project {
     pub root_uri: String,                    // 项目根目录
     pub servers: HashMap<String, LspServer>, // 每个LspServer处理一种类型的文件
-    pub client_capabilities: String,         // TODO 类型
 }
 
 impl Project {
-    pub fn new(root_uri: String, client_capabilities: String) -> Project {
+    pub fn new(root_uri: String) -> Project {
         Project {
             root_uri,
             servers: HashMap::new(),
-            client_capabilities,
         }
     }
 }
@@ -379,23 +372,23 @@ fn projects() -> &'static Arc<Mutex<HashMap<String, Project>>> {
 fn connect(
     env: &Env,
     root_uri: String,
-    file_type: String,
+    lsp_type: String,
     cmd: String,
     cmd_args: String,
     initialize_req: String,
 ) -> Result<Option<String>> {
     Logger::log(&format!(
-        "start initializing server for file_type {} in project {}",
-        file_type, root_uri
+        "start initializing server for lsp_type {} in project {}",
+        lsp_type, root_uri
     ));
 
     let mut projects = projects().lock().unwrap();
 
     if let Some(p) = projects.get(&root_uri) {
-        if let Some(s) = p.servers.get(&file_type) {
+        if let Some(s) = p.servers.get(&lsp_type) {
             Logger::log(&format!(
-                "server created already for file_type {} in project {}",
-                file_type, root_uri
+                "server created already for lsp_type {} in project {}",
+                lsp_type, root_uri
             ));
 
             return Ok(Some(serde_json::to_string(&s.server_info).unwrap()));
@@ -415,16 +408,16 @@ fn connect(
         if let Some(p) = project.as_mut() {
             if initialize(env, root_uri.clone(), &mut s, initialize_req) {
                 server_info = s.server_info.clone();
-                p.servers.insert(file_type, s);
+                p.servers.insert(lsp_type, s);
             } else {
                 s.kill_child();
                 return Ok(None);
             }
         } else {
-            let mut proj = Project::new(root_uri.clone(), "".to_string());
+            let mut proj = Project::new(root_uri.clone());
             if initialize(env, root_uri.clone(), &mut s, initialize_req) {
                 server_info = s.server_info.clone();
-                proj.servers.insert(file_type, s);
+                proj.servers.insert(lsp_type, s);
 
                 projects.insert(root_uri.clone(), proj);
             } else {
@@ -493,6 +486,8 @@ fn initialize(env: &Env, root_uri: String, server: &mut LspServer, req_str: Stri
                     } else {
                         return false;
                     }
+                } else {
+                    thread::sleep(std::time::Duration::from_millis(100));
                 }
             }
             None => {
@@ -500,6 +495,7 @@ fn initialize(env: &Env, root_uri: String, server: &mut LspServer, req_str: Stri
             }
         }
         if Instant::now().duration_since(start_time).as_millis() > 10 * 1000 {
+            env.message(&format!("timeout when initializing server."));
             Logger::log(&format!("timeout when initializing server."));
 
             return false;
@@ -715,7 +711,7 @@ fn read_response_exact(
     env: &Env,
     root_uri: String,
     file_type: String,
-    id: String,
+    id: i32,
 ) -> Result<Option<String>> {
     let req_id = RequestId::from(id);
 

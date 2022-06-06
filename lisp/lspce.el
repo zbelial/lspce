@@ -237,13 +237,9 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (cl-defun lspce--notify (method &optional params)
   (let ((notification (lspce--make-notification method params))
-        (root-uri (lspce--root-uri))
-        (lsp-type (funcall lspce-lsp-type-function))
+        (root-uri lspce--root-uri)
+        (lsp-type lspce--lsp-type)
         )
-    (unless (and root-uri lsp-type)
-      (user-error "lspce--notify: Can not get root-uri or lsp-type of current buffer.")
-      (cl-return-from lspce--notify nil))
-
     (lspce-module-notify root-uri lsp-type (json-encode notification))))
 
 
@@ -272,8 +268,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 ;; 返回server info.
 (cl-defun lspce--connect ()
-  (let ((root-uri (lspce--root-uri))
-        (lsp-type (funcall lspce-lsp-type-function))
+  (let ((root-uri lspce--root-uri)
+        (lsp-type lspce--lsp-type)
         (initialize-params nil)
         lsp-server
         server server-cmd server-args initialize-options
@@ -282,10 +278,6 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (when lsp-server
       (message "lspce--connect: Server for (%s %s) is running." root-uri lsp-type)
       (cl-return-from lspce--connect lsp-server))
-
-    (unless (and root-uri lsp-type)
-      (user-error "lspce--connect: Can not get root-uri or lsp-type of current buffer.")
-      (cl-return-from lspce--connect nil))
 
     (setq server (lspce--server-program lsp-type))
     (unless server
