@@ -231,7 +231,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (setq response (json-parse-string response-str :array-type 'list))
         (setq response-error (gethash "error" response))
         (if response-error
-            (message "LSP error %s" (gethash "message" response-error))
+            (lspce--warn "LSP error %s" (gethash "message" response-error))
           (setq response-data (gethash "result" response)))))
     response-data))
 
@@ -245,43 +245,46 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (when (lspce-module-request-async root-uri lsp-type (json-encode request))
       request-id)))
 
+(defun lspce--is-tick-match ()
+  (equal lspce--latest-recorded-tick (lspce--current-tick)))
+
 (cl-defun lspce--get-response (request-id)
   (let ((trying t)
         lrid
         response code msg response-error response-data)
-    (message "lspce--get-response for request-id %d" request-id)
+    ;; (lspce--message "lspce--get-response for request-id %d" request-id)
     (while trying
       (if (sit-for 0.1 t)
           (progn
             (setq lrid (lspce-module-read-latest-response-id lspce--root-uri lspce--lsp-type))
-            (message "lrid %S" lrid)
+            ;; (lspce--message "lrid %S" lrid)
             (unless lrid
               (cl-return-from lspce--get-response nil))
 
             (setq lrid (string-to-number lrid))
             (when (> lrid request-id)
-              (message "lrid is bigger than request-id")
+              ;; (lspce--message "lrid is bigger than request-id")
               (setq trying nil))
             (when (= lrid request-id)
               (setq response (lspce-module-read-response-exact lspce--root-uri lspce--lsp-type request-id))
-              (message "response %s" response)
+              ;; (lspce--message "response %s" response)
               (unless response
                 (cl-return-from lspce--get-response nil))
 
               (setq response (json-parse-string response :array-type 'list))
               (setq code (gethash "code" response))
               (setq msg (gethash "msg" response))
-              (message "code %d, msg %s" code msg)
+              ;; (lspce--message "code %d, msg %s" code msg)
               (unless (= code 0)
                 (cl-return-from lspce--get-response nil))
 
               (setq response-error (gethash "error" msg))
               (if response-error
-                  (message "LSP error %s" (gethash "message" response-error))
+                  (lspce--warn "LSP error %s" (gethash "message" response-error))
                 (setq response-data (gethash "result" msg)))
               (setq trying nil))
             )
-        (message "sit-for is interrupted.")
+        ;; (lspce--message "sit-for is interrupted.")
         (setq trying nil)))
     response-data))
 
@@ -326,7 +329,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
         response-str response response-error response-result)
     (setq lsp-server (lspce-module-server root-uri lsp-type))
     (when lsp-server
-      (message "lspce--connect: Server for (%s %s) is running." root-uri lsp-type)
+      (lspce--message "lspce--connect: Server for (%s %s) is running." root-uri lsp-type)
       (cl-return-from lspce--connect lsp-server))
 
     (setq server (lspce--server-program lsp-type))
@@ -334,7 +337,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
       (user-error "lspce--connect: Do not support current buffer.")
       (cl-return-from lspce--connect nil))
 
-    ;; (message "server %S" server)
+    ;; (lspce--message "server %S" server)
     (setq server-cmd (nth 0 server)
           server-args (nth 1 server)
           initialize-options (nth 2 server))
@@ -350,8 +353,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (when (functionp initialize-options)
       (setq initialize-options (funcall initialize-options)))
 
-    ;; (message "server-args: %s" server-args)
-    ;; (message "initialize-options: %s" initialize-options)
+    ;; (lspce--message "server-args: %s" server-args)
+    ;; (lspce--message "initialize-options: %s" initialize-options)
 
     (setq initialize-params (lspce--make-initializeParams root-uri initialize-options))
 
@@ -405,6 +408,13 @@ The value is also a hash table, with uri as the key and the value is just t.")
 (defvar-local lspce--lsp-type nil)
 (defvar-local lspce--server-info nil)
 (defvar-local lspce--server-capabilities nil)
+(defvar-local lspce--latest-recorded-tick nil)
+
+(defun lspce--current-tick ()
+  "Return the current tick/status of the buffer.
+Auto completion is only performed if the tick did not change."
+  (list (current-buffer) (buffer-chars-modified-tick) (point)))
+
 
 (defvar lspce-mode-map (make-sparse-keymap))
 
@@ -413,7 +423,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
         (lsp-type (funcall lspce-lsp-type-function))
         server-info server-key server-managed-buffers)
     (unless (and root-uri lsp-type)
-      (message "Can not get root-uri or lsp-type of current buffer.")
+      (lspce--warn "Can not get root-uri or lsp-type of current buffer.")
       (cl-return-from lspce--buffer-enable-lsp nil))
 
     (setq-local lspce--root-uri root-uri)
@@ -425,7 +435,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (setq server-info (lspce--connect))
     (unless server-info
       (cl-return-from lspce--buffer-enable-lsp nil))
-    ;; (message "server-info: %s" server-info)
+    ;; (lspce--message "server-info: %s" server-info)
 
     (when (lspce--notify-textDocument/didOpen)
       (setq-local lspce--server-info (json-parse-string server-info :array-type 'list))
@@ -465,7 +475,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
    (lspce-mode
     (cond
      ((not buffer-file-name)
-      (message "Lspce can not be used in non-file buffers.")
+      (lspce--warn "Lspce can not be used in non-file buffers.")
       (setq lspce-mode nil))
      (t
       (add-hook 'after-change-functions 'lspce--after-change nil t)
@@ -481,8 +491,8 @@ The value is also a hash table, with uri as the key and the value is just t.")
       (flymake-mode 1)
       (lspce--buffer-enable-lsp)
       (if lspce--server-info
-          (message "Connected to lsp server.")
-        (message "Failed to connect to lsp server.")
+          (lspce--message "Connected to lsp server.")
+        (lspce--warn "Failed to connect to lsp server.")
         (setq lspce-mode nil)))))
    (t
     (remove-hook 'after-change-functions 'lspce--after-change t)
@@ -693,10 +703,10 @@ If optional MARKERS, make markers."
                     (insert-file-contents-literally filename)
                     (seq-map collect items)))))))
       
-      (error (lspce-warn "Failed to process xref entry for filename '%s': %s"
-                         filename (error-message-string err)))
-      (file-error (lspce-warn "Failed to process xref entry, file-error, '%s': %s"
-                              filename (error-message-string err)))
+      (error (lspce--warn "Failed to process xref entry for filename '%s': %s"
+                          filename (error-message-string err)))
+      (file-error (lspce--warn "Failed to process xref entry, file-error, '%s': %s"
+                               filename (error-message-string err)))
       )
     (nreverse xrefs)))
 
@@ -765,14 +775,17 @@ If optional MARKERS, make markers."
 
 (cl-defun lspce--request-completion ()
   (let ((params (lspce--make-completionParams))
+        request-id
         response items complete?)
-    (setq response (lspce--request "textDocument/completion" params))
+    (setq request-id (lspce--request-async "textDocument/completion" params))
+    (when request-id
+      (setq response (lspce--get-response request-id)))
     (unless response
-      (message "lspce--request-completion response-str is null")
+      (lspce--warn "lspce--request-completion failed to getting response")
       (cl-return-from lspce--request-completion nil))
 
-    ;; (message "lspce--request-completion response: %S" response)
-    ;; (message "lspce--request-completion response type-of: %s" (type-of response))
+    ;; (lspce--message "lspce--request-completion response: %S" response)
+    ;; (lspce--message "lspce--request-completion response type-of: %s" (type-of response))
     (cond
      ((listp response)
       (setq complete? t
@@ -782,7 +795,7 @@ If optional MARKERS, make markers."
             items (gethash "items" response))
       )
      (t
-      (message "Unknown response type: %s" (type-of response))
+      (lspce--warn "Unknown response type: %s" (type-of response))
       (cl-return-from lspce--request-completion nil)))
     (list complete? items)))
 
@@ -794,7 +807,7 @@ If optional MARKERS, make markers."
 
 (defun lspce--test-completions ()
   (let (completions (lspce--completions (nth 1 (lspce--request-completion))))
-    (message "completions: %S" completions)))
+    (lspce--message "completions: %S" completions)))
 
 (defun lspce--snippet-expansion-fn ()
   "Compute a function to expand snippets.
@@ -918,7 +931,7 @@ Doubles as an indicator of snippet support."
                     (textEdit (gethash "textEdit" lsp-item))
                     (snippet-fn (and (eql insertTextFormat 2)
                                      (lspce--snippet-expansion-fn))))
-               ;; (message "lsp-item %S" (json-encode lsp-item))
+               ;; (lspce--message "lsp-item %S" (json-encode lsp-item))
                (cond (textEdit
                       ;; Undo (yes, undo) the newly inserted completion.
                       ;; If before completion the buffer was "foo.b" and
@@ -933,10 +946,10 @@ Doubles as an indicator of snippet support."
                                      (point))
                       (let ((range (gethash "range" textEdit))
                             (newText (gethash "newText" textEdit)))
-                        ;; (message "range %S" range)
+                        ;; (lspce--message "range %S" range)
                         (pcase-let ((`(,beg . ,end)
                                      (lspce--range-region range)))
-                          ;; (message "beg %s, end %s" beg end)
+                          ;; (lspce--message "beg %s, end %s" beg end)
                           (delete-region beg end)
                           (goto-char beg)
                           (funcall (or snippet-fn #'insert) newText))
@@ -1061,16 +1074,16 @@ Doubles as an indicator of snippet support."
 (defun lspce--read-diagnostics ()
   (if lspce-mode
       (let (diagnostics
-            flymake-diags range start end severity message)
+            flymake-diags range start end severity msg)
         (setq diagnostics (lspce-module-read-file-diagnostics lspce--root-uri lspce--lsp-type lspce--uri))
-        ;; (message "diagnostics: %S" diagnostics)
+        ;; (lspce--message "diagnostics: %S" diagnostics)
         (when diagnostics
           ;; FIXME 根据diag-type和位置排序。
           (dolist (d (json-parse-string diagnostics :array-type 'list))
-            ;; (message "d %S" d)
+            ;; (lspce--message "d %S" d)
             (setq range (gethash "range" d)
                   severity (gethash "severity" d)
-                  message (gethash "message" d))
+                  msg (gethash "message" d))
             (setq start (gethash "start" range)
                   end (gethash "end" range))
             (push (flymake-make-diagnostic (current-buffer)
@@ -1079,7 +1092,7 @@ Doubles as an indicator of snippet support."
                                            (lspce--lsp-position-to-point (gethash "line" end)
                                                                          (gethash "character" end))
                                            (lspce--diag-type severity)
-                                           message) flymake-diags)))
+                                           msg) flymake-diags)))
         flymake-diags)))
 
 (defun lspce-flymake-backend (report-fn &rest _more)

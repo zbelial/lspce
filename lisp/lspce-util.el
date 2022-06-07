@@ -103,11 +103,11 @@
 (defsubst lspce--current-jsonrpc-id ()
   lspce--jsonrpc-id)
 
-(defun lspce-warn (message &rest args)
+(defun lspce--warn (message &rest args)
   "Display a warning message made from (`format-message' MESSAGE ARGS...).
 This is equivalent to `display-warning', using `lspce-mode' as the type and
 `:warning' as the level."
-  (display-warning 'lsp-mode (apply #'format-message message args)))
+  (display-warning 'lspce-mode (apply #'format-message message args)))
 
 (defun lspce--message (format &rest args)
   "Message out with FORMAT with ARGS."
