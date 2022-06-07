@@ -1,3 +1,51 @@
-#+STARTUP: overview 
-#+STARTUP: hidestars
-#+STARTUP: hideblocks
+#+TITLE: LSPCE
+#+AUTHOR: zbelial
+#+EMAIL: zjyzhaojiyang1@gmail.com
+#+DATE: 2022
+#+LANGUAGE: en
+
+* Introduction
+  LSPCE - Lsp Client for Emacs, is a simple lsp client that is implemented as an Emacs module.
+
+  It does not want to be a full-featured lsp client. The features it supports are:
+  - find definitions/references/implementatoins (as a xref backend)
+  - hover (triggered by `lspce-help-at-point`)
+  - completion (as a capf function)
+    support snippet too.
+  - diagnostics (as a flymake backend)
+    process diagnostics when idle.
+    
+
+  The features planed to implement:
+  - TODO
+  
+
+  I have tested it with `pyright` and `rust-analyzer`, and I'm using it to develop it :).
+
+* Installation
+  At the moment, you can only install LSPCE by cloning this repo and compile rust code manually.
+** Installing from the Git Repository
+   Before installing LSPCE, you should install rust and cargo.
+   #+BEGIN_SRC bash
+     $ git https://github.com/zbelial/lspce.git ~/.emacs.d/site-lisp/lspce
+     $ cd ~/.emacs.d/site-lisp/lspce/rs
+     $ cargo build
+   #+END_SRC
+
+* Get started
+  #+BEGIN_SRC elisp
+    (use-package lspce
+      :load-path "/path/to/lspce/lisp"
+      :init (progn
+              (add-to-list 'load-path "/path/to/lspce/rs/target/debug")
+
+              (require 'lspce-module)
+              )
+      :config (progn
+                (setq lspce-send-changes-idle-time 1)
+
+                ;; enable lspce in particular buffers
+                ;; (add-hook 'rust-mode-hook 'lspce-mode)
+                )
+      )
+  #+END_SRC
