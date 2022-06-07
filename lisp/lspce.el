@@ -8,7 +8,8 @@
 (require 'url-util)
 (require 'compile)                      ; for some faces
 (require 'warnings)
-(require 'posframe-plus)
+(ignore-errors
+  (require 'posframe-plus))
 (require 'markdown-mode)
 (require 'flymake)
 
@@ -1035,7 +1036,9 @@ Doubles as an indicator of snippet support."
         (setq lines (line-number-at-pos))
         (if (> lines height)
             (setq height (min lines lspce--doc-max-height)))))
-    (if (and (fboundp #'posframe-workable-p) (posframe-workable-p))
+    (if (and (fboundp #'posframe-workable-p)
+             (posframe-workable-p)
+             (fboundp #'posframe-plus-show))
         (posframe-plus-show lspce--doc-buffer-name t t
                             :position (point)
                             :timeout lspce-doc-tooltip-timeout
