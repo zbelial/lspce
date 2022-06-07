@@ -176,6 +176,10 @@ impl LspServer {
 
             Some(server)
         } else {
+            Logger::log(&format!(
+                "create child process failed with error {:?}",
+                child.err().unwrap(),
+            ));
             None
         }
     }
@@ -494,7 +498,7 @@ fn initialize(env: &Env, root_uri: String, server: &mut LspServer, req_str: Stri
                 thread::sleep(std::time::Duration::from_millis(100));
             }
         }
-        if Instant::now().duration_since(start_time).as_millis() > 10 * 1000 {
+        if Instant::now().duration_since(start_time).as_millis() > 30 * 1000 {
             env.message(&format!("timeout when initializing server."));
             Logger::log(&format!("timeout when initializing server."));
 

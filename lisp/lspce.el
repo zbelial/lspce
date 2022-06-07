@@ -75,10 +75,10 @@
 
 
 ;;; Variables and custom
-(defvar lspce-server-programs `(("rust-mode"  "rust-analyzer" "--log-file /tmp/ra.log -v" lspce-ra-initializationOptions)
+(defvar lspce-server-programs `(("rust-mode"  "rust-analyzer" "" lspce-ra-initializationOptions)
                                 ("python-mode" "pyright-langserver" "--stdio" lspce-pyright-initializationOptions)
                                 ("C" "clangd" "")
-                                ("go-mode"  "gopls" "-logfile=/tmp/gopls.log -v")
+                                ("go-mode"  "gopls" "")
                                 ("java-mode"  "jdtls" lspce-jdtls-cmd-args lspce-jdtls-initializationOptions))
   "How the command `lspce' gets the server to start.
 A list of (LSP-TYPE SERVER-COMMAND SERVER-PARAMS).  LSP-TYPE
@@ -166,6 +166,11 @@ be set to `lspce-move-to-lsp-abiding-column', and
    (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
    (lspce--make-position)
    (lspce--referenceContext)))
+
+(defun lspce--make-implementationParams ()
+  (lspce--implementationParams
+   (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
+   (lspce--make-position)))
 
 (defun lspce--make-hoverParams (&optional context)
   (lspce--hoverParams
@@ -716,7 +721,7 @@ If optional MARKERS, make markers."
 
 (cl-defmethod xref-backend-definitions ((_backend (eql xref-lspce)) identifier)
   (save-excursion
-    (let ((request-id (lspce--request-async "textDocument/definition" (lspce--make-referenceParams)))
+    (let ((request-id (lspce--request-async "textDocument/definition" (lspce--make-definitionParams)))
           response)
       (when request-id
         (setq response (lspce--get-response request-id))
@@ -739,6 +744,40 @@ If optional MARKERS, make markers."
   (list (propertize (or (thing-at-point 'symbol) "")
                     'identifier-at-point t)))
 
+(when (not (fboundp 'xref-backend-implementations))
+  (cl-defgeneric xref-backend-implementations (backend identifier)
+    "Find implementations of IDENTIFIER.
+
+The result must be a list of xref objects. If there are multiple possible
+implementations, return all of them.  If no implementations can be found,
+return nil.
+
+IDENTIFIER can be any string returned by
+`xref-backend-identifier-at-point', or from the table returned by
+`xref-backend-identifier-completion-table'.
+
+To create an xref object, call `xref-make'.")
+
+  )
+(cl-defmethod xref-backend-implementations ((_backend (eql xref-lspce)) identifier)
+  (save-excursion
+    (let ((request-id (lspce--request-async "textDocument/implementation" (lspce--make-implementationParams)))
+          response)
+      (when request-id
+        (setq response (lspce--get-response request-id))
+        (when response
+          (lspce--locations-to-xref response))))))
+
+;;;###autoload
+(defun xref-find-implementations (identifier)
+  "Find implementations to the identifier at point.
+This command might prompt for the identifier as needed, perhaps
+offering the symbol at point as the default.
+With prefix argument, or if `xref-prompt-for-identifier' is t,
+always prompt for the identifier.  If `xref-prompt-for-identifier'
+is nil, prompt only if there's no usable symbol at point."
+  (interactive (list (xref--read-identifier "Find implementations of: ")))
+  (xref--find-xrefs identifier 'implementations identifier nil))
 
 ;;; capf
 (defvar-local lspce--completion-complete? nil) ;; 1 incomplete 2 complete
