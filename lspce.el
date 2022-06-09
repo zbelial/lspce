@@ -178,6 +178,13 @@ be set to `lspce-move-to-lsp-abiding-column', and
    (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
    (lspce--make-position)))
 
+(defun lspce--make-textDocumentPositionParams (&optional context)
+  (lspce--textDocumentPositionParams
+   (lspce--textDocumentIdenfitier lspce--uri)
+   (lspce--make-position)
+   context))
+(defalias 'lspce--make-signatureHelpParams 'lspce--make-textDocumentPositionParams "lspce--make-signatureHelpParams")
+
 (defun lspce--make-initializeParams (root-uri initializationOptions)
   (lspce--initializeParams root-uri (lspce--clientCapabilities) initializationOptions))
 
@@ -219,11 +226,10 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defvar lspce-lsp-type-function #'lspce--lsp-type-default
   "Function to the lsp type of current buffer.")
 
-(cl-defun lspce--request (method &optional params timeout)
+(cl-defun lspce--request (method &optional params)
   (let ((request (lspce--make-request method params))
         (root-uri (lspce--root-uri))
         (lsp-type (funcall lspce-lsp-type-function))
-        (timeout (max (or timeout 3) 3))
         response-str response response-error response-data)
     (unless (and root-uri lsp-type)
       (user-error "lspce--request: Can not get root-uri or lsp-type of current buffer.")
@@ -243,11 +249,12 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (cl-defun lspce--request-async (method &optional params)
   (let* ((request (lspce--make-request method params))
-         (root-uri lspce--root-uri)
-         (lsp-type lspce--lsp-type)
+         (root-uri (lspce--root-uri))
+         (lsp-type (funcall lspce-lsp-type-function))
          (request-id (gethash :id request)))
 
     (lspce--notify-textDocument/didChange)
+
     (when (lspce-module-request-async root-uri lsp-type (json-encode request))
       request-id)))
 
@@ -1093,6 +1100,15 @@ Doubles as an indicator of snippet support."
             ;; nothing
             ))))
     (user-error "Lspce mode is not enabled.")))
+
+;;; signature help
+(defun lspce-signature-at-point ()
+  (when-let (capabilities (lspce--server-capable "signatureHelpProvider"))
+    (let* ((params (lspce--make-signatureHelpParams))
+           )
+      )
+    )
+  )
 
 ;;; diagnostics
 (put 'lspce-note 'flymake-category 'flymake-note)

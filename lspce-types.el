@@ -244,7 +244,7 @@
     params))
 
 (cl-defun lspce--textDocumentPositionParams (textDocument position &optional context)
-  "context is only used when finding references and completion."
+  "context is only used for references, signature help and completion."
   (let ((params (make-hash-table)))
     (puthash :textDocument textDocument params)
     (puthash :position position params)
@@ -257,6 +257,7 @@
 (defalias 'lspce--referencesParams 'lspce--textDocumentPositionParams "lspce--referencesParams")
 (defalias 'lspce--implementationParams 'lspce--textDocumentPositionParams "lspce--implementationParams")
 (defalias 'lspce--hoverParams 'lspce--textDocumentPositionParams "lspce--hoverParams")
+(defalias 'lspce--signatureHelpParams 'lspce--textDocumentPositionParams "lspce--signatureHelpParams")
 
 (defconst LSPCE-Invoked 1 "Completion was triggered by typing an identifier or via API")
 (defconst LSPCE-TriggerCharacter 2 "Completion was triggered by a trigger character")
