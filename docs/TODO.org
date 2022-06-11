@@ -18,6 +18,8 @@
   - State "DONE"       from "PROCESS"    [2022-05-29 日 13:01]
 * DONE 补全支持snippet
   - State "DONE"       from              [2022-05-29 日 13:01]
+* signatureHelp
+  支持eldoc。
 * codeAction
 * workspace/configuration
 * server启动进度
@@ -27,8 +29,6 @@
 
   - State "DONE"       from              [2022-05-26 四 16:43]
 * autoImport
-* signatureHelp
-  支持eldoc。
 * rename
 * xref查找引用导致发送didOpen的问题
 

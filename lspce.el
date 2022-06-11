@@ -180,7 +180,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (defun lspce--make-textDocumentPositionParams (&optional context)
   (lspce--textDocumentPositionParams
-   (lspce--textDocumentIdenfitier lspce--uri)
+   (lspce--textDocumentIdenfitier (lspce--uri))
    (lspce--make-position)
    context))
 (defalias 'lspce--make-signatureHelpParams 'lspce--make-textDocumentPositionParams "lspce--make-signatureHelpParams")
@@ -209,6 +209,12 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (when root-uri
       (lspce--path-to-uri root-uri))))
 
+(defun lspce--lsp-type ()
+  (funcall lspce-lsp-type-function))
+
+(defun lspce--uri ()
+  (lspce--path-to-uri (buffer-file-name)))
+
 (defun lspce--lsp-type-default ()
   "The return value is also used as language-id."
   (let ((suffix ""))
@@ -226,32 +232,14 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defvar lspce-lsp-type-function #'lspce--lsp-type-default
   "Function to the lsp type of current buffer.")
 
-(cl-defun lspce--request (method &optional params)
-  (let ((request (lspce--make-request method params))
-        (root-uri (lspce--root-uri))
-        (lsp-type (funcall lspce-lsp-type-function))
-        response-str response response-error response-data)
-    (unless (and root-uri lsp-type)
-      (user-error "lspce--request: Can not get root-uri or lsp-type of current buffer.")
-      (cl-return-from lspce--request nil))
-
-    (lspce--notify-textDocument/didChange)
-
-    (setq response-str (lspce-module-request root-uri lsp-type (json-encode request) timeout))
-    (when response-str
-      (progn
-        (setq response (json-parse-string response-str :array-type 'list))
-        (setq response-error (gethash "error" response))
-        (if response-error
-            (lspce--warn "LSP error %s" (gethash "message" response-error))
-          (setq response-data (gethash "result" response)))))
-    response-data))
-
 (cl-defun lspce--request-async (method &optional params)
   (let* ((request (lspce--make-request method params))
          (root-uri (lspce--root-uri))
          (lsp-type (funcall lspce-lsp-type-function))
          (request-id (gethash :id request)))
+    (unless (and root-uri lsp-type)
+      (user-error "lspce--request-async: Can not get root-uri or lsp-type of current buffer.")
+      (cl-return-from lspce--request-async nil))
 
     (lspce--notify-textDocument/didChange)
 
@@ -263,6 +251,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (cl-defun lspce--get-response (request-id)
   (let ((trying t)
+        (lspce--root-uri (lspce--root-uri))
+        (lspce--lsp-type (lspce--lsp-type))
         lrid
         response code msg response-error response-data)
     ;; (lspce--message "lspce--get-response for request-id %d" request-id)
@@ -301,11 +291,18 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (setq trying nil)))
     response-data))
 
+(defun lspce--request (method &optional params)
+  (when-let (request-id (lspce--request-async method params))
+    (lspce--get-response request-id)))
+
 (cl-defun lspce--notify (method &optional params)
   (let ((notification (lspce--make-notification method params))
-        (root-uri lspce--root-uri)
-        (lsp-type lspce--lsp-type)
+        (root-uri (lspce--root-uri))
+        (lsp-type (lspce--lsp-type))
         )
+    (unless (and root-uri lsp-type)
+      (user-error "lspce--notify: Can not get root-uri or lsp-type of current buffer.")
+      (cl-return-from lspce--notify nil))
     (lspce-module-notify root-uri lsp-type (json-encode notification))))
 
 
@@ -334,8 +331,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 ;; 返回server info.
 (cl-defun lspce--connect ()
-  (let ((root-uri lspce--root-uri)
-        (lsp-type lspce--lsp-type)
+  (let ((root-uri (lspce--root-uri))
+        (lsp-type (lspce--lsp-type))
         (initialize-params nil)
         lsp-server
         server server-cmd server-args initialize-options
@@ -465,10 +462,10 @@ Auto completion is only performed if the tick did not change."
 
 (cl-defun lspce--buffer-disable-lsp ()
   (let (server-key server-managed-buffers)
-    (setq server-key (make-lspce--hash-key :root-uri lspce--root-uri :lsp-type lspce--lsp-type))
+    (setq server-key (make-lspce--hash-key :root-uri (lspce--root-uri) :lsp-type (lspce--lsp-type)))
     (setq server-managed-buffers (gethash server-key lspce--managed-buffers))
     (when server-managed-buffers
-      (remhash lspce--uri server-managed-buffers)
+      (remhash (lspce--uri) server-managed-buffers)
       (when (= (hash-table-count server-managed-buffers) 0)
         (lspce--shutdown))
       (puthash server-key server-managed-buffers lspce--managed-buffers)
@@ -816,7 +813,7 @@ is nil, prompt only if there's no usable symbol at point."
 
 (defun lspce--make-completionParams()
   (let (context)
-    (lspce--completionParams (lspce--textDocumentIdenfitier lspce--uri)
+    (lspce--completionParams (lspce--textDocumentIdenfitier (lspce--uri))
                              (lspce--make-position)
                              (lspce--make-completionContext))))
 
@@ -1133,7 +1130,7 @@ Doubles as an indicator of snippet support."
   (if lspce-mode
       (let (diagnostics
             flymake-diags range start end severity msg)
-        (setq diagnostics (lspce-module-read-file-diagnostics lspce--root-uri lspce--lsp-type lspce--uri))
+        (setq diagnostics (lspce-module-read-file-diagnostics (lspce--root-uri) (lspce--lsp-type) (lspce--uri)))
         ;; (lspce--message "diagnostics: %S" diagnostics)
         (when diagnostics
           ;; FIXME 根据diag-type和位置排序。
