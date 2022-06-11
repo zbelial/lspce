@@ -48,6 +48,10 @@
   "If non-nil, ignore case when completing."
   :type 'boolean)
 
+(defcustom lspce-enable-eldoc t
+  "If non-nil, enable eldoc."
+  :type 'boolean)
+
 ;; Customizable via `completion-category-overrides'.
 (when (assoc 'flex completion-styles-alist)
   (add-to-list 'completion-category-defaults '(lspce-capf (styles flex basic))))
@@ -498,6 +502,10 @@ Auto completion is only performed if the tick did not change."
       (add-hook 'pre-command-hook 'lspce--pre-command-hook nil t)
       (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
       (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
+      (when lspce-enable-eldoc
+        (eldoc-mode t)
+        (add-hook 'eldoc-documentation-functions #'lspce-eldoc-signature-function nil t)
+        )
       (flymake-mode 1)
       (lspce--buffer-enable-lsp)
       (if lspce--server-info
@@ -515,6 +523,7 @@ Auto completion is only performed if the tick did not change."
     (remove-hook 'pre-command-hook 'lspce--pre-command-hook t)
     (remove-hook 'post-self-insert-hook 'lspce--post-self-insert-hook t)
     (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
+    (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-signature-function t)
     (lspce--notify-textDocument/didClose)
     (flymake-mode -1)
     (lspce--buffer-disable-lsp)
@@ -1099,13 +1108,44 @@ Doubles as an indicator of snippet support."
     (user-error "Lspce mode is not enabled.")))
 
 ;;; signature help
+
 (defun lspce-signature-at-point ()
-  (when-let (capabilities (lspce--server-capable "signatureHelpProvider"))
-    (let* ((params (lspce--make-signatureHelpParams))
-           )
-      )
-    )
-  )
+  (interactive)
+  (when (lspce--server-capable "signatureHelpProvider")
+    (let ((params (lspce--make-signatureHelpParams)))
+      (lspce--request "textDocument/signatureHelp" params))))
+
+(defun lspce-eldoc-signature-function (callback)
+  (let ((signature-at-point (lspce-signature-at-point))
+        signatures signature label parameters parameter
+        active-signature active-parameter param-label param-start param-end)
+    (when signature-at-point
+      (setq active-signature (gethash "activeSignature" signature-at-point))
+      (setq signatures (gethash "signatures" signature-at-point))
+      (setq active-parameter (gethash "activeParameter" signature-at-point))
+      (cond
+       ((and active-signature signatures)
+        (setq signature (nth active-signature signatures)))
+       (signatures
+        (setq signature (nth 0 active-signature signatures)))
+       (t)
+       )
+      (when signature
+        (setq label (gethash "label" signature))
+        (setq parameters (gethash "parameters" signature))
+        (setq active-parameter (or (gethash "activeParameter" signature) active-parameter))
+        (when (and active-parameter parameters)
+          (setq parameter (nth active-parameter parameters)))
+        (when parameter
+          (setq param-label (gethash "label" parameter))
+          (when (not (stringp param-label))
+            (setq param-start (nth 0 param-label))
+            (setq param-end (nth 1 param-label))
+            (setq param-label (substring-no-properties label param-start param-end)))
+          (setq label (string-replace param-label
+                                      (propertize param-label 'face 'font-lock-type-face)
+                                      label)))
+        (funcall callback label)))))
 
 ;;; diagnostics
 (put 'lspce-note 'flymake-category 'flymake-note)
