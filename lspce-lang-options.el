@@ -1,5 +1,6 @@
 ;;; lspce.el --- LSP Client for Emacs -*- lexical-binding: t; -*-
 
+(require 'f)
 
 (defun lspce--add-option (option value options)
   (when (not (hash-table-p options))
@@ -46,29 +47,86 @@
 
 
 ;;; java 
-(defvar lspce--jdtls-workspace-dir "/home/lucency/.emacs.d/data/unsync/lspce-jdtls/workspace/")
+(defcustom lspce-jdtls-workspace-dir (expand-file-name (locate-user-emacs-file "workspace/"))
+  "jdtls workspace directory."
+  :group 'lspce
+  :type 'directory)
+
 (defcustom lspce-java-vmargs '("--jvm-arg=-XX:+UseParallelGC" "--jvm-arg=-XX:GCTimeRatio=4" "--jvm-arg=-XX:AdaptiveSizePolicyWeight=90" "--jvm-arg=-Dsun.zip.disableMemoryMapping=true" "--jvm-arg=-Xmx1536m" )
   "Specifies extra VM arguments used to launch the Java Language Server."
-  :group 'lsp-java
+  :group 'lspce
   :risky t
   :type '(repeat string))
 
-(defun lspce-jdtls-cmd-args ()
-  (let ((args ""))
-    (unless (file-exists-p lspce--jdtls-workspace-dir)
-      (make-directory lspce--jdtls-workspace-dir t))
-    (setq args (concat args
-                       (mapconcat #'identity lspce-java-vmargs " ")
-                       " -data " lspce--jdtls-workspace-dir))
-    args
-    )
-  )
+(defcustom lspce-java-path "java"
+  "Path of the java executable."
+  :group 'lspce
+  :type 'string)
 
+(defcustom lspce-jdtls-install-dir nil
+  "Install directory for eclipse.jdt.ls-server."
+  :group 'lspce
+  :type 'directory)
+
+(defun lspce--jdtls-workspace-dir ()
+  (let ((proj (project-current))
+        workspace)
+    (unless (file-exists-p lspce-jdtls-workspace-dir)
+      (make-directory lspce-jdtls-workspace-dir t))
+    (setq workspace (if proj
+                        (file-truename (project-root proj))
+                      "DEFAULT"))
+    (concat lspce-jdtls-workspace-dir (string-replace "/" "!" workspace))))
+
+(defun lspce--jdtls-workspace-cache-dir ()
+  (let ((cache-dir (concat lspce-jdtls-workspace-dir ".cache/")))
+    (unless (file-exists-p cache-dir)
+      (make-directory cache-dir t))
+    cache-dir))
+
+(defun lspce--jdtls-locate-server-jar ()
+  "Return the jar file location of the language server.
+The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/org.eclipse.equinox.launcher_`version'.jar."
+  (pcase (f-glob "org.eclipse.equinox.launcher_*.jar" (expand-file-name "plugins" lspce-jdtls-install-dir))
+    (`(,single-entry) single-entry)
+    (`nil nil)
+    (server-jar-filenames
+     (error "Unable to find single point of entry %s" server-jar-filenames))))
+
+(defun lspce--jdtls-locate-server-config ()
+  "Return the server config based on OS."
+  (let ((config (cond
+                 ((string-equal system-type "windows-nt") ; Microsoft Windows
+                  "config_win")
+                 ((string-equal system-type "darwin") ; Mac OS X
+                  "config_mac")
+                 (t "config_linux"))))
+    (let ((inhibit-message t))
+      (message (format "using config for %s" config)))
+    (expand-file-name config lspce-jdtls-install-dir)))            
+
+(defun lspce-jdtls-cmd-args ()
+  (let ((server-jar (lspce--jdtls-locate-server-jar))
+        (server-config (lspce--jdtls-locate-server-config))
+        (data (lspce--jdtls-workspace-dir)))
+    (mapconcat #'identity `("-Declipse.application=org.eclipse.jdt.ls.core.id1"
+                            "-Dosgi.bundles.defaultStartLevel=4"
+                            "-Declipse.product=org.eclipse.jdt.ls.core.product"
+                            "-Dlog.protocol=true"
+                            "-Dlog.level=ALL"
+                            ,@lspce-java-vmargs
+                            "-jar"
+                            ,server-jar
+                            "-configuration"
+                            ,server-config
+                            "-data"
+                            ,data
+                            ) " ")))
 
 (defun lspce-jdtls-initializationOptions ()
   (let ((options (make-hash-table :test #'equal)))
-    (setq options (lspce--add-option "settings.java.server.launchMode" "Hybrid" options))
-    ;; (setq options (lspce--add-option "settings.java.server.launchMode" "LightWeight" options))
+    ;; (setq options (lspce--add-option "settings.java.server.launchMode" "Hybrid" options))
+    (setq options (lspce--add-option "settings.java.server.launchMode" "LightWeight" options))
     (setq options (lspce--add-option "settings.java.completion.enabled" t options))
     (setq options (lspce--add-option "settings.java.completion.maxResults" 30 options))
     (setq options (lspce--add-option "settings.java.completion.importOrder" (vector "java" "javax" "com" "org") options))

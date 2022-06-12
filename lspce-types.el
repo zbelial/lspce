@@ -1,9 +1,8 @@
 ;;; lspce.el --- LSP Client for Emacs -*- lexical-binding: t; -*-
 
-(require 'cl-lib)
 (require 'lspce-util)
 
-(cl-defun lspce--make-request (method &optional params)
+(defun lspce--make-request (method &optional params)
   "jsonrpc is added in the module."
   (let ((request (make-hash-table)))
     (puthash :id (lspce--next-jsonrpc-id) request)
@@ -12,7 +11,7 @@
       (puthash :params params request))
     request))
 
-(cl-defun lspce--make-notification (method &optional params)
+(defun lspce--make-notification (method &optional params)
   "jsonrpc is added in the module."
   (let ((notification (make-hash-table)))
     (puthash :method method notification)
@@ -20,23 +19,23 @@
       (puthash :params params notification))
     notification))
 
-(cl-defun lspce--synchronizationClientCapabilities ()
+(defun lspce--synchronizationClientCapabilities ()
   (let ((params (make-hash-table)))
     params))
 
-(cl-defun lspce--documentationFormat ()
+(defun lspce--documentationFormat ()
   (let (format)
     (setq format (vector "plaintext"))
     (when (fboundp 'markdown-mode)
       (setq format (vector "markdown" "plaintext")))
     format))
 
-(cl-defun lspce--resolveSupport ()
+(defun lspce--resolveSupport ()
   (let ((params (make-hash-table)))
     (puthash :properties (vector "documentation" "detail") params)
     params))
 
-(cl-defun lspce--completionItem ()
+(defun lspce--completionItem ()
   (let ((params (make-hash-table)))
     ;; (puthash :snippetSupport :json-false params)
     (puthash :snippetSupport t params)
@@ -50,19 +49,19 @@
     (puthash :resolveSupport (lspce--resolveSupport) params)
     params))
 
-(cl-defun lspce--completionClientCapabilities ()
+(defun lspce--completionClientCapabilities ()
   (let ((params (make-hash-table)))
     (puthash :dynamicRegistration :json-false params)
     (puthash :completionItem (lspce--completionItem) params)
     params))
 
-(cl-defun lspce--hoverClientCapabilities ()
+(defun lspce--hoverClientCapabilities ()
   (let ((params (make-hash-table)))
     (puthash :dynamicRegistration :json-false params)
     (puthash :contentFormat (lspce--documentationFormat) params)
     params))
 
-(cl-defun lspce--signatureHelpClientCapabilities()
+(defun lspce--signatureHelpClientCapabilities()
   (let ((params (make-hash-table))
         (signatureInformation (make-hash-table))
         (parameterInformation (make-hash-table)))
@@ -77,44 +76,54 @@
     (puthash :contextSupport :json-false params)
     params))
 
-(cl-defun lspce--declarationClientCapabilities ()
+(defun lspce--declarationClientCapabilities ()
   (let ((params (make-hash-table)))
     (puthash :dynamicRegistration :json-false params)
     (puthash :linkSupport :json-false params)
     params))
 
-(cl-defun lspce--definitionClientCapabilities ()
+(defun lspce--definitionClientCapabilities ()
   (let ((params (make-hash-table)))
     (puthash :dynamicRegistration :json-false params)
     (puthash :linkSupport :json-false params)
     params))
 
-(cl-defun lspce--typeDefinitionClientCapabilities ()
+(defun lspce--typeDefinitionClientCapabilities ()
   (let ((params (make-hash-table)))
     (puthash :dynamicRegistration :json-false params)
     (puthash :linkSupport :json-false params)
     params))
 
-(cl-defun lspce--implementationClientCapabilities ()
+(defun lspce--implementationClientCapabilities ()
   (let ((params (make-hash-table)))
     (puthash :dynamicRegistration :json-false params)
     (puthash :linkSupport :json-false params)
     params))
 
-(cl-defun lspce--referencesClientCapabilities ()
+(defun lspce--referencesClientCapabilities ()
   (let ((params (make-hash-table)))
     (puthash :dynamicRegistration :json-false params)
     params))
 
-(cl-defun lspce--codeActionClientCapabilities ()
+(defun lspce--codeActionClientCapabilities ()
+  (let ((params (make-hash-table)))
+    (puthash :dynamicRegistration :json-false params)
+    ;; (puthash :codeActionLiteralSupport (list :codeActionKind
+    ;;                                          (list :valueSet ["quickfix"
+    ;;                                                           "refactor" "refactor.extract"
+    ;;                                                           "refactor.inline" "refactor.rewrite"
+    ;;                                                           "source" "source.organizeImports"]))
+    ;;          params)
+    (puthash :isPreferredSupport t params)
+    (puthash :disabledSupport :json-false params)
+    (puthash :dataSupport :json-false params)
+    params))
+
+(defun lspce--renameClientCapabitlities ()
   (let ((params (make-hash-table)))
     params))
 
-(cl-defun lspce--renameClientCapabitlities ()
-  (let ((params (make-hash-table)))
-    params))
-
-(cl-defun lspce--publishDiagnosticsClientCapabilities ()
+(defun lspce--publishDiagnosticsClientCapabilities ()
   (let ((params (make-hash-table)))
     (puthash :relatedInformation :json-false params)
     (puthash :versionSupport :json-false params)
@@ -123,12 +132,12 @@
     (puthash :tagSupport (list :valueSet (vector 1 2)) params)
     params))
 
-(cl-defun lspce--textDocumentSyncClientCapabilities ()
+(defun lspce--textDocumentSyncClientCapabilities ()
   (let ((params (make-hash-table)))
     (puthash :didSave :json-false params)
     params))
 
-(cl-defun lspce--textDocumentClientCapabilities ()
+(defun lspce--textDocumentClientCapabilities ()
   (let ((capabilities (make-hash-table)))
     (puthash :synchronization (lspce--textDocumentSyncClientCapabilities) capabilities)
     (puthash :completion (lspce--completionClientCapabilities) capabilities)
@@ -139,37 +148,37 @@
     (puthash :typeDefinition (lspce--typeDefinitionClientCapabilities) capabilities)
     (puthash :implementation (lspce--implementationClientCapabilities) capabilities)
     (puthash :references (lspce--referencesClientCapabilities) capabilities)
-    ;; (puthash :codeAction (lspce--codeActionClientCapabilities) capabilities)
+    (puthash :codeAction (lspce--codeActionClientCapabilities) capabilities)
     ;; (puthash :rename (lspce--renameClientCapabitlities) capabilities)
     (puthash :publishDiagnostics (lspce--publishDiagnosticsClientCapabilities) capabilities)
     capabilities))
 
-(cl-defun lspce--clientInfo ()
+(defun lspce--clientInfo ()
   (let ((params (make-hash-table)))
     (puthash :name LSPCE-NAME params)
     (puthash :version LSPCE-VERSION params)
     params))
 
-(cl-defun lspce--fileOperations ()
+(defun lspce--fileOperations ()
   (let ((params (make-hash-table)))
     params))
 
-(cl-defun lspce--workspace ()
+(defun lspce--workspace ()
   (let ((params (make-hash-table)))
     params))
 
-(cl-defun lspce--window ()
+(defun lspce--window ()
   (let ((params (make-hash-table)))
     params))
 
-(cl-defun lspce--clientCapabilities ()
+(defun lspce--clientCapabilities ()
   (let ((capabilities (make-hash-table)))
     ;; (puthash :workspace (lspce--workspace) capabilities)    
     (puthash :textDocument (lspce--textDocumentClientCapabilities) capabilities)
     ;; (puthash :window (lspce--window) capabilities)
     capabilities))
 
-(cl-defun lspce--initializeParams (rootUri capabilities &optional initializationOptions trace workspaceFolders)
+(defun lspce--initializeParams (rootUri capabilities &optional initializationOptions trace workspaceFolders)
   "初始化参数"
   (let ((params (make-hash-table)))
     (puthash :processId (emacs-pid) params)
@@ -185,7 +194,7 @@
     
     params))
 
-(cl-defun lspce--textDocumentItem (uri languageId version text)
+(defun lspce--textDocumentItem (uri languageId version text)
   (let ((params (make-hash-table)))
     (puthash :uri uri params)
     (puthash :languageId languageId params)
@@ -193,57 +202,57 @@
     (puthash :text text params)
     params))
 
-(cl-defun lspce--versionedTextDocumentIdenfitier (uri version)
+(defun lspce--versionedTextDocumentIdenfitier (uri version)
   (let ((params (make-hash-table)))
     (puthash :uri uri params)
     (puthash :version version params)
     params))
 
 
-(cl-defun lspce--didOpenTextDocumentParams (textDocument)
+(defun lspce--didOpenTextDocumentParams (textDocument)
   "For didOpen, textDocument is a TextDocumentItem, but for didClose, it's TextDocumentIdentifier."
   (let ((params (make-hash-table)))
     (puthash :textDocument textDocument params)
     params))
 (defalias 'lspce--didCloseTextDocumentParams 'lspce--didOpenTextDocumentParams "lspce--didCloseTextDocumentParams")
 
-(cl-defun lspce--textDocumentContentChangeEvent (range rangeLength text)
+(defun lspce--textDocumentContentChangeEvent (range rangeLength text)
   (let ((params (make-hash-table)))
     (puthash :range range params)
     (puthash :rangeLength rangeLength params)
     (puthash :text text params)
     params))
 
-(cl-defun lspce--didChangeTextDocumentParams (textDocument contentChanges)
+(defun lspce--didChangeTextDocumentParams (textDocument contentChanges)
   "textDocument is a VersionedTextDocumentIdentifier."
   (let ((params (make-hash-table)))
     (puthash :textDocument textDocument params)
     (puthash :contentChanges contentChanges params)
     params))
 
-(cl-defun lspce--position (line character)
+(defun lspce--position (line character)
   (let ((params (make-hash-table)))
     (puthash :line line params)
     (puthash :character character params)
     params))
 
-(cl-defun lspce--range (start end)
+(defun lspce--range (start end)
   (let ((params (make-hash-table)))
     (puthash :start start params)
     (puthash :end end params)
     params))
 
-(cl-defun lspce--textDocumentIdenfitier (uri)
+(defun lspce--textDocumentIdenfitier (uri)
   (let ((params (make-hash-table)))
     (puthash :uri uri params)
     params))
 
-(cl-defun lspce--referenceContext ()
+(defun lspce--referenceContext ()
   (let ((params (make-hash-table)))
     (puthash :includeDeclaration t params)
     params))
 
-(cl-defun lspce--textDocumentPositionParams (textDocument position &optional context)
+(defun lspce--textDocumentPositionParams (textDocument position &optional context)
   "context is only used for references, signature help and completion."
   (let ((params (make-hash-table)))
     (puthash :textDocument textDocument params)
@@ -262,7 +271,7 @@
 (defconst LSPCE-Invoked 1 "Completion was triggered by typing an identifier or via API")
 (defconst LSPCE-TriggerCharacter 2 "Completion was triggered by a trigger character")
 (defconst LSPCE-TriggerForIncompleteCompletions 3 "Completion was re-triggered as the current completion list is incomplete")
-(cl-defun lspce--completionContext (trigger-kind trigger-character)
+(defun lspce--completionContext (trigger-kind trigger-character)
   (let ((params (make-hash-table)))
     (when trigger-kind
       (puthash :triggerKind trigger-kind params))
@@ -270,5 +279,19 @@
       (puthash :triggerCharacter trigger-character params))
     params))
 (defalias 'lspce--completionParams 'lspce--textDocumentPositionParams "lspce--definitionParams")
+
+(defun lspce--codeActionContext (diagnostics &optional only)
+  (let ((params (make-hash-table)))
+    (puthash :diagnostics diagnostics params)
+    (when only
+      (puthash :only only params))
+    params))
+
+(defun lspce--codeActionParams (textDocument range context)
+  (let ((params (make-hash-table)))
+    (puthash :textDocument textDocument params)
+    (puthash :range range params)
+    (puthash :context context params)
+    params))
 
 (provide 'lspce-types)

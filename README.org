@@ -14,10 +14,10 @@
   - diagnostics (as a flymake backend)
     process diagnostics when idle.
   - hover (triggered by `lspce-help-at-point`)
+  - signature help (as a `eldoc-documentation-functions` function)
     
 
   The features planed to implement:
-  - signature help
   - code action
   - rename
   - ...
@@ -56,4 +56,5 @@
 
 * Acknowledgements
   Thanks to [[https://github.com/ubolonton/emacs-module-rs][emacs-module-rs]], which makes implementing LSPCE possible.
-  Thanks to [[https://github.com/joaotavora/eglot][eglot]] and [[https://github.com/emacs-lsp/lsp-mode][lsp-mode]], I learned a lot about LSP while developing this package.
+
+  Thanks to [[https://github.com/joaotavora/eglot][eglot]] and [[https://github.com/emacs-lsp/lsp-mode][lsp-mode]], I learned a lot about LSP from both of them while developing this package.

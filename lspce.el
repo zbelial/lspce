@@ -84,7 +84,7 @@
                                 ("python-mode" "pyright-langserver" "--stdio" lspce-pyright-initializationOptions)
                                 ("C" "clangd" "")
                                 ("go-mode"  "gopls" "")
-                                ("java-mode"  "jdtls" lspce-jdtls-cmd-args lspce-jdtls-initializationOptions))
+                                )
   "How the command `lspce' gets the server to start.
 A list of (LSP-TYPE SERVER-COMMAND SERVER-PARAMS).  LSP-TYPE
 identifies the buffers that are to be managed by a specific
@@ -155,11 +155,16 @@ be set to `lspce-move-to-lsp-abiding-column', and
                                         (vconcat changes))))
 
 (defun lspce--make-position (&optional pos)
-  (let (line character)
-    (setq line (1- (line-number-at-pos pos t)))
-    (setq character (progn (when pos (goto-char pos))
-                           (funcall lspce-current-column-function)))
-    (lspce--position line character)))
+  (save-excursion
+    (let (line character)
+      (setq line (1- (line-number-at-pos pos t)))
+      (setq character (progn (when pos (goto-char pos))
+                             (funcall lspce-current-column-function)))
+      (lspce--position line character)))
+  )
+
+(defun lspce--make-range (start end)
+  (list :start (lspce--make-position start) :end (lspce--make-position end)))
 
 (defun lspce--make-definitionParams (&optional context)
   (lspce--definitionParams
@@ -477,8 +482,11 @@ Auto completion is only performed if the tick did not change."
       (setq-local lspce--server-info nil))))
 
 (defun lspce--kill-buffer-hook ()
-  (lspce--notify-textDocument/didClose)
-  (lspce--buffer-disable-lsp)
+  (when (and buffer-file-name
+             lspce-mode)
+    (lspce--notify-textDocument/didClose)
+    (lspce--buffer-disable-lsp)
+    )
   )
 
 ;; TODO add kill-emacs-hook to kill all lsp servers.
@@ -503,7 +511,7 @@ Auto completion is only performed if the tick did not change."
       (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
       (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
       (when lspce-enable-eldoc
-        (eldoc-mode t)
+        (eldoc-mode 1)
         (add-hook 'eldoc-documentation-functions #'lspce-eldoc-signature-function nil t)
         )
       (flymake-mode 1)
@@ -1187,7 +1195,7 @@ Doubles as an indicator of snippet support."
                                            (lspce--lsp-position-to-point (gethash "line" end)
                                                                          (gethash "character" end))
                                            (lspce--diag-type severity)
-                                           msg) flymake-diags)))
+                                           msg `((lspce-lsp-diag . ,d))) flymake-diags)))
         flymake-diags)))
 
 (defun lspce-flymake-backend (report-fn &rest _more)
@@ -1213,7 +1221,51 @@ Doubles as an indicator of snippet support."
              :region (cons (point-min) (point-max))))
   (setq lspce--diagnostics diags))
 
-;; (flymake-make-diagnostic)
+;;; code action
+(defun lspce--make-codeActionContext (begin end &optional action-kind)
+  (let ((flymake-diags (flymake-diagnostics begin end))
+        (diagnostics (vector))
+        diag)
+    (dolist (d flymake-diags)
+      (setq diag (cdr (assoc 'lspce-lsp-diag (flymake-diagnostic-data d))))
+      (when diag
+        (setq diagnostics (vconcat diagnostics (list diag)))))
+    (lspce--codeActionContext diagnostics (when action-kind (vector action-kind)))))
+
+(defun lspce--make-codeActionParams (begin end &optional action-kind)
+  (lspce--codeActionParams
+   (lspce--textDocumentIdenfitier (lspce--uri))
+   (lspce--make-range begin end)
+   (lspce--make-codeActionContext begin end action-kind)))
+
+(defun lspce--region-bounds ()
+  "Region bounds if active, else bounds of things at point."
+  (if (use-region-p) `(,(region-beginning) ,(region-end))
+    (let ((boftap (bounds-of-thing-at-point 'sexp)))
+      (list (car boftap) (cdr boftap)))))
+
+(cl-defun lspce-code-actions (beg &optional end action-kind)
+  "Offer to execute actions of ACTION-KIND between BEG and END.
+If ACTION-KIND is nil, consider all kinds of actions.
+Interactively, default BEG and END to region's bounds else BEG is
+point and END is nil, which results in a request for code actions
+at point.  With prefix argument, prompt for ACTION-KIND."
+  (interactive
+   `(,@(lspce--region-bounds)
+     ,(and current-prefix-arg
+           (completing-read "[lspce] Action kind: "
+                            '("quickfix" "refactor.extract" "refactor.inline"
+                              "refactor.rewrite" "source.organizeImports")))))
+  (unless (lspce--server-capable "codeActionProvider")
+    (lspce--warn "Server can't execute code actions!")
+    (cl-return-from lspce-code-actions nil))
+
+  (let ((actions (lspce--request "textDocument/codeAction" (lspce--make-codeActionParams beg end action-kind))))
+    (when actions
+      (message "actions: %S" actions)
+      )
+    )
+  )
 
 
 ;;; Mode-line
