@@ -516,8 +516,8 @@ Auto completion is only performed if the tick did not change."
       (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
       (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
       (when lspce-enable-eldoc
-        (eldoc-mode 1)
         (add-hook 'eldoc-documentation-functions #'lspce-eldoc-signature-function nil t)
+        (eldoc-mode 1)
         )
       (flymake-mode 1)
       (lspce--buffer-enable-lsp)
