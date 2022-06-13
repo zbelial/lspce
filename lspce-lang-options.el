@@ -76,10 +76,10 @@
     (setq workspace (if proj
                         (file-truename (project-root proj))
                       "DEFAULT"))
-    (concat lspce-jdtls-workspace-dir (string-replace "/" "!" workspace))))
+    (f-join lspce-jdtls-workspace-dir (string-replace "/" "!" workspace))))
 
 (defun lspce--jdtls-workspace-cache-dir ()
-  (let ((cache-dir (concat lspce-jdtls-workspace-dir ".cache/")))
+  (let ((cache-dir (f-join lspce-jdtls-workspace-dir ".cache/")))
     (unless (file-exists-p cache-dir)
       (make-directory cache-dir t))
     cache-dir))
