@@ -882,6 +882,40 @@ Doubles as an indicator of snippet support."
        (symbol-value 'yas-minor-mode)
        'yas-expand-snippet))
 
+(defun lspce--completion-resolve (item)
+  (when (and (lspce--server-capable-chain "completionProvider" "resolveProvider")
+             (gethash "data" item))
+    (lspce--request "completionItem/resolve" item)))
+
+;; (defun lspce--format-markup (content)
+;;   (cond
+;;    ((stringp content)
+;;     content)
+;;    ((hash-table-p content)
+;;     (let ((kind (gethash "kind" content))
+;;           (value (gethash "value" content)))
+;;       ))
+;;    )
+;;   )
+
+(defun lspce--format-markup (markup)
+  "Format MARKUP according to LSP's spec."
+  (pcase-let ((`(,string ,mode)
+               (if (stringp markup) (list markup 'gfm-view-mode)
+                 (list (gethash "value" markup)
+                       (pcase (gethash "kind" markup)
+                         ("markdown" 'gfm-view-mode)
+                         ("plaintext" 'text-mode)
+                         (_ major-mode))))))
+    (with-temp-buffer
+      (setq-local markdown-fontify-code-blocks-natively t)
+      (insert string)
+      (let ((inhibit-message t)
+	    (message-log-max nil))
+        (ignore-errors (delay-mode-hooks (funcall mode))))
+      (font-lock-ensure)
+      (string-trim (buffer-string)))))
+
 (defun lspce-completion-at-point()
   (when-let (completion-capability (lspce--server-capable "completionProvider"))
     (let* ((bounds (bounds-of-thing-at-point 'symbol))
@@ -975,6 +1009,20 @@ Doubles as an indicator of snippet support."
                      (kind (alist-get (gethash "kind" lsp-item)
                                       lspce--kind-names)))
            (intern (downcase kind))))
+       :company-doc-buffer
+       (lambda (proxy)
+         (let* ((documentation
+                 (let* ((lsp-item (get-text-property 0 'lspce--lsp-item proxy))
+                        (resolve (lspce--completion-resolve lsp-item)))
+                   (when resolve
+                     (gethash "documentation" resolve))))
+                (formatted (and documentation
+                                (lspce--format-markup documentation))))
+           (when formatted
+             (with-current-buffer (get-buffer-create " *lspce doc*")
+               (erase-buffer)
+               (insert formatted)
+               (current-buffer)))))       
        :company-prefix-length
        (save-excursion
          (when (car bounds)
