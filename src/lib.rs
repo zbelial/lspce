@@ -381,6 +381,7 @@ fn connect(
     cmd: String,
     cmd_args: String,
     initialize_req: String,
+    timeout: i32,
 ) -> Result<Option<String>> {
     Logger::log(&format!(
         "start initializing server for lsp_type {} in project {}",
@@ -411,7 +412,7 @@ fn connect(
 
         let mut project = projects.get_mut(&root_uri);
         if let Some(p) = project.as_mut() {
-            if initialize(env, root_uri.clone(), &mut s, initialize_req) {
+            if initialize(env, root_uri.clone(), &mut s, initialize_req, timeout) {
                 server_info = s.server_info.clone();
                 p.servers.insert(lsp_type, s);
             } else {
@@ -420,7 +421,7 @@ fn connect(
             }
         } else {
             let mut proj = Project::new(root_uri.clone());
-            if initialize(env, root_uri.clone(), &mut s, initialize_req) {
+            if initialize(env, root_uri.clone(), &mut s, initialize_req, timeout) {
                 server_info = s.server_info.clone();
                 proj.servers.insert(lsp_type, s);
 
@@ -439,7 +440,13 @@ fn connect(
     }
 }
 
-fn initialize(env: &Env, root_uri: String, server: &mut LspServer, req_str: String) -> bool {
+fn initialize(
+    env: &Env,
+    root_uri: String,
+    server: &mut LspServer,
+    req_str: String,
+    timeout: i32,
+) -> bool {
     Logger::log(&format!("initialize request {:#?}", req_str));
 
     let msg = serde_json::from_str::<Request>(&req_str);
@@ -498,7 +505,9 @@ fn initialize(env: &Env, root_uri: String, server: &mut LspServer, req_str: Stri
                 thread::sleep(std::time::Duration::from_millis(100));
             }
         }
-        if Instant::now().duration_since(start_time).as_millis() > 30 * 1000 {
+        if timeout > 0
+            && Instant::now().duration_since(start_time).as_millis() > timeout as u128 * 1000
+        {
             env.message(&format!("timeout when initializing server."));
             Logger::log(&format!("timeout when initializing server."));
 

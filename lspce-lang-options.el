@@ -52,7 +52,7 @@
   :group 'lspce
   :type 'directory)
 
-(defcustom lspce-java-vmargs '("--jvm-arg=-XX:+UseParallelGC" "--jvm-arg=-XX:GCTimeRatio=4" "--jvm-arg=-XX:AdaptiveSizePolicyWeight=90" "--jvm-arg=-Dsun.zip.disableMemoryMapping=true" "--jvm-arg=-Xmx1536m" )
+(defcustom lspce-java-vmargs '("--add-modules=ALL-SYSTEM" "--add-opens java.base/java.util=ALL-UNNAMED" "--add-opens java.base/java.lang=ALL-UNNAMED" "-XX:+UseParallelGC" "-XX:GCTimeRatio=4" "-XX:AdaptiveSizePolicyWeight=90" "-Dsun.zip.disableMemoryMapping=true" "-Xmx1536m" )
   "Specifies extra VM arguments used to launch the Java Language Server."
   :group 'lspce
   :risky t

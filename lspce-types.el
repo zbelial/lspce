@@ -108,12 +108,12 @@
 (defun lspce--codeActionClientCapabilities ()
   (let ((params (make-hash-table)))
     (puthash :dynamicRegistration :json-false params)
-    ;; (puthash :codeActionLiteralSupport (list :codeActionKind
-    ;;                                          (list :valueSet ["quickfix"
-    ;;                                                           "refactor" "refactor.extract"
-    ;;                                                           "refactor.inline" "refactor.rewrite"
-    ;;                                                           "source" "source.organizeImports"]))
-    ;;          params)
+    (puthash :codeActionLiteralSupport (list :codeActionKind
+                                             (list :valueSet ["quickfix"
+                                                              "refactor" "refactor.extract"
+                                                              "refactor.inline" "refactor.rewrite"
+                                                              "source" "source.organizeImports"]))
+             params)
     (puthash :isPreferredSupport t params)
     (puthash :disabledSupport :json-false params)
     (puthash :dataSupport :json-false params)

@@ -52,6 +52,11 @@
   "If non-nil, enable eldoc."
   :type 'boolean)
 
+(defcustom lspce-connect-server-timeout 60
+  "The timeout of connecting to lsp server, in seconds."
+  :type 'integer)
+
+
 ;; Customizable via `completion-category-overrides'.
 (when (assoc 'flex completion-styles-alist)
   (add-to-list 'completion-category-defaults '(lspce-capf (styles flex basic))))
@@ -377,7 +382,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
     (setq initialize-params (lspce--make-initializeParams root-uri initialize-options))
 
-    (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params))))
+    (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params)) lspce-connect-server-timeout))
 
     response-str))
 
