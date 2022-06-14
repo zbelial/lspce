@@ -164,6 +164,10 @@
 
 (defun lspce--workspace ()
   (let ((params (make-hash-table)))
+    (puthash :applyEdit :json-false params)
+    (puthash :workspaceEdit (list :documentChanges t) params)
+    (puthash :workspaceFolders :json-false params)
+    (puthash :configuration :json-false params)
     params))
 
 (defun lspce--window ()
@@ -172,7 +176,7 @@
 
 (defun lspce--clientCapabilities ()
   (let ((capabilities (make-hash-table)))
-    ;; (puthash :workspace (lspce--workspace) capabilities)    
+    (puthash :workspace (lspce--workspace) capabilities)    
     (puthash :textDocument (lspce--textDocumentClientCapabilities) capabilities)
     ;; (puthash :window (lspce--window) capabilities)
     capabilities))

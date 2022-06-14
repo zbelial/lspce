@@ -1315,7 +1315,9 @@ at point.  With prefix argument, prompt for ACTION-KIND."
 
   (let ((actions (lspce--request "textDocument/codeAction" (lspce--make-codeActionParams beg end action-kind))))
     (when actions
-      (message "actions: %S" actions)
+      (dolist (action actions)
+        (message "action: %S" action)
+        )
       )
     )
   )
