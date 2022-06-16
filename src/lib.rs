@@ -583,6 +583,11 @@ fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Resu
                     server.exit_transport();
                     server.kill_child();
 
+                    p.servers.remove(&file_type);
+                    if p.servers.len() == 0 {
+                        projects.remove(&root_uri);
+                    }
+
                     return Ok(None);
                 }
             }
