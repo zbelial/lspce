@@ -919,6 +919,14 @@ Doubles as an indicator of snippet support."
 (defun lspce-completion-at-point()
   (when-let (completion-capability (lspce--server-capable "completionProvider"))
     (let* ((bounds (bounds-of-thing-at-point 'symbol))
+           (sort-completions
+            (lambda (completions)
+              (cl-sort completions
+                       #'string-lessp
+                       :key (lambda (c)
+                              (or (gethash "sortText"
+                                           (get-text-property 0 'lspce--lsp-item c))
+                                  "")))))
            items
            completions
            complete?
@@ -963,7 +971,8 @@ Doubles as an indicator of snippet support."
          (let (collection)
            (cond
             ((eq action 'metadata) `(metadata (category . lspce-capf)
-                                              (display-sort-function . identity)
+                                              (display-sort-function . ,sort-completions)
+                                              ;; (display-sort-function . identity)
                                               (cycle-sort-function . identity)))               ; metadata
             ((eq (car-safe action) 'boundaries) nil)       ; boundaries
             ((eq action 'lambda)                           ; test-completion
