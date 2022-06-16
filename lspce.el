@@ -865,16 +865,6 @@ is nil, prompt only if there's no usable symbol at point."
       (cl-return-from lspce--request-completion nil)))
     (list complete? items)))
 
-(defun lspce--completions (items)
-  (let (completions)
-    (dolist (item items)
-      (cl-pushnew (gethash "label" item) completions))
-    completions))
-
-(defun lspce--test-completions ()
-  (let (completions (lspce--completions (nth 1 (lspce--request-completion))))
-    (lspce--message "completions: %S" completions)))
-
 (defun lspce--snippet-expansion-fn ()
   "Compute a function to expand snippets.
 Doubles as an indicator of snippet support."
@@ -886,17 +876,6 @@ Doubles as an indicator of snippet support."
   (when (and (lspce--server-capable-chain "completionProvider" "resolveProvider")
              (gethash "data" item))
     (lspce--request "completionItem/resolve" item)))
-
-;; (defun lspce--format-markup (content)
-;;   (cond
-;;    ((stringp content)
-;;     content)
-;;    ((hash-table-p content)
-;;     (let ((kind (gethash "kind" content))
-;;           (value (gethash "value" content)))
-;;       ))
-;;    )
-;;   )
 
 (defun lspce--format-markup (markup)
   "Format MARKUP according to LSP's spec."

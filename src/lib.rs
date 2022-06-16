@@ -304,22 +304,27 @@ impl LspServer {
     //
     pub fn read_response_exact(&self, id: RequestId) -> Option<Response> {
         let mut responses = self.responses.lock().unwrap();
+        let mut result: Option<Response>;
         loop {
             let resp = responses.pop_front();
-            Logger::log(&format!("read_response_exact {}, get {:?}", id, resp));
+            // Logger::log(&format!("read_response_exact {}, get {:#?}", id, resp));
             if resp.is_some() {
                 let resp = resp.unwrap();
 
                 if id.eq(&resp.id) {
-                    return Some(resp);
+                    result = Some(resp);
+                    break;
                 } else if id.lt(&resp.id) {
                     responses.push_front(resp);
-                    return None;
+                    result = None;
+                    break;
                 }
             } else {
-                return None;
+                result = None;
+                break;
             }
         }
+        result
     }
 
     pub fn read_notification(&self) -> Option<Notification> {
