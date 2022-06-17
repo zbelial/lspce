@@ -7,18 +7,20 @@
 * Introduction
   LSPCE - LSP Client for Emacs, is a simple lsp client that is implemented as an Emacs module.
 
+  CAUTION: This package is still in pre-alpha stage.
+
   It does not want to be a full-featured lsp client. The features it supports are:
   - find definitions/references/implementatoins (as a xref backend)
   - completion (as a capf function)
-    support snippet too.
+    support snippet and auto import.
   - diagnostics (as a flymake backend)
     process diagnostics when idle.
   - hover (triggered by `lspce-help-at-point`)
   - signature help (as a `eldoc-documentation-functions` function)
+  - code action (triggered by `lspce-code-actions`)
     
 
   The features planed to implement:
-  - code action
   - rename
   - ...
   
@@ -37,6 +39,7 @@
 
    Or (if you use Linux) you can download a .so file I compiled on a Manjaro with rust 1.61.0.
 * Get started
+  You need to install [[https://github.com/rejeep/f.el][f.el]] as this package depends on it.
   #+BEGIN_SRC elisp
     (use-package lspce
       :load-path "/path/to/lspce/lisp"
