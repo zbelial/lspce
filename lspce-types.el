@@ -133,7 +133,8 @@
 
 (defun lspce--textDocumentSyncClientCapabilities ()
   (let ((params (make-hash-table)))
-    (puthash :didSave :json-false params)
+    (puthash :willSave t params)
+    (puthash :didSave t params)
     params))
 
 (defun lspce--textDocumentClientCapabilities ()

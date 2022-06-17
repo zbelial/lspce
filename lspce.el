@@ -339,6 +339,18 @@ be set to `lspce-move-to-lsp-abiding-column', and
      "textDocument/didClose" (lspce--make-didCloseTextDocumentParams)))
   )
 
+(defun lspce--notify-textDocument/willSave ()
+  "Send textDocument/willSave to server."
+  (when (lspce--server-capable-chain "textDocumentSync" "willSave")
+    (lspce--notify
+     "textDocument/willSave" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri)) :reason 1))))
+
+(defun lspce--notify-textDocument/didSave ()
+  "Send textDocument/willSave to server."
+  (when (lspce--server-capable-chain "textDocumentSync" "save")
+    (lspce--notify
+     "textDocument/didSave" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))))))
+
 (defun lspce--server-program (lsp-type)
   (let ((server (assoc-default lsp-type lspce-server-programs)))
     server))
@@ -514,11 +526,12 @@ Auto completion is only performed if the tick did not change."
       (add-hook 'completion-at-point-functions 'lspce-completion-at-point nil t)
       (add-hook 'pre-command-hook 'lspce--pre-command-hook nil t)
       (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
+      (add-hook 'before-save-hook 'lspce--notify-textDocument/willSave nil t)
+      (add-hook 'after-save-hook 'lspce--notify-textDocument/didSave nil t)
       (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
       (when lspce-enable-eldoc
         (add-hook 'eldoc-documentation-functions #'lspce-eldoc-signature-function nil t)
-        (eldoc-mode 1)
-        )
+        (eldoc-mode 1))
       (flymake-mode 1)
       (lspce--buffer-enable-lsp)
       (if lspce--server-info
@@ -535,6 +548,8 @@ Auto completion is only performed if the tick did not change."
     (remove-hook 'completion-at-point-functions #'lspce-completion-at-point t)
     (remove-hook 'pre-command-hook 'lspce--pre-command-hook t)
     (remove-hook 'post-self-insert-hook 'lspce--post-self-insert-hook t)
+    (remove-hook 'before-save-hook 'lspce--notify-textDocument/willSave t)
+    (remove-hook 'after-save-hook 'lspce--notify-textDocument/didSave t)
     (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
     (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-signature-function t)
     (lspce--notify-textDocument/didClose)
@@ -1052,6 +1067,7 @@ Doubles as an indicator of snippet support."
                     (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
                     (insertText (gethash "insertText" lsp-item))
                     (textEdit (gethash "textEdit" lsp-item))
+                    (additionalTextEdits (gethash "additionalTextEdits" lsp-item))
                     (snippet-fn (and (eql insertTextFormat 2)
                                      (lspce--snippet-expansion-fn))))
                ;; (lspce--message "lsp-item %S" (json-encode lsp-item))
@@ -1075,9 +1091,9 @@ Doubles as an indicator of snippet support."
                           ;; (lspce--message "beg %s, end %s" beg end)
                           (delete-region beg end)
                           (goto-char beg)
-                          (funcall (or snippet-fn #'insert) newText))
-                        )
-                      )
+                          (funcall (or snippet-fn #'insert) newText)))
+                      (when (cl-plusp (length additionalTextEdits))
+                        (lspce--apply-text-edits additionalTextEdits)))
                      (snippet-fn
                       ;; A snippet should be inserted, but using plain
                       ;; `insertText'.  This requires us to delete the
@@ -1306,6 +1322,72 @@ Doubles as an indicator of snippet support."
     (let ((boftap (bounds-of-thing-at-point 'sexp)))
       (list (car boftap) (cdr boftap)))))
 
+(defun lspce--execute-command (command arguments)
+  (if (string-equal command "java.apply.workspaceEdit")
+      (progn
+        (mapc #'lspce--apply-workspace-edit arguments))
+    (let ((params (list :command command :arguments arguments)))
+      (lspce--request "workspace/executeCommand" params))))
+
+(defun lspce--apply-text-edits (edits &optional version)
+  (when (or (not version)
+            (equal version lspce--identifier-version))
+    (message "edits: %s" (json-encode edits))
+    (atomic-change-group
+      (let* ((change-group (prepare-change-group)))
+        (dolist (edit edits)
+          (let* ((source (current-buffer))
+                 (newText (gethash "newText" edit))
+                 (range (lspce--range-region (gethash "range" edit)))
+                 (start (car range))
+                 (end (cdr range)))
+            (with-temp-buffer
+              (insert newText)
+              (let ((temp (current-buffer)))
+                (with-current-buffer source
+                  (save-excursion
+                    (save-restriction
+                      (narrow-to-region start end)
+                      (let ((inhibit-modification-hooks t)
+                            (length (- end start)))
+                        (run-hook-with-args 'before-change-functions
+                                            start end)
+                        (replace-buffer-contents temp)
+                        (run-hook-with-args 'after-change-functions
+                                            start (+ start (length newText))
+                                            length)))))))))))))
+
+(defun lspce--apply-workspace-edit (wedit)
+  (let ((changes (gethash "changes" wedit))
+        (documentChanges (gethash "documentChanges" wedit))
+        filename edits all-edits)
+    (if documentChanges
+        (progn
+          (cond
+           ((listp documentChanges)
+            )
+           ((hash-table-p documentChanges)
+            (setq documentChanges (list documentChanges))))
+          (dolist (dc documentChanges)
+            (let ((textDocument (gethash "textDocument" dc))
+                  (edits (gethash "edits" dc))
+                  version)
+              (setq filename (lspce--uri-to-path (gethash "uri" textDocument))
+                    version (gethash "version" textDocument))
+              (cl-pushnew (list filename edits version) all-edits))))
+      (when changes
+        (setq filename (lspce--uri-to-path (nth 0 (hash-table-keys changes)))
+              edits (nth 0 (hash-table-values changes)))
+        (cl-pushnew (list filename edits nil) all-edits)))
+
+    (setq all-edits (nreverse all-edits))
+    (dolist (aedits all-edits)
+      (let ((filename (nth 0 aedits))
+            (edits (nth 1 aedits))
+            (version (nth 2 aedits)))
+        (with-current-buffer (find-file-noselect filename)
+          (lspce--apply-text-edits edits version))))))
+
 (cl-defun lspce-code-actions (beg &optional end action-kind)
   "Offer to execute actions of ACTION-KIND between BEG and END.
 If ACTION-KIND is nil, consider all kinds of actions.
@@ -1322,14 +1404,36 @@ at point.  With prefix argument, prompt for ACTION-KIND."
     (lspce--warn "Server can't execute code actions!")
     (cl-return-from lspce-code-actions nil))
 
-  (let ((actions (lspce--request "textDocument/codeAction" (lspce--make-codeActionParams beg end action-kind))))
-    (when actions
-      (dolist (action actions)
-        (message "action: %S" action)
-        )
-      )
-    )
-  )
+  (let ((actions (lspce--request "textDocument/codeAction" (lspce--make-codeActionParams beg end action-kind)))
+        candidates preferred-action default-action selected-action
+        kind title preferred)
+    (if actions
+        (progn
+          (dolist (action actions)
+            ;; (message "action: %S" action)
+            (setq kind (gethash "kind" action)
+                  title (gethash "title" action)
+                  preferred (gethash "isPreferred" action))
+            (when (or (not action-kind)
+                      (string-equal action-kind kind))
+              (cl-pushnew (cons title action) candidates))
+            (when preferred
+              (setq preferred-action (cons title action))))
+          (setq default-action (or preferred-action (car candidates)))
+          (setq selected-action (cdr (assoc (completing-read
+                                             (format "[lspce] Pick an action (default %s): "
+                                                     (car default-action))
+                                             candidates nil t nil nil default-action)
+                                            candidates)))
+          (when selected-action
+            ;; (message "selected-action: %S" selected-action)
+            (let* ((command (gethash "command" selected-action))
+                   (edit (gethash "edit" selected-action)))
+              (when edit
+                (lspce--apply-workspace-edit edit))
+              (when command
+                (lspce--execute-command (gethash "command" command) (gethash "arguments" command))))))
+      (lspce--message "No code actions here."))))
 
 
 ;;; Mode-line
