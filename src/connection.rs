@@ -36,20 +36,30 @@ pub struct Connection {
 
 impl Connection {
     pub fn write(&self, req: Message) -> Result<(), SendError<Message>> {
-        // Logger::log(&format!("Connection write {:#?}", &req));
-
         self.sender.send(req)
     }
 
     pub fn read(&self) -> Option<Message> {
-        let msg = self.messages.lock().unwrap().pop_front();
+        let msg = match self.messages.lock() {
+            Ok(mut q) => q.pop_front(),
+            Err(e) => {
+                Logger::log(&format!("Connect read error {}", e));
+                None
+            }
+        };
 
         msg
     }
 
     pub fn to_exit(&self) {
-        let mut exit = self.exit.lock().unwrap();
-        *exit = true;
+        match self.exit.lock() {
+            Ok(mut e) => {
+                *e = true;
+            }
+            Err(e) => {
+                Logger::log(&format!("Connection to_exit error {}", e));
+            }
+        }
         Logger::log("after exit");
     }
 
