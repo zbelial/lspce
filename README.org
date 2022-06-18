@@ -21,7 +21,7 @@
   - rename (triggered by ~lspce-rename~ )
     
 
-  All features I need have been implemented now, and my next step is to make it more robust and more perfromant.
+  All features I need have been implemented now, and my next step is to make it more robust and more performant.
   
 
   I have tested LSPCE with `pyright` and `rust-analyzer`, and I'm using it to develop itself :).
