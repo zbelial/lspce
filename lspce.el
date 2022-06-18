@@ -849,10 +849,9 @@ is nil, prompt only if there's no usable symbol at point."
         (lspce--completionContext LSPCE-Invoked nil)))))
 
 (defun lspce--make-completionParams()
-  (let (context)
-    (lspce--completionParams (lspce--textDocumentIdenfitier (lspce--uri))
-                             (lspce--make-position)
-                             (lspce--make-completionContext))))
+  (lspce--completionParams (lspce--textDocumentIdenfitier (lspce--uri))
+                           (lspce--make-position)
+                           (lspce--make-completionContext)))
 
 (cl-defun lspce--request-completion ()
   (let ((params (lspce--make-completionParams))
@@ -1357,15 +1356,15 @@ Doubles as an indicator of snippet support."
                                             start (+ start (length newText))
                                             length)))))))))))))
 
-(defun lspce--apply-workspace-edit (wedit)
+(defun lspce--apply-workspace-edit (wedit &optional confirm)
   (let ((changes (gethash "changes" wedit))
         (documentChanges (gethash "documentChanges" wedit))
+        (confirmed t)
         filename edits all-edits)
     (if documentChanges
         (progn
           (cond
-           ((listp documentChanges)
-            )
+           ((listp documentChanges))
            ((hash-table-p documentChanges)
             (setq documentChanges (list documentChanges))))
           (dolist (dc documentChanges)
@@ -1380,13 +1379,23 @@ Doubles as an indicator of snippet support."
               edits (nth 0 (hash-table-values changes)))
         (cl-pushnew (list filename edits nil) all-edits)))
 
-    (setq all-edits (nreverse all-edits))
-    (dolist (aedits all-edits)
-      (let ((filename (nth 0 aedits))
-            (edits (nth 1 aedits))
-            (version (nth 2 aedits)))
-        (with-current-buffer (find-file-noselect filename)
-          (lspce--apply-text-edits edits version))))))
+    (if (or confirm
+            (cl-notevery #'find-buffer-visiting
+                         (mapcar #'car all-edits)))
+        (unless (y-or-n-p
+                 (format "[lspce] Server wants to edit:\n  %s\n Proceed? "
+                         (mapconcat #'identity (mapcar #'car all-edits) "\n  ")))
+          (setq confirmed nil)
+          (lspce--message "User cancelled server edit")))
+
+    (when confirmed
+      (setq all-edits (nreverse all-edits))
+      (dolist (aedits all-edits)
+        (let ((filename (nth 0 aedits))
+              (edits (nth 1 aedits))
+              (version (nth 2 aedits)))
+          (with-current-buffer (find-file-noselect filename)
+            (lspce--apply-text-edits edits version)))))))
 
 (cl-defun lspce-code-actions (beg &optional end action-kind)
   "Offer to execute actions of ACTION-KIND between BEG and END.
@@ -1435,6 +1444,24 @@ at point.  With prefix argument, prompt for ACTION-KIND."
                 (lspce--execute-command (gethash "command" command) (gethash "arguments" command))))))
       (lspce--message "No code actions here."))))
 
+;;; rename
+(defun lspce--make-renameParams (newname)
+  (lspce--renameParams (lspce--textDocumentIdenfitier (lspce--uri))
+                       (lspce--make-position)
+                       newname))
+
+(defun lspce-rename (newname)
+  (interactive
+   (list (read-from-minibuffer
+          (format "Rename `%s' to: " (or (thing-at-point 'symbol t)
+                                         "unknown symbol"))
+          nil nil nil nil
+          (symbol-name (symbol-at-point)))))
+  (if (lspce--server-capable-chain "renameProvider")
+      (let ((response (lspce--request "textDocument/rename" (lspce--make-renameParams newname))))
+        (when response
+          (lspce--apply-workspace-edit response)))
+    (lspce--warn "Server does not support rename.")))
 
 ;;; Mode-line
 ;;;
