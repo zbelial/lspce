@@ -302,13 +302,19 @@ impl LspServer {
     }
 
     //
-    pub fn read_response_exact(&self, id: RequestId) -> Option<Response> {
+    pub fn read_response_exact(&self, id: RequestId, method: String) -> Option<Response> {
         let mut responses = self.responses.lock().unwrap();
         loop {
             let resp = responses.pop_front();
-            Logger::log(&format!("read_response_exact {}, get {:?}", id, resp));
             if resp.is_some() {
                 let resp = resp.unwrap();
+
+                Logger::log(&format!(
+                    "read_response_exact request_id {}, method {}, get {}",
+                    id,
+                    method,
+                    serde_json::to_string_pretty(&resp).unwrap_or("invalid json".to_string())
+                ));
 
                 if id.eq(&resp.id) {
                     return Some(resp);
@@ -317,6 +323,10 @@ impl LspServer {
                     return None;
                 }
             } else {
+                Logger::log(&format!(
+                    "read_response_exact get null for request_id {}, method {}",
+                    id, method
+                ));
                 return None;
             }
         }
@@ -729,6 +739,7 @@ fn read_response_exact(
     root_uri: String,
     file_type: String,
     id: i32,
+    method: String,
 ) -> Result<Option<String>> {
     let req_id = RequestId::from(id);
 
@@ -741,7 +752,7 @@ fn read_response_exact(
                 return Ok(Some(serde_json::to_string(&r4e).unwrap()));
             }
 
-            let response = server.read_response_exact(req_id);
+            let response = server.read_response_exact(req_id, method);
             match response {
                 Some(r) => {
                     let r4e = Response4E::new(0, Some(r));

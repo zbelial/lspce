@@ -210,7 +210,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defun lspce--server-capable-chain (&rest cs)
   (let ((capabilities lspce--server-capabilities))
     (dolist (c cs)
-      (when capabilities
+      (when (and capabilities
+                 (hash-table-p capabilities))
         (setq capabilities (gethash c capabilities))))
     capabilities))
 
@@ -263,7 +264,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defun lspce--is-tick-match ()
   (equal lspce--latest-recorded-tick (lspce--current-tick)))
 
-(cl-defun lspce--get-response (request-id)
+(cl-defun lspce--get-response (request-id method)
   (let ((trying t)
         (lspce--root-uri (lspce--root-uri))
         (lspce--lsp-type (lspce--lsp-type))
@@ -283,7 +284,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
               ;; (lspce--message "lrid is bigger than request-id")
               (setq trying nil))
             (when (= lrid request-id)
-              (setq response (lspce-module-read-response-exact lspce--root-uri lspce--lsp-type request-id))
+              (setq response (lspce-module-read-response-exact lspce--root-uri lspce--lsp-type request-id method))
               ;; (lspce--message "response %s" response)
               (unless response
                 (cl-return-from lspce--get-response nil))
@@ -307,7 +308,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (defun lspce--request (method &optional params)
   (when-let (request-id (lspce--request-async method params))
-    (lspce--get-response request-id)))
+    (lspce--get-response request-id method)))
 
 (cl-defun lspce--notify (method &optional params)
   (let ((notification (lspce--make-notification method params))
@@ -763,10 +764,11 @@ If optional MARKERS, make markers."
 
 (cl-defmethod xref-backend-definitions ((_backend (eql xref-lspce)) identifier)
   (save-excursion
-    (let ((request-id (lspce--request-async "textDocument/definition" (lspce--make-definitionParams)))
-          response)
+    (let* ((method "textDocument/definition")
+           (request-id (lspce--request-async method (lspce--make-definitionParams)))
+           response)
       (when request-id
-        (setq response (lspce--get-response request-id))
+        (setq response (lspce--get-response request-id method))
         (when response
           (lspce--locations-to-xref response))))))
 
@@ -775,10 +777,11 @@ If optional MARKERS, make markers."
 ;; See https://github.com/alexmurray/ivy-xref/issues/2
 (cl-defmethod xref-backend-references ((_backend (eql xref-lspce)) identifier)
   (save-excursion
-    (let ((request-id (lspce--request-async "textDocument/references" (lspce--make-referenceParams)))
-          response)
+    (let* ((method "textDocument/references")
+           (request-id (lspce--request-async method (lspce--make-referenceParams)))
+           response)
       (when request-id
-        (setq response (lspce--get-response request-id))
+        (setq response (lspce--get-response request-id method))
         (when response
           (lspce--locations-to-xref response))))))
 
@@ -803,10 +806,11 @@ To create an xref object, call `xref-make'.")
   )
 (cl-defmethod xref-backend-implementations ((_backend (eql xref-lspce)) identifier)
   (save-excursion
-    (let ((request-id (lspce--request-async "textDocument/implementation" (lspce--make-implementationParams)))
-          response)
+    (let* ((method "textDocument/implementation")
+           (request-id (lspce--request-async method (lspce--make-implementationParams)))
+           response)
       (when request-id
-        (setq response (lspce--get-response request-id))
+        (setq response (lspce--get-response request-id method))
         (when response
           (lspce--locations-to-xref response))))))
 
@@ -854,12 +858,13 @@ is nil, prompt only if there's no usable symbol at point."
                            (lspce--make-completionContext)))
 
 (cl-defun lspce--request-completion ()
-  (let ((params (lspce--make-completionParams))
-        request-id
-        response items complete?)
-    (setq request-id (lspce--request-async "textDocument/completion" params))
+  (let* ((method "textDocument/completion")
+         (params (lspce--make-completionParams))
+         request-id
+         response items complete?)
+    (setq request-id (lspce--request-async method params))
     (when request-id
-      (setq response (lspce--get-response request-id)))
+      (setq response (lspce--get-response request-id method)))
     (unless response
       (lspce--warn "lspce--request-completion failed to getting response")
       (cl-return-from lspce--request-completion nil))
@@ -1154,12 +1159,13 @@ Doubles as an indicator of snippet support."
   "Show document of the symbol at the point using LSP's hover."
   (interactive)
   (if lspce-mode
-      (let* ((params (lspce--make-hoverParams))
-             (request-id (lspce--request-async "textDocument/hover" params))
+      (let* ((method "textDocument/hover")
+             (params (lspce--make-hoverParams))
+             (request-id (lspce--request-async method params))
              response
              contents kind content language)
         (when request-id
-          (setq response (lspce--get-response request-id)))
+          (setq response (lspce--get-response request-id method)))
         (when response
           (setq contents (gethash "contents" response))
           (cond
