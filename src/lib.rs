@@ -513,10 +513,10 @@ fn initialize(
                     }
 
                     if let Ok(ir) = serde_json::from_value::<InitializeResult>(m.result.unwrap()) {
-                        let initialized: Notification = Notification {
-                            method: "initialized".to_string(),
-                            params: serde_json::to_value(InitializedParams {}).unwrap(),
-                        };
+                        let initialized = Notification::new(
+                            "initialized".to_string(),
+                            serde_json::to_value(InitializedParams {}).unwrap(),
+                        );
 
                         _notify(env, server, initialized);
 
@@ -582,10 +582,7 @@ fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Resu
                     Some(r) => {
                         let r_id = r.id.clone();
                         if r_id.eq(&id) {
-                            let exit: Notification = Notification {
-                                method: "exit".to_string(),
-                                params: json!({}),
-                            };
+                            let exit = Notification::new("exit".to_string(), json!({}));
 
                             _notify(env, server, exit);
 

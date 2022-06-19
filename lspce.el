@@ -1371,7 +1371,7 @@ Doubles as an indicator of snippet support."
 (defun lspce--apply-text-edits (edits &optional version)
   (when (or (not version)
             (equal version lspce--identifier-version))
-    (message "edits: %s" (json-encode edits))
+    (message "buffer %s, edits: %s" (buffer-name) (json-encode edits))
     (atomic-change-group
       (let* ((change-group (prepare-change-group)))
         (dolist (edit (nreverse edits))
