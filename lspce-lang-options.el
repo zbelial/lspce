@@ -154,9 +154,10 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
 
 (defun lspce-pyright-initializationOptions ()
   (let ((options (make-hash-table :test #'equal)))
-    ;; (setq options (lspce--add-option "python.analysis.autoImportCompletions" t options))
+    (setq options (lspce--add-option "python.analysis.autoImportCompletions" t options))
     (setq options (lspce--add-option "python.analysis.useLibraryCodeForTypes" t options))
     (setq options (lspce--add-option "python.analysis.typeCheckingMode" "basic" options))
+    (setq options (lspce--add-option "python.analysis.diagnosticMode" "openFilesOnly" options))
     (setq options (lspce--add-option "python.analysis.stubPath" "" options))
     (setq options (lspce--add-option "python.analysis.autoSearchPaths" t options))
     (setq options (lspce--add-option "python.analysis.typeshedPaths" (vector) options))

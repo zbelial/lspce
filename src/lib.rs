@@ -15,6 +15,8 @@ use crossbeam_channel::SendError;
 use emacs::{defun, Env, IntoLisp, Result, Value};
 use error::LspceError;
 use logger::Logger;
+use logger::LOG_ENABLE;
+use logger::LOG_FILE_NAME;
 use lsp_types::request::Shutdown;
 use lsp_types::Diagnostic;
 use lsp_types::InitializeParams;
@@ -33,9 +35,11 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::fs::File;
 use std::io::Result as IoResult;
-use std::ptr::read_volatile;
 use std::result::Result as RustResult;
 use std::str::Utf8Error;
+
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 use stdio::IoThreads;
 
@@ -365,9 +369,31 @@ emacs::plugin_is_GPL_compatible!();
 // Register the initialization hook that Emacs will call when it loads the module.
 #[emacs::module(name("lspce-module"))]
 fn init(env: &Env) -> Result<Value<'_>> {
-    Logger::log("Done loading!");
-
     env.message("Done loading!")
+}
+
+/// disable logging to /tmp/lspce.log
+#[defun]
+fn disable_logging(env: &Env) -> Result<Value<'_>> {
+    LOG_ENABLE.store(0, Ordering::Relaxed);
+
+    env.message("Logging is disabled!")
+}
+
+/// enable logging to /tmp/lspce.log
+#[defun]
+fn enable_logging(env: &Env) -> Result<Value<'_>> {
+    LOG_ENABLE.store(1, Ordering::Relaxed);
+
+    env.message("Logging is enabled!")
+}
+
+/// set logging file name
+#[defun]
+fn set_log_file(env: &Env, file: String) -> Result<Value<'_>> {
+    *LOG_FILE_NAME.lock().unwrap() = file.clone();
+
+    env.message(&format!("Set logging file to {}", file))
 }
 
 fn projects() -> &'static Arc<Mutex<HashMap<String, Project>>> {
@@ -383,6 +409,7 @@ fn projects() -> &'static Arc<Mutex<HashMap<String, Project>>> {
     unsafe { &*PROJECTS.as_mut_ptr() }
 }
 
+/// Connect to an existing server or create a server subprocess and then connect to it.
 #[defun]
 fn connect(
     env: &Env,
@@ -560,7 +587,6 @@ fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Resu
                                 params: json!({}),
                             };
 
-                            // FIXME 同时有多个lsp server子进程时，可能会卡住。线程里结束子进程？
                             _notify(env, server, exit);
 
                             server.stop_dispatcher();

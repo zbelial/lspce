@@ -296,18 +296,14 @@ fn read_msg_text(inp: &mut dyn BufRead) -> io::Result<Option<String>> {
     buf.resize(size, 0);
     inp.read_exact(&mut buf)?;
     let buf = String::from_utf8(buf).map_err(invalid_data)?;
-    // Logger::log(&format!("< {}", buf));
 
     Ok(Some(buf))
 }
 
 fn write_msg_text(out: &mut dyn Write, msg: &str) -> io::Result<()> {
-    // Logger::log(&format!("> {} {}", msg.len(), &msg));
-
     out.write_all(&format!("Content-Length: {}\r\n\r\n{}", msg.len(), &msg).as_bytes())?;
     out.flush()?;
 
-    // Logger::log("after flush");
     Ok(())
 }
 

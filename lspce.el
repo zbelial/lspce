@@ -13,6 +13,7 @@
 (require 'markdown-mode)
 (require 'flymake)
 
+(require 'lspce-module)
 (require 'lspce-util)
 (require 'lspce-types)
 (require 'lspce-lang-options)
@@ -30,32 +31,48 @@
 
 (defcustom lspce-send-changes-idle-time 0.5
   "Don't tell server of changes before Emacs's been idle for this many seconds."
+  :group 'lspce
   :type 'number)
 
 (defcustom lspce-doc-tooltip-border-width 1
   "The border width of lspce tooltip, default is 1 px."
+  :group 'lspce
   :type 'integer)
 
 (defcustom lspce-doc-tooltip-timeout 30
   "The timeout of lspce tooltip show time, in seconds."
+  :group 'lspce
   :type 'integer)
 
 (defcustom lspce-doc-name "*lspce doc*"
   "The name of lspce tooltip name."
+  :group 'lspce
   :type 'string)
 
 (defcustom lspce-completion-ignore-case t
   "If non-nil, ignore case when completing."
+  :group 'lspce
   :type 'boolean)
 
 (defcustom lspce-enable-eldoc t
   "If non-nil, enable eldoc."
+  :group 'lspce
   :type 'boolean)
 
 (defcustom lspce-connect-server-timeout 60
   "The timeout of connecting to lsp server, in seconds."
+  :group 'lspce
   :type 'integer)
 
+(defcustom lspce-modes-enable-single-file-root '(python-mode)
+  "Major modes where lspce enables even for a single file (IOW no project)."
+  :group 'lspce
+  :type 'list)
+
+(defcustom lspce-enable-logging t
+  "If non-nil, enable logging to file."
+  :group 'lspce
+  :type 'boolean)
 
 ;; Customizable via `completion-category-overrides'.
 (when (assoc 'flex completion-styles-alist)
@@ -128,6 +145,20 @@ For buffers managed by fully LSP-compliant servers, this should
 be set to `lspce-move-to-lsp-abiding-column', and
 `lspce-move-to-column' (the default) for all others.")
 
+
+;;; Logging
+(defun lspce-disable-logging ()
+  "Disable logging"
+  (interactive)
+  (lspce-module-disable-logging))
+
+(defun lspce-enable-logging ()
+  "Enable logging"
+  (interactive)
+  (lspce-module-enable-logging))
+
+(defun lspce-set-log-file (filename)
+  (lspce-module-set-log-file filename))
 
 ;;; Create LSP params
 (defun lspce--make-didOpenTextDocumentParams ()
@@ -220,7 +251,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
         root-uri)
     (setq root-uri (if proj
                        (project-root proj)
-                     buffer-file-name))
+                     (when (member major-mode lspce-modes-enable-single-file-root)
+                       buffer-file-name)))
     (when root-uri
       (lspce--path-to-uri root-uri))))
 
@@ -364,6 +396,10 @@ be set to `lspce-move-to-lsp-abiding-column', and
         lsp-server
         server server-cmd server-args initialize-options
         response-str response response-error response-result)
+    (unless (and root-uri lsp-type)
+      (lspce--message "lspce--connect: Can not get root-uri or lsp-type of current buffer.")
+      (cl-return-from lspce--connect nil))
+    
     (setq lsp-server (lspce-module-server root-uri lsp-type))
     (when lsp-server
       (lspce--message "lspce--connect: Server for (%s %s) is running." root-uri lsp-type)
@@ -665,7 +701,7 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
       (goto-char point)
       (buffer-substring (line-beginning-position) (line-end-position)))))
 
-(defun lspce--lsp-position-to-point (line character)
+(defun lspce--lsp-position-to-point (line character &optional markers)
   "Convert LSP position to Emacs point."
   (save-excursion
     (save-restriction
@@ -681,20 +717,20 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
              col)
             (setq col 0))
           (funcall lspce-move-to-column-function col)))
-      (point))))
+      (if markers (copy-marker (point-marker)) (point)))))
 
-(defun lspce--lsp-position-to-point2 (pos)
+(defun lspce--lsp-position-to-point2 (pos &optional markers)
   (let ((line (gethash "line" pos))
         (character (gethash "character" pos)))
-    (lspce--lsp-position-to-point line character)))
+    (lspce--lsp-position-to-point line character markers)))
 
-(defun lspce--range-region (range)
+(defun lspce--range-region (range &optional markers)
   "Return region (BEG . END) that represents LSP RANGE.
 If optional MARKERS, make markers."
   (let* ((start (gethash "start" range))
          (end (gethash "end" range))
-         (beg (lspce--lsp-position-to-point2 start))
-         (end (lspce--lsp-position-to-point2 end)))
+         (beg (lspce--lsp-position-to-point2 start markers))
+         (end (lspce--lsp-position-to-point2 end markers)))
     (cons beg end)))
 
 (defun lspce--locations-to-xref (locations)
@@ -1273,10 +1309,8 @@ Doubles as an indicator of snippet support."
             (setq start (gethash "start" range)
                   end (gethash "end" range))
             (push (flymake-make-diagnostic (current-buffer)
-                                           (lspce--lsp-position-to-point (gethash "line" start)
-                                                                         (gethash "character" start))
-                                           (lspce--lsp-position-to-point (gethash "line" end)
-                                                                         (gethash "character" end))
+                                           (lspce--lsp-position-to-point2 start)
+                                           (lspce--lsp-position-to-point2 end)
                                            (lspce--diag-type severity)
                                            msg `((lspce-lsp-diag . ,d))) flymake-diags)))
         flymake-diags)))
@@ -1340,10 +1374,10 @@ Doubles as an indicator of snippet support."
     (message "edits: %s" (json-encode edits))
     (atomic-change-group
       (let* ((change-group (prepare-change-group)))
-        (dolist (edit edits)
+        (dolist (edit (nreverse edits))
           (let* ((source (current-buffer))
                  (newText (gethash "newText" edit))
-                 (range (lspce--range-region (gethash "range" edit)))
+                 (range (lspce--range-region (gethash "range" edit) t))
                  (start (car range))
                  (end (cdr range)))
             (with-temp-buffer
@@ -1354,7 +1388,9 @@ Doubles as an indicator of snippet support."
                     (save-restriction
                       (narrow-to-region start end)
                       (let ((inhibit-modification-hooks t)
-                            (length (- end start)))
+                            (length (- end start))
+                            (start (marker-position start))
+                            (end (marker-position end)))
                         (run-hook-with-args 'before-change-functions
                                             start end)
                         (replace-buffer-contents temp)
