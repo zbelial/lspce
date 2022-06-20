@@ -279,6 +279,33 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defvar lspce-lsp-type-function #'lspce--lsp-type-default
   "Function to the lsp type of current buffer.")
 
+(defvar lspce--throw-on-input nil
+  "Make `lspce-*-while-no-input' throws `input' on interrupted.")
+
+(defmacro lspce--catch (tag bodyform &rest handlers)
+  "Catch TAG thrown in BODYFORM.
+The return value from TAG will be handled in HANDLERS by `pcase'."
+  (declare (debug (form form &rest (pcase-PAT body))) (indent 2))
+  (let ((re-sym (make-symbol "re")))
+    `(let ((,re-sym (catch ,tag ,bodyform)))
+       (pcase ,re-sym
+         ,@handlers))))
+
+(defmacro lspce--while-no-input (&rest body)
+  "Wrap BODY in `while-no-input' and respecting `non-essential'.
+If `lspce--throw-on-input' is set, will throw if input is pending, else
+return value of `body' or nil if interrupted."
+  (declare (debug t) (indent 0))
+  `(if non-essential
+       (let ((res (while-no-input ,@body)))
+         (cond
+          ((and lspce--throw-on-input (equal res t))
+           (throw 'input :interrupted))
+          ((booleanp res) nil)
+          (t res)))
+     ,@body))
+
+
 (cl-defun lspce--request-async (method &optional params)
   (let* ((request (lspce--make-request method params))
          (root-uri (lspce--root-uri))
@@ -866,6 +893,25 @@ is nil, prompt only if there's no usable symbol at point."
 (defvar-local lspce--last-inserted-char nil
   "If non-nil, value of the last inserted character in buffer.")
 
+(defvar lspce--completion-cache nil
+  "Cached candidates for completion at point function.
+In the form of plist (prefix-pos items :lsp-items :markers :prefix ...).
+When the completion is incomplete, `items' contains value of :incomplete.")
+
+(defvar lspce--completion-last-result nil
+  "Last completion result.")
+
+(defun lspce--completion-clear-cache (&optional keep-last-result)
+  "Clear completion caches, and last result if KEEP-LAST-RESULT not specified."
+  (let ((pl (cddr lspce--completion-cache))
+        markers)
+    (when pl
+      (setq markers (plist-get pl :markers))
+      (when markers
+        (set-marker (cl-second markers) nil))))
+  (setq lspce--completion-cache nil)
+  (unless keep-last-result (setq lspce--completion-last-result nil)))
+
 (defun lspce--post-self-insert-hook ()
   "Set `lspce--last-inserted-char'."
   (setq lspce--last-inserted-char last-input-event))
@@ -950,9 +996,35 @@ Doubles as an indicator of snippet support."
       (font-lock-ensure)
       (string-trim (buffer-string)))))
 
+(defun lspce--completion-looking-back-trigger (trigger-characters)
+  "Return trigger character if text before point match any of the TRIGGER-CHARACTERS."
+  (unless (= (point) (point-at-bol))
+    (seq-some
+     (lambda (trigger-char)
+       (and (equal (buffer-substring-no-properties (- (point) (length trigger-char)) (point))
+                   trigger-char)
+            trigger-char))
+     trigger-characters)))
+
+(defun lspce--completion-bounds-start (start trigger-chars)
+  (let ((bounds-start (point)))
+    (when start
+      (setq bounds-start (save-excursion
+                           (ignore-errors
+                             (goto-char (+ start 1))
+                             (while (lspce--completion-looking-back-trigger
+                                     trigger-chars)
+                               (cl-incf start)
+                               (forward-char))
+                             start))))
+    bounds-start))
+
 (defun lspce-completion-at-point()
   (when-let (completion-capability (lspce--server-capable "completionProvider"))
-    (let* ((bounds (bounds-of-thing-at-point 'symbol))
+    (let* ((trigger-chars (lspce--server-capable-chain "completionProvider"
+                                                       "triggerCharacters"))
+           (bounds (bounds-of-thing-at-point 'symbol))
+           (bounds-start (lspce--completion-bounds-start (cl-first bounds) trigger-chars))
            (sort-completions
             (lambda (completions)
               (cl-sort completions
@@ -961,46 +1033,74 @@ Doubles as an indicator of snippet support."
                               (or (gethash "sortText"
                                            (get-text-property 0 'lspce--lsp-item c))
                                   "")))))
-           items
-           completions
-           complete?
+           done?
            (cached-proxies :none)
            (proxies
             (lambda ()
-              (if (and
-                   complete?
-                   (listp cached-proxies))
-                  cached-proxies
-                (setq completions (lspce--request-completion))
-                (setq complete? (nth 0 completions)
-                      items (nth 1 completions))
-                (if complete?
-                    (setq-local lspce--completion-complete? 2)
-                  (setq-local lspce--completion-complete? 1))
-                (setq cached-proxies
-                      (mapcar
-                       (lambda (item)
-                         (let* ((label (gethash "label" item))
-                                (insertTextFormat (or (gethash "insertTextFormat" item) 1))
-                                (insertText (gethash "insertText" item))
-                                (proxy
-                                 (cond 
-                                  ((and (eql insertTextFormat 2)
-                                        (lspce--snippet-expansion-fn))
-                                   (string-trim-left label))
-                                  ((and insertText
-                                        (not (string-empty-p insertText)))
-                                   insertText)
-                                  (t
-                                   (string-trim-left label)))))
-                           (unless (zerop (length proxy))
-                             (put-text-property 0 1 'lspce--lsp-item item proxy))
-                           proxy))
-                       items))
-                cached-proxies))))
+              (let ((same-session? (and lspce--completion-cache
+                                        ;; Special case for empty prefix and empty result
+                                        (or (cl-second lspce--completion-cache)
+                                            (not (string-empty-p
+                                                  (plist-get (cddr lspce--completion-cache) :prefix))))
+                                        (equal (cl-first lspce--completion-cache) bounds-start)
+                                        (string-prefix-p
+                                         (plist-get (cddr lspce--completion-cache) :prefix)
+                                         (buffer-substring-no-properties bounds-start (point))))))
+                (cond
+                 ((or done? (listp cached-proxies))
+                  cached-proxies)
+                 ((and same-session?
+                       (listp (cl-second lspce--completion-cache)))
+                  (setq cached-proxies (cl-second lspce--completion-cache)))
+                 (t
+                  (let* ((completions (lspce--request-completion))
+                         (complete? (nth 0 completions))
+                         (items (nth 1 completions))
+                         (markers (list bounds-start (copy-marker (point) t)))
+                         (prefix (buffer-substring-no-properties bounds-start (point))))
+                    (if completions
+                        (progn
+                          (if complete?
+                              (setq-local lspce--completion-complete? 2)
+                            (setq-local lspce--completion-complete? 1))
+                          (lspce--completion-clear-cache same-session?)
+                          (setq cached-proxies
+                                (mapcar
+                                 (lambda (item)
+                                   (let* ((label (gethash "label" item))
+                                          (insertTextFormat (or (gethash "insertTextFormat" item) 1))
+                                          (insertText (gethash "insertText" item))
+                                          (proxy
+                                           (cond 
+                                            ((and (eql insertTextFormat 2)
+                                                  (lspce--snippet-expansion-fn))
+                                             (string-trim-left label))
+                                            ((and insertText
+                                                  (not (string-empty-p insertText)))
+                                             insertText)
+                                            (t
+                                             (string-trim-left label)))))
+                                     (unless (zerop (length proxy))
+                                       (put-text-property 0 1 'lspce--lsp-item item proxy))
+                                     proxy))
+                                 items))
+                          (setf done? complete?
+                                lspce--completion-cache (list bounds-start
+                                                              (cond
+                                                               ((and done?
+                                                                     (not (seq-empty-p cached-proxies)))
+                                                                cached-proxies)
+                                                               ((not done?)
+                                                                :incomplete))
+                                                              :lsp-items nil
+                                                              :markers markers
+                                                              :prefix prefix))
+                          (setq lspce--completion-last-result cached-proxies))
+                      lspce--completion-last-result)))))))
+           )
       (list
-       (or (car bounds) (point))
-       (or (cdr bounds) (point))
+       bounds-start
+       (point)
        (lambda (probe pred action)
          (let (collection)
            (cond
@@ -1009,9 +1109,10 @@ Doubles as an indicator of snippet support."
                                               ;; (display-sort-function . identity)
                                               (cycle-sort-function . identity)))               ; metadata
             ((eq (car-safe action) 'boundaries) nil)       ; boundaries
+            ;; test-completion: not return exact match so that the selection will
+            ;; always be shown
             ((eq action 'lambda)                           ; test-completion
-             (setq collection (funcall proxies))
-             (test-completion probe collection))
+             nil)
             ((null action)                                 ; try-completion
              (setq collection (funcall proxies))
              (try-completion probe collection))
