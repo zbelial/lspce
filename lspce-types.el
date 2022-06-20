@@ -120,6 +120,9 @@
 
 (defun lspce--renameClientCapabitlities ()
   (let ((params (make-hash-table)))
+    (puthash :dynamicRegistration :json-false params)
+    (puthash :prepareSupport :json-false params)
+    (puthash :honorsChangeAnnotations :json-false params)
     params))
 
 (defun lspce--publishDiagnosticsClientCapabilities ()
@@ -133,7 +136,8 @@
 
 (defun lspce--textDocumentSyncClientCapabilities ()
   (let ((params (make-hash-table)))
-    (puthash :didSave :json-false params)
+    (puthash :willSave t params)
+    (puthash :didSave t params)
     params))
 
 (defun lspce--textDocumentClientCapabilities ()
@@ -148,7 +152,7 @@
     (puthash :implementation (lspce--implementationClientCapabilities) capabilities)
     (puthash :references (lspce--referencesClientCapabilities) capabilities)
     (puthash :codeAction (lspce--codeActionClientCapabilities) capabilities)
-    ;; (puthash :rename (lspce--renameClientCapabitlities) capabilities)
+    (puthash :rename (lspce--renameClientCapabitlities) capabilities)
     (puthash :publishDiagnostics (lspce--publishDiagnosticsClientCapabilities) capabilities)
     capabilities))
 
@@ -295,6 +299,13 @@
     (puthash :textDocument textDocument params)
     (puthash :range range params)
     (puthash :context context params)
+    params))
+
+(defun lspce--renameParams (textDocument position newName)
+  (let ((params (make-hash-table)))
+    (puthash :textDocument textDocument params)
+    (puthash :position position params)
+    (puthash :newName newName params)
     params))
 
 (provide 'lspce-types)

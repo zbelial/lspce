@@ -215,6 +215,7 @@ dependencies = [
  "chrono",
  "crossbeam-channel",
  "emacs",
+ "lazy_static",
  "lsp-types",
  "serde",
  "serde_json",

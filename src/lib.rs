@@ -15,6 +15,8 @@ use crossbeam_channel::SendError;
 use emacs::{defun, Env, IntoLisp, Result, Value};
 use error::LspceError;
 use logger::Logger;
+use logger::LOG_ENABLE;
+use logger::LOG_FILE_NAME;
 use lsp_types::request::Shutdown;
 use lsp_types::Diagnostic;
 use lsp_types::InitializeParams;
@@ -33,9 +35,11 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::fs::File;
 use std::io::Result as IoResult;
-use std::ptr::read_volatile;
 use std::result::Result as RustResult;
 use std::str::Utf8Error;
+
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 use stdio::IoThreads;
 
@@ -302,14 +306,20 @@ impl LspServer {
     }
 
     //
-    pub fn read_response_exact(&self, id: RequestId) -> Option<Response> {
+    pub fn read_response_exact(&self, id: RequestId, method: String) -> Option<Response> {
         let mut responses = self.responses.lock().unwrap();
         let mut result: Option<Response>;
         loop {
             let resp = responses.pop_front();
-            // Logger::log(&format!("read_response_exact {}, get {:#?}", id, resp));
             if resp.is_some() {
                 let resp = resp.unwrap();
+
+                Logger::log(&format!(
+                    "read_response_exact request_id {}, method {}, get {}",
+                    id,
+                    method,
+                    serde_json::to_string_pretty(&resp).unwrap_or("invalid json".to_string())
+                ));
 
                 if id.eq(&resp.id) {
                     result = Some(resp);
@@ -320,6 +330,10 @@ impl LspServer {
                     break;
                 }
             } else {
+                Logger::log(&format!(
+                    "read_response_exact get null for request_id {}, method {}",
+                    id, method
+                ));
                 result = None;
                 break;
             }
@@ -360,9 +374,31 @@ emacs::plugin_is_GPL_compatible!();
 // Register the initialization hook that Emacs will call when it loads the module.
 #[emacs::module(name("lspce-module"))]
 fn init(env: &Env) -> Result<Value<'_>> {
-    Logger::log("Done loading!");
-
     env.message("Done loading!")
+}
+
+/// disable logging to /tmp/lspce.log
+#[defun]
+fn disable_logging(env: &Env) -> Result<Value<'_>> {
+    LOG_ENABLE.store(0, Ordering::Relaxed);
+
+    env.message("Logging is disabled!")
+}
+
+/// enable logging to /tmp/lspce.log
+#[defun]
+fn enable_logging(env: &Env) -> Result<Value<'_>> {
+    LOG_ENABLE.store(1, Ordering::Relaxed);
+
+    env.message("Logging is enabled!")
+}
+
+/// set logging file name
+#[defun]
+fn set_log_file(env: &Env, file: String) -> Result<Value<'_>> {
+    *LOG_FILE_NAME.lock().unwrap() = file.clone();
+
+    env.message(&format!("Set logging file to {}", file))
 }
 
 fn projects() -> &'static Arc<Mutex<HashMap<String, Project>>> {
@@ -378,6 +414,7 @@ fn projects() -> &'static Arc<Mutex<HashMap<String, Project>>> {
     unsafe { &*PROJECTS.as_mut_ptr() }
 }
 
+/// Connect to an existing server or create a server subprocess and then connect to it.
 #[defun]
 fn connect(
     env: &Env,
@@ -481,10 +518,10 @@ fn initialize(
                     }
 
                     if let Ok(ir) = serde_json::from_value::<InitializeResult>(m.result.unwrap()) {
-                        let initialized: Notification = Notification {
-                            method: "initialized".to_string(),
-                            params: serde_json::to_value(InitializedParams {}).unwrap(),
-                        };
+                        let initialized = Notification::new(
+                            "initialized".to_string(),
+                            serde_json::to_value(InitializedParams {}).unwrap(),
+                        );
 
                         _notify(env, server, initialized);
 
@@ -550,12 +587,8 @@ fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Resu
                     Some(r) => {
                         let r_id = r.id.clone();
                         if r_id.eq(&id) {
-                            let exit: Notification = Notification {
-                                method: "exit".to_string(),
-                                params: json!({}),
-                            };
+                            let exit = Notification::new("exit".to_string(), json!({}));
 
-                            // FIXME 同时有多个lsp server子进程时，可能会卡住。线程里结束子进程？
                             _notify(env, server, exit);
 
                             server.stop_dispatcher();
@@ -734,6 +767,7 @@ fn read_response_exact(
     root_uri: String,
     file_type: String,
     id: i32,
+    method: String,
 ) -> Result<Option<String>> {
     let req_id = RequestId::from(id);
 
@@ -746,7 +780,7 @@ fn read_response_exact(
                 return Ok(Some(serde_json::to_string(&r4e).unwrap()));
             }
 
-            let response = server.read_response_exact(req_id);
+            let response = server.read_response_exact(req_id, method);
             match response {
                 Some(r) => {
                     let r4e = Response4E::new(0, Some(r));

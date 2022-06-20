@@ -29,16 +29,25 @@ pub(crate) fn stdio_transport(
         let mut stdin = child_stdin;
         loop {
             {
-                let exit = exit_writer.lock().unwrap();
-                if *exit {
-                    Logger::log(&format!("stdio write exited"));
-                    break;
+                match exit_writer.lock() {
+                    Ok(exit) => {
+                        if *exit {
+                            Logger::log(&format!("stdio write exited"));
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        Logger::log(&format!("stdio writer exit error {}", e));
+                    }
                 }
             }
             let recv_value = writer_receiver.recv_timeout(std::time::Duration::from_millis(50));
             match recv_value {
                 Ok(r) => {
-                    Logger::log(&format!("stdio write {:#?}", &r));
+                    Logger::log(&format!(
+                        "stdio write {}",
+                        serde_json::to_string_pretty(&r).unwrap_or("invalid json".to_string())
+                    ));
 
                     r.write(&mut stdin)
                 }
@@ -57,18 +66,41 @@ pub(crate) fn stdio_transport(
 
         loop {
             {
-                let exit = exit_reader.lock().unwrap();
-                if *exit {
-                    Logger::log(&format!("stdio read exited"));
-                    break;
+                match exit_reader.lock() {
+                    Ok(exit) => {
+                        if *exit {
+                            Logger::log(&format!("stdio read exited"));
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        Logger::log(&format!("stdio read exit error {}", e));
+                    }
                 }
             }
-
-            if let Some(msg) = Message::read(&mut reader)? {
-                let mut queue = message_queue.lock().unwrap();
-
-                Logger::log(&format!("stdio read {:#?}", &msg));
-                queue.push_back(msg);
+            match Message::read(&mut reader) {
+                Ok(m) => {
+                    if let Some(msg) = m {
+                        match message_queue.lock() {
+                            Ok(mut q) => {
+                                Logger::log(&format!(
+                                    "stdio read {}",
+                                    serde_json::to_string_pretty(&msg)
+                                        .unwrap_or("invalid json".to_string())
+                                ));
+                                q.push_back(msg);
+                            }
+                            Err(e) => {
+                                Logger::log(&format!("stdio read error {}", e));
+                            }
+                        }
+                    } else {
+                        Logger::log(&format!("stdio read null"));
+                    }
+                }
+                Err(e) => {
+                    Logger::log(&format!("stdio read error {}", e));
+                }
             }
         }
 

@@ -13,6 +13,7 @@
 (require 'markdown-mode)
 (require 'flymake)
 
+(require 'lspce-module)
 (require 'lspce-util)
 (require 'lspce-types)
 (require 'lspce-lang-options)
@@ -30,32 +31,48 @@
 
 (defcustom lspce-send-changes-idle-time 0.5
   "Don't tell server of changes before Emacs's been idle for this many seconds."
+  :group 'lspce
   :type 'number)
 
 (defcustom lspce-doc-tooltip-border-width 1
   "The border width of lspce tooltip, default is 1 px."
+  :group 'lspce
   :type 'integer)
 
 (defcustom lspce-doc-tooltip-timeout 30
   "The timeout of lspce tooltip show time, in seconds."
+  :group 'lspce
   :type 'integer)
 
 (defcustom lspce-doc-name "*lspce doc*"
   "The name of lspce tooltip name."
+  :group 'lspce
   :type 'string)
 
 (defcustom lspce-completion-ignore-case t
   "If non-nil, ignore case when completing."
+  :group 'lspce
   :type 'boolean)
 
 (defcustom lspce-enable-eldoc t
   "If non-nil, enable eldoc."
+  :group 'lspce
   :type 'boolean)
 
 (defcustom lspce-connect-server-timeout 60
   "The timeout of connecting to lsp server, in seconds."
+  :group 'lspce
   :type 'integer)
 
+(defcustom lspce-modes-enable-single-file-root '(python-mode)
+  "Major modes where lspce enables even for a single file (IOW no project)."
+  :group 'lspce
+  :type 'list)
+
+(defcustom lspce-enable-logging t
+  "If non-nil, enable logging to file."
+  :group 'lspce
+  :type 'boolean)
 
 ;; Customizable via `completion-category-overrides'.
 (when (assoc 'flex completion-styles-alist)
@@ -128,6 +145,20 @@ For buffers managed by fully LSP-compliant servers, this should
 be set to `lspce-move-to-lsp-abiding-column', and
 `lspce-move-to-column' (the default) for all others.")
 
+
+;;; Logging
+(defun lspce-disable-logging ()
+  "Disable logging"
+  (interactive)
+  (lspce-module-disable-logging))
+
+(defun lspce-enable-logging ()
+  "Enable logging"
+  (interactive)
+  (lspce-module-enable-logging))
+
+(defun lspce-set-log-file (filename)
+  (lspce-module-set-log-file filename))
 
 ;;; Create LSP params
 (defun lspce--make-didOpenTextDocumentParams ()
@@ -210,7 +241,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defun lspce--server-capable-chain (&rest cs)
   (let ((capabilities lspce--server-capabilities))
     (dolist (c cs)
-      (when capabilities
+      (when (and capabilities
+                 (hash-table-p capabilities))
         (setq capabilities (gethash c capabilities))))
     capabilities))
 
@@ -219,7 +251,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
         root-uri)
     (setq root-uri (if proj
                        (project-root proj)
-                     buffer-file-name))
+                     (when (member major-mode lspce-modes-enable-single-file-root)
+                       buffer-file-name)))
     (when root-uri
       (lspce--path-to-uri root-uri))))
 
@@ -263,7 +296,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defun lspce--is-tick-match ()
   (equal lspce--latest-recorded-tick (lspce--current-tick)))
 
-(cl-defun lspce--get-response (request-id)
+(cl-defun lspce--get-response (request-id method)
   (let ((trying t)
         (lspce--root-uri (lspce--root-uri))
         (lspce--lsp-type (lspce--lsp-type))
@@ -283,7 +316,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
               ;; (lspce--message "lrid is bigger than request-id")
               (setq trying nil))
             (when (= lrid request-id)
-              (setq response (lspce-module-read-response-exact lspce--root-uri lspce--lsp-type request-id))
+              (setq response (lspce-module-read-response-exact lspce--root-uri lspce--lsp-type request-id method))
               ;; (lspce--message "response %s" response)
               (unless response
                 (cl-return-from lspce--get-response nil))
@@ -307,7 +340,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (defun lspce--request (method &optional params)
   (when-let (request-id (lspce--request-async method params))
-    (lspce--get-response request-id)))
+    (lspce--get-response request-id method)))
 
 (cl-defun lspce--notify (method &optional params)
   (let ((notification (lspce--make-notification method params))
@@ -339,6 +372,18 @@ be set to `lspce-move-to-lsp-abiding-column', and
      "textDocument/didClose" (lspce--make-didCloseTextDocumentParams)))
   )
 
+(defun lspce--notify-textDocument/willSave ()
+  "Send textDocument/willSave to server."
+  (when (lspce--server-capable-chain "textDocumentSync" "willSave")
+    (lspce--notify
+     "textDocument/willSave" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri)) :reason 1))))
+
+(defun lspce--notify-textDocument/didSave ()
+  "Send textDocument/willSave to server."
+  (when (lspce--server-capable-chain "textDocumentSync" "save")
+    (lspce--notify
+     "textDocument/didSave" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))))))
+
 (defun lspce--server-program (lsp-type)
   (let ((server (assoc-default lsp-type lspce-server-programs)))
     server))
@@ -351,6 +396,10 @@ be set to `lspce-move-to-lsp-abiding-column', and
         lsp-server
         server server-cmd server-args initialize-options
         response-str response response-error response-result)
+    (unless (and root-uri lsp-type)
+      (lspce--message "lspce--connect: Can not get root-uri or lsp-type of current buffer.")
+      (cl-return-from lspce--connect nil))
+    
     (setq lsp-server (lspce-module-server root-uri lsp-type))
     (when lsp-server
       (lspce--message "lspce--connect: Server for (%s %s) is running." root-uri lsp-type)
@@ -514,11 +563,12 @@ Auto completion is only performed if the tick did not change."
       (add-hook 'completion-at-point-functions 'lspce-completion-at-point nil t)
       (add-hook 'pre-command-hook 'lspce--pre-command-hook nil t)
       (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
+      (add-hook 'before-save-hook 'lspce--notify-textDocument/willSave nil t)
+      (add-hook 'after-save-hook 'lspce--notify-textDocument/didSave nil t)
       (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
       (when lspce-enable-eldoc
         (add-hook 'eldoc-documentation-functions #'lspce-eldoc-signature-function nil t)
-        (eldoc-mode 1)
-        )
+        (eldoc-mode 1))
       (flymake-mode 1)
       (lspce--buffer-enable-lsp)
       (if lspce--server-info
@@ -535,6 +585,8 @@ Auto completion is only performed if the tick did not change."
     (remove-hook 'completion-at-point-functions #'lspce-completion-at-point t)
     (remove-hook 'pre-command-hook 'lspce--pre-command-hook t)
     (remove-hook 'post-self-insert-hook 'lspce--post-self-insert-hook t)
+    (remove-hook 'before-save-hook 'lspce--notify-textDocument/willSave t)
+    (remove-hook 'after-save-hook 'lspce--notify-textDocument/didSave t)
     (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
     (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-signature-function t)
     (lspce--notify-textDocument/didClose)
@@ -649,7 +701,7 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
       (goto-char point)
       (buffer-substring (line-beginning-position) (line-end-position)))))
 
-(defun lspce--lsp-position-to-point (line character)
+(defun lspce--lsp-position-to-point (line character &optional markers)
   "Convert LSP position to Emacs point."
   (save-excursion
     (save-restriction
@@ -665,20 +717,20 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
              col)
             (setq col 0))
           (funcall lspce-move-to-column-function col)))
-      (point))))
+      (if markers (copy-marker (point-marker)) (point)))))
 
-(defun lspce--lsp-position-to-point2 (pos)
+(defun lspce--lsp-position-to-point2 (pos &optional markers)
   (let ((line (gethash "line" pos))
         (character (gethash "character" pos)))
-    (lspce--lsp-position-to-point line character)))
+    (lspce--lsp-position-to-point line character markers)))
 
-(defun lspce--range-region (range)
+(defun lspce--range-region (range &optional markers)
   "Return region (BEG . END) that represents LSP RANGE.
 If optional MARKERS, make markers."
   (let* ((start (gethash "start" range))
          (end (gethash "end" range))
-         (beg (lspce--lsp-position-to-point2 start))
-         (end (lspce--lsp-position-to-point2 end)))
+         (beg (lspce--lsp-position-to-point2 start markers))
+         (end (lspce--lsp-position-to-point2 end markers)))
     (cons beg end)))
 
 (defun lspce--locations-to-xref (locations)
@@ -748,10 +800,11 @@ If optional MARKERS, make markers."
 
 (cl-defmethod xref-backend-definitions ((_backend (eql xref-lspce)) identifier)
   (save-excursion
-    (let ((request-id (lspce--request-async "textDocument/definition" (lspce--make-definitionParams)))
-          response)
+    (let* ((method "textDocument/definition")
+           (request-id (lspce--request-async method (lspce--make-definitionParams)))
+           response)
       (when request-id
-        (setq response (lspce--get-response request-id))
+        (setq response (lspce--get-response request-id method))
         (when response
           (lspce--locations-to-xref response))))))
 
@@ -760,10 +813,11 @@ If optional MARKERS, make markers."
 ;; See https://github.com/alexmurray/ivy-xref/issues/2
 (cl-defmethod xref-backend-references ((_backend (eql xref-lspce)) identifier)
   (save-excursion
-    (let ((request-id (lspce--request-async "textDocument/references" (lspce--make-referenceParams)))
-          response)
+    (let* ((method "textDocument/references")
+           (request-id (lspce--request-async method (lspce--make-referenceParams)))
+           response)
       (when request-id
-        (setq response (lspce--get-response request-id))
+        (setq response (lspce--get-response request-id method))
         (when response
           (lspce--locations-to-xref response))))))
 
@@ -788,10 +842,11 @@ To create an xref object, call `xref-make'.")
   )
 (cl-defmethod xref-backend-implementations ((_backend (eql xref-lspce)) identifier)
   (save-excursion
-    (let ((request-id (lspce--request-async "textDocument/implementation" (lspce--make-implementationParams)))
-          response)
+    (let* ((method "textDocument/implementation")
+           (request-id (lspce--request-async method (lspce--make-implementationParams)))
+           response)
       (when request-id
-        (setq response (lspce--get-response request-id))
+        (setq response (lspce--get-response request-id method))
         (when response
           (lspce--locations-to-xref response))))))
 
@@ -834,18 +889,18 @@ is nil, prompt only if there's no usable symbol at point."
         (lspce--completionContext LSPCE-Invoked nil)))))
 
 (defun lspce--make-completionParams()
-  (let (context)
-    (lspce--completionParams (lspce--textDocumentIdenfitier (lspce--uri))
-                             (lspce--make-position)
-                             (lspce--make-completionContext))))
+  (lspce--completionParams (lspce--textDocumentIdenfitier (lspce--uri))
+                           (lspce--make-position)
+                           (lspce--make-completionContext)))
 
 (cl-defun lspce--request-completion ()
-  (let ((params (lspce--make-completionParams))
-        request-id
-        response items complete?)
-    (setq request-id (lspce--request-async "textDocument/completion" params))
+  (let* ((method "textDocument/completion")
+         (params (lspce--make-completionParams))
+         request-id
+         response items complete?)
+    (setq request-id (lspce--request-async method params))
     (when request-id
-      (setq response (lspce--get-response request-id)))
+      (setq response (lspce--get-response request-id method)))
     (unless response
       (lspce--warn "lspce--request-completion failed to getting response")
       (cl-return-from lspce--request-completion nil))
@@ -1031,6 +1086,7 @@ Doubles as an indicator of snippet support."
                     (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
                     (insertText (gethash "insertText" lsp-item))
                     (textEdit (gethash "textEdit" lsp-item))
+                    (additionalTextEdits (gethash "additionalTextEdits" lsp-item))
                     (snippet-fn (and (eql insertTextFormat 2)
                                      (lspce--snippet-expansion-fn))))
                ;; (lspce--message "lsp-item %S" (json-encode lsp-item))
@@ -1054,9 +1110,9 @@ Doubles as an indicator of snippet support."
                           ;; (lspce--message "beg %s, end %s" beg end)
                           (delete-region beg end)
                           (goto-char beg)
-                          (funcall (or snippet-fn #'insert) newText))
-                        )
-                      )
+                          (funcall (or snippet-fn #'insert) newText)))
+                      (when (cl-plusp (length additionalTextEdits))
+                        (lspce--apply-text-edits additionalTextEdits)))
                      (snippet-fn
                       ;; A snippet should be inserted, but using plain
                       ;; `insertText'.  This requires us to delete the
@@ -1118,12 +1174,13 @@ Doubles as an indicator of snippet support."
   "Show document of the symbol at the point using LSP's hover."
   (interactive)
   (if lspce-mode
-      (let* ((params (lspce--make-hoverParams))
-             (request-id (lspce--request-async "textDocument/hover" params))
+      (let* ((method "textDocument/hover")
+             (params (lspce--make-hoverParams))
+             (request-id (lspce--request-async method params))
              response
              contents kind content language)
         (when request-id
-          (setq response (lspce--get-response request-id)))
+          (setq response (lspce--get-response request-id method)))
         (when response
           (setq contents (gethash "contents" response))
           (cond
@@ -1231,10 +1288,8 @@ Doubles as an indicator of snippet support."
             (setq start (gethash "start" range)
                   end (gethash "end" range))
             (push (flymake-make-diagnostic (current-buffer)
-                                           (lspce--lsp-position-to-point (gethash "line" start)
-                                                                         (gethash "character" start))
-                                           (lspce--lsp-position-to-point (gethash "line" end)
-                                                                         (gethash "character" end))
+                                           (lspce--lsp-position-to-point2 start)
+                                           (lspce--lsp-position-to-point2 end)
                                            (lspce--diag-type severity)
                                            msg `((lspce-lsp-diag . ,d))) flymake-diags)))
         flymake-diags)))
@@ -1285,6 +1340,84 @@ Doubles as an indicator of snippet support."
     (let ((boftap (bounds-of-thing-at-point 'sexp)))
       (list (car boftap) (cdr boftap)))))
 
+(defun lspce--execute-command (command arguments)
+  (if (string-equal command "java.apply.workspaceEdit")
+      (progn
+        (mapc #'lspce--apply-workspace-edit arguments))
+    (let ((params (list :command command :arguments arguments)))
+      (lspce--request "workspace/executeCommand" params))))
+
+(defun lspce--apply-text-edits (edits &optional version)
+  (when (or (not version)
+            (equal version lspce--identifier-version))
+    (message "buffer %s, edits: %s" (buffer-name) (json-encode edits))
+    (atomic-change-group
+      (let* ((change-group (prepare-change-group)))
+        (dolist (edit (nreverse edits))
+          (let* ((source (current-buffer))
+                 (newText (gethash "newText" edit))
+                 (range (lspce--range-region (gethash "range" edit) t))
+                 (start (car range))
+                 (end (cdr range)))
+            (with-temp-buffer
+              (insert newText)
+              (let ((temp (current-buffer)))
+                (with-current-buffer source
+                  (save-excursion
+                    (save-restriction
+                      (narrow-to-region start end)
+                      (let ((inhibit-modification-hooks t)
+                            (length (- end start))
+                            (start (marker-position start))
+                            (end (marker-position end)))
+                        (run-hook-with-args 'before-change-functions
+                                            start end)
+                        (replace-buffer-contents temp)
+                        (run-hook-with-args 'after-change-functions
+                                            start (+ start (length newText))
+                                            length)))))))))))))
+
+(defun lspce--apply-workspace-edit (wedit &optional confirm)
+  (let ((changes (gethash "changes" wedit))
+        (documentChanges (gethash "documentChanges" wedit))
+        (confirmed t)
+        filename edits all-edits)
+    (if documentChanges
+        (progn
+          (cond
+           ((listp documentChanges))
+           ((hash-table-p documentChanges)
+            (setq documentChanges (list documentChanges))))
+          (dolist (dc documentChanges)
+            (let ((textDocument (gethash "textDocument" dc))
+                  (edits (gethash "edits" dc))
+                  version)
+              (setq filename (lspce--uri-to-path (gethash "uri" textDocument))
+                    version (gethash "version" textDocument))
+              (cl-pushnew (list filename edits version) all-edits))))
+      (when changes
+        (setq filename (lspce--uri-to-path (nth 0 (hash-table-keys changes)))
+              edits (nth 0 (hash-table-values changes)))
+        (cl-pushnew (list filename edits nil) all-edits)))
+
+    (if (or confirm
+            (cl-notevery #'find-buffer-visiting
+                         (mapcar #'car all-edits)))
+        (unless (y-or-n-p
+                 (format "[lspce] Server wants to edit:\n  %s\n Proceed? "
+                         (mapconcat #'identity (mapcar #'car all-edits) "\n  ")))
+          (setq confirmed nil)
+          (lspce--message "User cancelled server edit")))
+
+    (when confirmed
+      (setq all-edits (nreverse all-edits))
+      (dolist (aedits all-edits)
+        (let ((filename (nth 0 aedits))
+              (edits (nth 1 aedits))
+              (version (nth 2 aedits)))
+          (with-current-buffer (find-file-noselect filename)
+            (lspce--apply-text-edits edits version)))))))
+
 (cl-defun lspce-code-actions (beg &optional end action-kind)
   "Offer to execute actions of ACTION-KIND between BEG and END.
 If ACTION-KIND is nil, consider all kinds of actions.
@@ -1301,15 +1434,55 @@ at point.  With prefix argument, prompt for ACTION-KIND."
     (lspce--warn "Server can't execute code actions!")
     (cl-return-from lspce-code-actions nil))
 
-  (let ((actions (lspce--request "textDocument/codeAction" (lspce--make-codeActionParams beg end action-kind))))
-    (when actions
-      (dolist (action actions)
-        (message "action: %S" action)
-        )
-      )
-    )
-  )
+  (let ((actions (lspce--request "textDocument/codeAction" (lspce--make-codeActionParams beg end action-kind)))
+        candidates preferred-action default-action selected-action
+        kind title preferred)
+    (if actions
+        (progn
+          (dolist (action actions)
+            ;; (message "action: %S" action)
+            (setq kind (gethash "kind" action)
+                  title (gethash "title" action)
+                  preferred (gethash "isPreferred" action))
+            (when (or (not action-kind)
+                      (string-equal action-kind kind))
+              (cl-pushnew (cons title action) candidates))
+            (when preferred
+              (setq preferred-action (cons title action))))
+          (setq default-action (or preferred-action (car candidates)))
+          (setq selected-action (cdr (assoc (completing-read
+                                             (format "[lspce] Pick an action (default %s): "
+                                                     (car default-action))
+                                             candidates nil t nil nil default-action)
+                                            candidates)))
+          (when selected-action
+            ;; (message "selected-action: %S" selected-action)
+            (let* ((command (gethash "command" selected-action))
+                   (edit (gethash "edit" selected-action)))
+              (when edit
+                (lspce--apply-workspace-edit edit))
+              (when command
+                (lspce--execute-command (gethash "command" command) (gethash "arguments" command))))))
+      (lspce--message "No code actions here."))))
 
+;;; rename
+(defun lspce--make-renameParams (newname)
+  (lspce--renameParams (lspce--textDocumentIdenfitier (lspce--uri))
+                       (lspce--make-position)
+                       newname))
+
+(defun lspce-rename (newname)
+  (interactive
+   (list (read-from-minibuffer
+          (format "Rename `%s' to: " (or (thing-at-point 'symbol t)
+                                         "unknown symbol"))
+          nil nil nil nil
+          (symbol-name (symbol-at-point)))))
+  (if (lspce--server-capable-chain "renameProvider")
+      (let ((response (lspce--request "textDocument/rename" (lspce--make-renameParams newname))))
+        (when response
+          (lspce--apply-workspace-edit response)))
+    (lspce--warn "Server does not support rename.")))
 
 ;;; Mode-line
 ;;;
