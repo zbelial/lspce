@@ -1334,7 +1334,7 @@ Doubles as an indicator of snippet support."
        ((and active-signature signatures)
         (setq signature (nth active-signature signatures)))
        (signatures
-        (setq signature (nth 0 active-signature signatures)))
+        (setq signature (nth 0 signatures)))
        (t)
        )
       (when signature
