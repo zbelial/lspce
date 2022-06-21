@@ -1,3 +1,4 @@
+use std::time::Instant;
 use std::{
     collections::VecDeque,
     io::{self, stdin, stdout},
@@ -95,7 +96,8 @@ pub(crate) fn stdio_transport(
                             }
                         }
                     } else {
-                        Logger::log(&format!("stdio read null"));
+                        // Logger::log(&format!("stdio read null"));
+                        thread::sleep(std::time::Duration::from_millis(10));
                     }
                 }
                 Err(e) => {
