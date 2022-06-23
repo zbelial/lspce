@@ -1096,8 +1096,7 @@ Doubles as an indicator of snippet support."
                                                               :markers markers
                                                               :prefix prefix))
                           (setq lspce--completion-last-result cached-proxies))
-                      lspce--completion-last-result)))))))
-           )
+                      (when same-session? lspce--completion-last-result)))))))))
       (list
        bounds-start
        (point)
@@ -1454,7 +1453,7 @@ Doubles as an indicator of snippet support."
     (message "buffer %s, edits: %s" (buffer-name) (json-encode edits))
     (atomic-change-group
       (let* ((change-group (prepare-change-group)))
-        (dolist (edit (nreverse edits))
+        (dolist (edit edits)
           (let* ((source (current-buffer))
                  (newText (gethash "newText" edit))
                  (range (lspce--range-region (gethash "range" edit) t))
@@ -1517,6 +1516,7 @@ Doubles as an indicator of snippet support."
               (edits (nth 1 aedits))
               (version (nth 2 aedits)))
           (with-current-buffer (find-file-noselect filename)
+            (lspce--message "lspce--apply-workspace-edit filename %s" filename)
             (lspce--apply-text-edits edits version)))))))
 
 (cl-defun lspce-code-actions (beg &optional end action-kind)
