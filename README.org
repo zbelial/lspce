@@ -55,7 +55,7 @@
       )
   #+END_SRC
 
-* TODO
+* TODOs
   There are some bugs/issues that should be fixed. Here is the list:
   - diagnostics does not work well, sometimes they won't disappear.
   - renaming class name in Java won't rename the file name (LSPCE does not support file rename/create/delete now)
