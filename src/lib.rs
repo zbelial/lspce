@@ -812,8 +812,10 @@ fn read_file_diagnostics(
     if let Some(p) = projects.get(&root_uri) {
         if let Some(server) = p.servers.get(&file_type) {
             let mut file_infos = server.file_infos.lock().unwrap();
-            if let Some(file_info) = file_infos.get(&uri) {
+            if let Some(file_info) = file_infos.get_mut(&uri) {
                 let result = serde_json::to_string(&file_info.diagnostics);
+
+                file_info.diagnostics.clear();
 
                 if result.is_ok() {
                     return Ok(Some(result.unwrap()));
