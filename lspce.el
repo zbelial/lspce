@@ -1417,9 +1417,8 @@ Doubles as an indicator of snippet support."
                     version (gethash "version" textDocument))
               (cl-pushnew (list filename edits version) all-edits))))
       (when changes
-        (setq filename (lspce--uri-to-path (nth 0 (hash-table-keys changes)))
-              edits (nth 0 (hash-table-values changes)))
-        (cl-pushnew (list filename edits nil) all-edits)))
+        (dolist (filename (hash-table-keys changes))
+          (cl-pushnew (list (lspce--uri-to-path filename) (gethash filename changes) nil) all-edits))))
 
     (if (or confirm
             (cl-notevery #'find-buffer-visiting
