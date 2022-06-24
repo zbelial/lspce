@@ -55,6 +55,12 @@
       )
   #+END_SRC
 
+* TODO
+  There are some bugs/issues that should be fixed. Here is the list:
+  - diagnostics does not work well, sometimes they won't disappear.
+  - renaming class name in Java won't rename the file name (LSPCE does not support file rename/create/delete now)
+  - ...
+
 * Acknowledgements
   Thanks to [[https://github.com/ubolonton/emacs-module-rs][emacs-module-rs]], which makes implementing LSPCE possible.
 
