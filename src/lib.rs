@@ -239,7 +239,6 @@ impl LspServer {
                             file_info.diagnostics = params.diagnostics;
 
                             let mut file_infos = file_infos2.lock().unwrap();
-
                             file_infos.insert(uri.clone(), file_info);
                         } else {
                             // other notifications NOTE
@@ -814,8 +813,6 @@ fn read_file_diagnostics(
             let mut file_infos = server.file_infos.lock().unwrap();
             if let Some(file_info) = file_infos.get_mut(&uri) {
                 let result = serde_json::to_string(&file_info.diagnostics);
-
-                file_info.diagnostics.clear();
 
                 if result.is_ok() {
                     return Ok(Some(result.unwrap()));
