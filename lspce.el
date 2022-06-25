@@ -1182,7 +1182,9 @@ Doubles as an indicator of snippet support."
                                     (window-buffer (minibuffer-selected-window))
                                   (current-buffer))
              (setq-local lspce--completion-complete? nil)
-             (let* ((lsp-item (get-text-property 0 'lspce--lsp-item proxy))
+             (let* ((lsp-item (or (get-text-property 0 'lspce--lsp-item proxy)
+                                  (get-text-property 0 'lspce--lsp-item
+                                                     (cl-find proxy (funcall proxies) :test #'string=))))
                     (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
                     (insertText (gethash "insertText" lsp-item))
                     (textEdit (gethash "textEdit" lsp-item))
