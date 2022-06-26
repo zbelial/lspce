@@ -1324,36 +1324,37 @@ Doubles as an indicator of snippet support."
       (lspce--request "textDocument/signatureHelp" params))))
 
 (defun lspce-eldoc-signature-function (callback)
-  (let ((signature-at-point (lspce-signature-at-point))
-        signatures signature label parameters parameter
-        active-signature active-parameter param-label param-start param-end)
-    (when signature-at-point
-      (setq active-signature (gethash "activeSignature" signature-at-point))
-      (setq signatures (gethash "signatures" signature-at-point))
-      (setq active-parameter (gethash "activeParameter" signature-at-point))
-      (cond
-       ((and active-signature signatures)
-        (setq signature (nth active-signature signatures)))
-       (signatures
-        (setq signature (nth 0 signatures)))
-       (t)
-       )
-      (when signature
-        (setq label (gethash "label" signature))
-        (setq parameters (gethash "parameters" signature))
-        (setq active-parameter (or (gethash "activeParameter" signature) active-parameter))
-        (when (and active-parameter parameters)
-          (setq parameter (nth active-parameter parameters)))
-        (when parameter
-          (setq param-label (gethash "label" parameter))
-          (when (not (stringp param-label))
-            (setq param-start (nth 0 param-label))
-            (setq param-end (nth 1 param-label))
-            (setq param-label (substring-no-properties label param-start param-end)))
-          (setq label (string-replace param-label
-                                      (propertize param-label 'face 'font-lock-type-face)
-                                      label)))
-        (funcall callback label)))))
+  (when lspce-mode
+    (let ((signature-at-point (lspce-signature-at-point))
+          signatures signature label parameters parameter
+          active-signature active-parameter param-label param-start param-end)
+      (when signature-at-point
+        (setq active-signature (gethash "activeSignature" signature-at-point))
+        (setq signatures (gethash "signatures" signature-at-point))
+        (setq active-parameter (gethash "activeParameter" signature-at-point))
+        (cond
+         ((and active-signature signatures)
+          (setq signature (nth active-signature signatures)))
+         (signatures
+          (setq signature (nth 0 signatures)))
+         (t)
+         )
+        (when signature
+          (setq label (gethash "label" signature))
+          (setq parameters (gethash "parameters" signature))
+          (setq active-parameter (or (gethash "activeParameter" signature) active-parameter))
+          (when (and active-parameter parameters)
+            (setq parameter (nth active-parameter parameters)))
+          (when parameter
+            (setq param-label (gethash "label" parameter))
+            (when (not (stringp param-label))
+              (setq param-start (nth 0 param-label))
+              (setq param-end (nth 1 param-label))
+              (setq param-label (substring-no-properties label param-start param-end)))
+            (setq label (string-replace param-label
+                                        (propertize param-label 'face 'font-lock-type-face)
+                                        label)))
+          (funcall callback label))))))
 
 ;;; diagnostics
 (put 'lspce-note 'flymake-category 'flymake-note)
