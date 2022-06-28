@@ -31,7 +31,7 @@
 ** Installing from the Git Repository
    Before installing LSPCE, you should install rust and cargo.
    #+BEGIN_SRC bash
-     $ git https://github.com/zbelial/lspce.git ~/.emacs.d/site-lisp/lspce
+     $ git clone https://github.com/zbelial/lspce.git ~/.emacs.d/site-lisp/lspce
      $ cd ~/.emacs.d/site-lisp/lspce
      $ cargo build
      # or, to build a release version
