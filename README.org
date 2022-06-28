@@ -42,15 +42,26 @@
 
    Or (if you use Linux) you can download a .so file I compiled on a Manjaro with rust 1.61.0.
 * Get started
-  You need to install [[https://github.com/rejeep/f.el][f.el]] and [[https://github.com/joaotavora/yasnippet][yasnippet]] as this package depends on them.
+  You need to install [[https://github.com/rejeep/f.el][f.el]] and [[https://github.com/joaotavora/yasnippet][yasnippet]] .
   #+BEGIN_SRC elisp
     (use-package lspce
       :load-path "/path/to/lspce/lisp"
       :config (progn
                 (setq lspce-send-changes-idle-time 1)
 
+                ;; log file
+                (lspce-set-log-file "/tmp/lspce.log")
+
+                ;; By default, lspce will write log to what `lspce-set-log-file' sets.
+                ;; To disable logging, use 
+                ;; (lspce-disable-logging)
+                ;; You can enable logging on the fly by calling `lspce-enable-logging'
+
                 ;; enable lspce in particular buffers
                 ;; (add-hook 'rust-mode-hook 'lspce-mode)
+
+                ;; modify `lspce-server-programs' to add or change a lsp server, see document
+                ;; of `lspce-lsp-type-function' to understand how to get buffer's lsp type.
                 )
       )
   #+END_SRC
@@ -59,6 +70,7 @@
   There are some bugs/issues that should be fixed. Here is the list:
   - diagnostics does not work well, sometimes they won't disappear.
   - renaming class name in Java won't rename the file name (LSPCE does not support file rename/create/delete now)
+  - completion has a little bug, where it may complete foo.bar to foo.barb when current text is foo.b
   - ...
 
 * Acknowledgements

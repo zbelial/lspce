@@ -277,7 +277,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defalias 'lspce--buffer-language-id 'lspce--lsp-type-default "lspce--buffer-language-id")
 
 (defvar lspce-lsp-type-function #'lspce--lsp-type-default
-  "Function to the lsp type of current buffer.")
+  "Function to figure out the lsp type of current buffer.")
 
 (defvar lspce--throw-on-input nil
   "Make `lspce-*-while-no-input' throws `input' on interrupted.")
