@@ -71,6 +71,7 @@
   - diagnostics does not work well, sometimes they won't disappear.
   - renaming class name in Java won't rename the file name (LSPCE does not support file rename/create/delete now)
   - completion has a little bug, where it may complete foo.bar to foo.barb when current text is foo.b
+  - new created files cannot be recognized by lsp server (workaround: revert it or close and then open it)
   - ...
 
 * Acknowledgements

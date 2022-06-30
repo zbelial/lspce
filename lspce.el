@@ -1019,6 +1019,17 @@ Doubles as an indicator of snippet support."
                              start))))
     bounds-start))
 
+(defun delete-region-advice (start end)
+  (message "delete-region start %d - %S, end %d - %S"
+           start
+           (lspce--pos-to-lsp-position start)
+           (if (markerp end) (marker-position end) end)
+           (lspce--pos-to-lsp-position end)))
+
+;; (advice-add #'delete-region :before #'delete-region-advice)
+;; (advice-remove #'delete-region #'delete-region-advice)
+
+
 (defun lspce-completion-at-point()
   (when-let (completion-capability (lspce--server-capable "completionProvider"))
     (let* ((trigger-chars (lspce--server-capable-chain "completionProvider"
@@ -1081,7 +1092,10 @@ Doubles as an indicator of snippet support."
                                             (t
                                              (string-trim-left label)))))
                                      (unless (zerop (length proxy))
-                                       (put-text-property 0 1 'lspce--lsp-item item proxy))
+                                       (put-text-property 0 1 'lspce--lsp-item item proxy)
+                                       (put-text-property 0 1 'lspce--lsp-markers markers proxy)
+                                       (put-text-property 0 1 'lspce--lsp-prefix prefix proxy)
+                                       )
                                      proxy))
                                  items))
                           (setf done? complete?
@@ -1096,7 +1110,8 @@ Doubles as an indicator of snippet support."
                                                               :markers markers
                                                               :prefix prefix))
                           (setq lspce--completion-last-result cached-proxies))
-                      (when same-session? lspce--completion-last-result)))))))))
+                      (when same-session? lspce--completion-last-result)
+                      ))))))))
       (list
        bounds-start
        (point)
@@ -1182,9 +1197,15 @@ Doubles as an indicator of snippet support."
                                     (window-buffer (minibuffer-selected-window))
                                   (current-buffer))
              (setq-local lspce--completion-complete? nil)
-             (let* ((lsp-item (or (get-text-property 0 'lspce--lsp-item proxy)
-                                  (get-text-property 0 'lspce--lsp-item
-                                                     (cl-find proxy (funcall proxies) :test #'string=))))
+             (let* ((proxy (if (plist-member (text-properties-at 0 proxy) 'lspce--lsp-item)
+                               proxy
+                             (cl-find proxy (funcall proxies) :test #'equal)))
+                    (lsp-item (get-text-property 0 'lspce--lsp-item proxy))
+                    (lsp-markers (get-text-property 0 'lspce--lsp-markers proxy))
+                    (lsp-prefix (get-text-property 0 'lspce--lsp-prefix proxy))
+                    ;; (lsp-item (or (get-text-property 0 'lspce--lsp-item proxy)
+                    ;;               (get-text-property 0 'lspce--lsp-item
+                    ;;                                  (cl-find proxy (funcall proxies) :test #'string=))))
                     (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
                     (insertText (gethash "insertText" lsp-item))
                     (textEdit (gethash "textEdit" lsp-item))
@@ -1206,13 +1227,10 @@ Doubles as an indicator of snippet support."
                                      (point))
                       (let ((range (gethash "range" textEdit))
                             (newText (gethash "newText" textEdit)))
-                        ;; (lspce--message "range %S" range)
-                        (pcase-let ((`(,beg . ,end)
-                                     (lspce--range-region range)))
-                          ;; (lspce--message "beg %s, end %s" beg end)
-                          (delete-region beg end)
-                          (goto-char beg)
-                          (funcall (or snippet-fn #'insert) newText)))
+                        (apply #'delete-region lsp-markers)
+                        (goto-char (nth 0 lsp-markers))
+                        (funcall (or snippet-fn #'insert) newText)
+                        )
                       (when (cl-plusp (length additionalTextEdits))
                         (lspce--apply-text-edits additionalTextEdits)))
                      (snippet-fn
