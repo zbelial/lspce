@@ -68,6 +68,11 @@
   :group 'lspce
   :type 'directory)
 
+(defcustom lspce-jdtls-launch-mode "Hybrid"
+  "The launch mode for the Java extension"
+  :group 'lspce
+  :type '(choice (:tag "Standard" "LightWeight" "Hybrid")))
+
 (defun lspce--jdtls-workspace-dir ()
   (let ((proj (project-current))
         workspace)
@@ -125,15 +130,15 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
 
 (defun lspce-jdtls-initializationOptions ()
   (let ((options (make-hash-table :test #'equal)))
-    ;; (setq options (lspce--add-option "settings.java.server.launchMode" "Hybrid" options))
-    (setq options (lspce--add-option "settings.java.server.launchMode" "LightWeight" options))
+    (setq options (lspce--add-option "settings.java.server.launchMode" lspce-jdtls-launch-mode options))
     (setq options (lspce--add-option "settings.java.completion.enabled" t options))
     (setq options (lspce--add-option "settings.java.completion.maxResults" 30 options))
     (setq options (lspce--add-option "settings.java.completion.importOrder" (vector "java" "javax" "com" "org") options))
     (setq options (lspce--add-option "settings.java.completion.guessMethodArguments" :json-false options))
+    (setq options (lspce--add-option "settings.java.signatureHelp.enabled" t options))
     (setq options (lspce--add-option "settings.java.progressReports.enabled" t options))
     (setq options (lspce--add-option "settings.java.foldingRange.enabled" :json-false options))
-    (setq options (lspce--add-option "settings.java.maxConcurrentBuilds" 2 options))
+    (setq options (lspce--add-option "settings.java.maxConcurrentBuilds" 1 options))
     (setq options (lspce--add-option "settings.java.autobuild.enabled" t options))
     (setq options (lspce--add-option "settings.java.import.maven.enabled" t options))
     (setq options (lspce--add-option "settings.java.import.gradle.enabled" t options))
@@ -144,9 +149,6 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
     (setq options (lspce--add-option "settings.java.trace.server" "off" options))
     (setq options (lspce--add-option "settings.java.configuration.updateBuildConfiguration" "automatic" options))
     (setq options (lspce--add-option "settings.java.configuration.checkProjectSettingsExclusions" t options))
-    (setq options (lspce--add-option "settings.java.configuration.runtimes" (vector (list :name "JavaSE-1.8" :path "/usr/lib/jvm/java-8-openjdk/" :default t)
-                                                                                    (list :name "JavaSE-11" :path "/usr/lib/jvm/java-11-openjdk/"))
-                                     options))
     (setq options (lspce--add-option "settings.java.showBuildStatusOnStart.enabled" t options))
     options
     )
