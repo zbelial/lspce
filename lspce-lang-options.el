@@ -150,7 +150,7 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
     (setq options (lspce--add-option "settings.java.configuration.updateBuildConfiguration" "automatic" options))
     (setq options (lspce--add-option "settings.java.configuration.checkProjectSettingsExclusions" t options))
     (setq options (lspce--add-option "settings.java.showBuildStatusOnStart.enabled" t options))
-    (setq options (lspce--add-option "settings.java.extendedClientCapabilities.classFileContentsSupport" t options))
+    (setq options (lspce--add-option "extendedClientCapabilities.classFileContentsSupport" t options))
     options
     )
   )
