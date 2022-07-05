@@ -1220,11 +1220,11 @@ Doubles as an indicator of snippet support."
                       ;; want to delete only "ar" (`proxy' minus the
                       ;; symbol whose bounds we've calculated before)
                       ;; (github#160).
-                      (delete-region (+ (- (point) (length proxy))
-                                        (if bounds
-                                            (- (cdr bounds) (car bounds))
-                                          0))
-                                     (point))
+                      ;; (delete-region (+ (- (point) (length proxy))
+                      ;;                   (if bounds
+                      ;;                       (- (cdr bounds) (car bounds))
+                      ;;                     0))
+                      ;;                (point))
                       (let ((range (gethash "range" textEdit))
                             (newText (gethash "newText" textEdit)))
                         (apply #'delete-region lsp-markers)
