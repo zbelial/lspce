@@ -83,7 +83,7 @@
     (f-join lspce-jdtls-workspace-dir (string-replace "/" "!" workspace))))
 
 (defun lspce--jdtls-workspace-cache-dir ()
-  (let ((cache-dir (f-join lspce-jdtls-workspace-dir ".cache/")))
+  (let ((cache-dir (f-join (lspce--jdtls-workspace-dir) ".cache/")))
     (lspce--ensure-dir cache-dir)
     cache-dir))
 
