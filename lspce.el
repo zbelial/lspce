@@ -16,7 +16,7 @@
 (require 'lspce-module)
 (require 'lspce-util)
 (require 'lspce-types)
-(require 'lspce-lang-options)
+(require 'lspce-langs)
 
 ;;; User tweakable stuff
 (defgroup lspce nil
@@ -783,9 +783,13 @@ If optional MARKERS, make markers."
             (setq start-column (gethash "character" start))
             (setq end-line (gethash "line" end))
             (setq end-column (gethash "character" end))
-            (setq filename (lspce--uri-to-path uri))
+            (if (string-prefix-p "jdt:\/\/" uri)
+                (setq filename (lspce--jdtls-open-jdt-link uri))
+              (setq filename (lspce--uri-to-path uri)))
 
-            (cl-pushnew (make-lspce--xref-item :filename filename :start-line start-line :start-column start-column :end-line end-line :end-column end-column) xref-items)
+            (when filename
+              (cl-pushnew (make-lspce--xref-item :filename filename :start-line start-line :start-column start-column :end-line end-line :end-column end-column) xref-items)
+              )
             )
 
           (setq groups (seq-group-by (lambda (x) (lspce--xref-item-filename x))
