@@ -47,7 +47,7 @@
 
 
 ;;; java 
-(defcustom lspce-jdtls-workspace-dir (expand-file-name (locate-user-emacs-file "workspace/"))
+(defcustom lspce-jdtls-workspace-dir (expand-file-name "~/.jdtls/workspace/")
   "jdtls workspace directory."
   :group 'lspce
   :type 'directory)
@@ -76,8 +76,7 @@
 (defun lspce--jdtls-workspace-dir ()
   (let ((proj (project-current))
         workspace)
-    (unless (file-exists-p lspce-jdtls-workspace-dir)
-      (make-directory lspce-jdtls-workspace-dir t))
+    (lspce--ensure-dir lspce-jdtls-workspace-dir)
     (setq workspace (if proj
                         (file-truename (project-root proj))
                       "DEFAULT"))
@@ -85,8 +84,7 @@
 
 (defun lspce--jdtls-workspace-cache-dir ()
   (let ((cache-dir (f-join lspce-jdtls-workspace-dir ".cache/")))
-    (unless (file-exists-p cache-dir)
-      (make-directory cache-dir t))
+    (lspce--ensure-dir cache-dir)
     cache-dir))
 
 (defun lspce--jdtls-locate-server-jar ()
@@ -127,6 +125,36 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
                             "-data"
                             ,data
                             ) " ")))
+
+(defvar lspce--jdt-link-pattern "jdt://contents/\\(.*?\\)/\\(.*\\)\.class\\?")
+(defun lspce--jdtls-get-jdt-filename (uri)
+  "Get the name of the buffer calculating it based on URL."
+  (or (save-match-data
+        (when (string-match lspce--jdt-link-pattern uri)
+          (format "%s.java"
+                  (replace-regexp-in-string "/" "." (match-string 2 uri) t t))))
+      (save-match-data
+        (when (string-match
+               "jdt://.*?/\\(.*?\\)\\?=\\(.*?\\)/.*/\\(.*\\)"
+               (url-unhex-string uri))
+          (format "%s(%s)" (match-string 2 uri) (string-replace "\\" "" (string-replace "/" "" (match-string 4 uri))))))
+      (save-match-data
+        (when (string-match "chelib://\\(.*\\)" uri)
+          (let ((matched (match-string 1 uri)))
+            (replace-regexp-in-string (regexp-quote ".jar") "jar" matched t t))))
+      (error "Unable to match %s" uri)))
+
+(defun lspce--jdtls-open-jdt-link (uri)
+  (let ((filename (lspce--jdtls-get-jdt-filename uri))
+        fullname content)
+    (when filename 
+      (setq fullname (f-join (lspce--jdtls-workspace-cache-dir) filename))
+      (unless (file-readable-p fullname)
+        (setq content (lspce--request "java/classFileContents" (list :uri uri)))
+        (when content
+          (with-temp-file fullname
+            (insert content)))))
+    fullname))
 
 (defun lspce-jdtls-initializationOptions ()
   (let ((options (make-hash-table :test #'equal)))
@@ -170,4 +198,4 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
   )
 
 
-(provide 'lspce-lang-options)
+(provide 'lspce-langs)

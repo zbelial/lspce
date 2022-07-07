@@ -92,9 +92,12 @@
 
 (defun lspce--uri-to-path (uri)
   "Convert URI to a file path."
-  (when (keywordp uri) (setq uri (substring (symbol-name uri) 1)))
+  (when (keywordp uri)
+    (setq uri (substring (symbol-name uri) 1)))
   (let ((retval (url-unhex-string (url-filename (url-generic-parse-url uri)))))
-    (if (eq system-type 'windows-nt) (substring retval 1) retval)))
+    (if (eq system-type 'windows-nt)
+        (substring retval 1)
+      retval)))
 
 (defvar lspce--jsonrpc-id 0)
 (defsubst lspce--next-jsonrpc-id ()
@@ -102,6 +105,11 @@
   lspce--jsonrpc-id)
 (defsubst lspce--current-jsonrpc-id ()
   lspce--jsonrpc-id)
+
+(defun lspce--ensure-dir (path)
+  "Ensure that directory PATH exists."
+  (unless (file-directory-p path)
+    (make-directory path t)))
 
 (defun lspce--warn (message &rest args)
   "Display a warning message made from (`format-message' MESSAGE ARGS...).
