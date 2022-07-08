@@ -149,11 +149,11 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
         fullname content)
     (when filename 
       (setq fullname (f-join (lspce--jdtls-workspace-cache-dir) filename))
-      (unless (file-readable-p fullname)
-        (setq content (lspce--request "java/classFileContents" (list :uri uri)))
-        (when content
-          (with-temp-file fullname
-            (insert content)))))
+      (setq content (lspce--request "java/classFileContents" (list :uri uri)))
+      (when content
+        (with-temp-file fullname
+          (erase-buffer)
+          (insert content))))
     fullname))
 
 (defun lspce-jdtls-initializationOptions ()
