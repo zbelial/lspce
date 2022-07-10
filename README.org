@@ -71,9 +71,13 @@
   - diagnostics does not work well, sometimes they won't disappear.
   - renaming class name in Java won't rename the file name (LSPCE does not support file rename/create/delete now)
   - completion has a little bug, where it may complete foo.bar to foo.barb when current text is foo.b
+  - support server request `workspace/configuration` 
+  - support workspaceFolders (or not, not decided yet)
   - ...
 
 * Acknowledgements
   Thanks to [[https://github.com/ubolonton/emacs-module-rs][emacs-module-rs]], which makes implementing LSPCE possible.
 
   Thanks to [[https://github.com/joaotavora/eglot][eglot]] and [[https://github.com/emacs-lsp/lsp-mode][lsp-mode]], I learned a lot about LSP from both of them while developing this package.
+
+  Thanks to [[https://crates.io/crates/lsp-server][lsp-server]] from rust-analyzer, I used a lot of code from it (and modified them a little to make it suitable for a client).

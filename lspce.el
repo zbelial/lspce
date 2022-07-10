@@ -105,7 +105,7 @@
 (defvar lspce-server-programs `(("rust-mode"  "rust-analyzer" "" lspce-ra-initializationOptions)
                                 ("python-mode" "pyright-langserver" "--stdio" lspce-pyright-initializationOptions)
                                 ("C" "clangd" "")
-                                ("go-mode"  "gopls" "")
+                                ("go-mode"  "gopls" "" lspce-gopls-initializationOptions)
                                 )
   "How the command `lspce' gets the server to start.
 A list of (LSP-TYPE SERVER-COMMAND SERVER-PARAMS).  LSP-TYPE
@@ -268,7 +268,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (when buffer-file-name
       (setq suffix (file-name-extension buffer-file-name)))
     (cond
-     ((member suffix '("c" "c++" "cpp" "h" "hpp" "cxx"))
+     ((member suffix '("c" "c++" "cpp" "h" "hpp" "cxx" "cc"))
       "C")
      (t
       ;; (string-remove-suffix "-mode" (symbol-name major-mode))

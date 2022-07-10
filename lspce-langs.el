@@ -184,6 +184,7 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
     )
   )
 
+;;; python pyright
 (defun lspce-pyright-initializationOptions ()
   (let ((options (make-hash-table :test #'equal)))
     (setq options (lspce--add-option "python.analysis.autoImportCompletions" t options))
@@ -198,5 +199,13 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
     )
   )
 
+
+;;; go gopls
+(defun lspce-gopls-initializationOptions ()
+  (let ((options (make-hash-table :test #'equal)))
+    (setq options (lspce--add-option "settings.gopls.usePlaceholders" t options))
+    options
+    )
+  )
 
 (provide 'lspce-langs)
