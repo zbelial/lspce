@@ -3,7 +3,8 @@
 
 ;;; Require
 (require 'json)
-(require 'cl-lib)
+(eval-when-compile
+  (require 'cl-lib))
 (require 'project)
 (require 'url-util)
 (require 'compile)                      ; for some faces
@@ -14,7 +15,8 @@
 (require 'flymake)
 
 (require 'lspce-module)
-(require 'lspce-util)
+(eval-when-compile
+  (require 'lspce-util))
 (require 'lspce-types)
 (require 'lspce-langs)
 
@@ -281,30 +283,6 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (defvar lspce--throw-on-input nil
   "Make `lspce-*-while-no-input' throws `input' on interrupted.")
-
-(defmacro lspce--catch (tag bodyform &rest handlers)
-  "Catch TAG thrown in BODYFORM.
-The return value from TAG will be handled in HANDLERS by `pcase'."
-  (declare (debug (form form &rest (pcase-PAT body))) (indent 2))
-  (let ((re-sym (make-symbol "re")))
-    `(let ((,re-sym (catch ,tag ,bodyform)))
-       (pcase ,re-sym
-         ,@handlers))))
-
-(defmacro lspce--while-no-input (&rest body)
-  "Wrap BODY in `while-no-input' and respecting `non-essential'.
-If `lspce--throw-on-input' is set, will throw if input is pending, else
-return value of `body' or nil if interrupted."
-  (declare (debug t) (indent 0))
-  `(if non-essential
-       (let ((res (while-no-input ,@body)))
-         (cond
-          ((and lspce--throw-on-input (equal res t))
-           (throw 'input :interrupted))
-          ((booleanp res) nil)
-          (t res)))
-     ,@body))
-
 
 (cl-defun lspce--request-async (method &optional params)
   (let* ((request (lspce--make-request method params))

@@ -40,7 +40,8 @@
     (setq options (lspce--add-option "completion.addCallParenthesis" t options))
     (setq options (lspce--add-option "completion.addCallArgumentSnippets" :json-false options))
     (setq options (lspce--add-option "completion.postfix.enable" :json-false options))
-    (setq options (lspce--add-option "procMacro" t options))
+    (setq options (lspce--add-option "procMacro.enable" t options))
+    (setq options (lspce--add-option "lens.enable" :json-false options))
     options
     )
   )

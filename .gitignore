@@ -48,4 +48,5 @@ Thumbs.db
 *.mov
 *.wmv
 
-lisp/lspce-module.so
+lspce-module.so
+lspce-module.so.*

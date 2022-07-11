@@ -1,5 +1,8 @@
 ;;; lspce.el --- LSP Client for Emacs -*- lexical-binding: t; -*-
 
+(eval-when-compile
+  (require 'cl-macs))
+
 (defconst LSPCE-VERSION "0.1")
 (defconst LSPCE-NAME "lspce")
 
