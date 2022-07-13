@@ -175,22 +175,27 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (lspce--didCloseTextDocumentParams (lspce--textDocumentIdenfitier uri)))
   )
 
-(defun lspce--make-didChangeTextDocumentParams ()
+(defun lspce--make-didChangeTextDocumentParams (&optional full)
   (let ((uri (lspce--path-to-uri buffer-file-name))
         (version lspce--identifier-version)
         beg end len text changes)
-    (dolist (change lspce--recent-changes)
-      (setq beg (nth 0 change)
-            end (nth 1 change)
-            len (nth 2 change)
-            text (nth 3 change))
-      (push (lspce--textDocumentContentChangeEvent
-             (lspce--range beg end)
-             len
-             text)
-            changes))
+    (if full
+        (setq changes (vector `(:text ,(lspce--widening
+                                        (buffer-substring-no-properties (point-min)
+                                                                        (point-max))))))
+      (dolist (change lspce--recent-changes)
+        (setq beg (nth 0 change)
+              end (nth 1 change)
+              len (nth 2 change)
+              text (nth 3 change))
+        (push (lspce--textDocumentContentChangeEvent
+               (lspce--range beg end)
+               len
+               text)
+              changes))
+      (setq changes (vconcat changes)))
     (lspce--didChangeTextDocumentParams (lspce--versionedTextDocumentIdenfitier uri version)
-                                        (vconcat changes))))
+                                        changes)))
 
 (defun lspce--make-position (&optional pos)
   (save-excursion
@@ -357,12 +362,17 @@ be set to `lspce-move-to-lsp-abiding-column', and
       (cl-return-from lspce--notify nil))
     (lspce-module-notify root-uri lsp-type (json-encode notification))))
 
-
 (defun lspce--notify-textDocument/didChange ()
   "Send textDocument/didChange to server."
   (when lspce--recent-changes
-    (lspce--notify "textDocument/didChange" (lspce--make-didChangeTextDocumentParams))
-    (setq lspce--recent-changes nil)))
+    (let* ((sync-capability (lspce--server-capable "textDocumentSync"))
+           (sync-kind (if (numberp sync-capability) sync-capability
+                        (gethash "change" sync-capability)))
+           (full-sync-p (or (eq sync-kind 1)
+                            (eq :emacs-messup lspce--recent-changes))))
+      (lspce--notify "textDocument/didChange" (lspce--make-didChangeTextDocumentParams full-sync-p))
+      (setq lspce--recent-changes nil)))
+  )
 
 (defun lspce--notify-textDocument/didOpen ()
   "Send textDocument/didOpen to server."
