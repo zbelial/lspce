@@ -17,7 +17,8 @@ use error::LspceError;
 use logger::Logger;
 use logger::LOG_ENABLE;
 use logger::LOG_FILE_NAME;
-use lsp_types::request::Shutdown;
+
+use lsp_types::DidChangeTextDocumentParams;use lsp_types::request::Shutdown;
 use lsp_types::Diagnostic;
 use lsp_types::InitializeParams;
 use lsp_types::InitializeResult;
@@ -351,6 +352,14 @@ impl LspServer {
 
         requests.pop_front()
     }
+
+    pub fn clear_diagnostics(&self, uri: &str) {
+        let mut file_infos = self.file_infos.lock().unwrap();
+        if let Some(mut file_info) = file_infos.get_mut(uri) {
+            let result = serde_json::to_string(&file_info.diagnostics);
+            file_info.diagnostics = Vec::new();
+        }
+    }
 }
 
 struct Project {
@@ -661,6 +670,14 @@ fn _request_async(server: &mut LspServer, req: Request) -> bool {
 
     // 更新最新的请求id
     server.update_latest_request_id(id.clone());
+
+    if method == "textDocument/didChange" || method == "textDocument/didClose"{
+        let param = serde_json::from_value::<DidChangeTextDocumentParams>(req.params.clone());
+        if let Ok(param) = param {
+            server.clear_diagnostics(&param.text_document.uri.to_string());
+        }
+    }
+    
 
     let write_result = server.write(Message::Request(req));
     match write_result {
