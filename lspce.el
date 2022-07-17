@@ -61,6 +61,11 @@
   :group 'lspce
   :type 'boolean)
 
+(defcustom lspce-enable-flymake t
+  "If non-nil, enable flymake."
+  :group 'lspce
+  :type 'boolean)
+
 (defcustom lspce-connect-server-timeout 60
   "The timeout of connecting to lsp server, in seconds."
   :group 'lspce
@@ -580,11 +585,12 @@ Auto completion is only performed if the tick did not change."
       (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
       (add-hook 'before-save-hook 'lspce--notify-textDocument/willSave nil t)
       (add-hook 'after-save-hook 'lspce--notify-textDocument/didSave nil t)
-      (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
       (when lspce-enable-eldoc
         (add-hook 'eldoc-documentation-functions #'lspce-eldoc-signature-function nil t)
         (eldoc-mode 1))
-      (flymake-mode 1)
+      (when lspce-enable-flymake
+        (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
+        (flymake-mode 1))
       (lspce--buffer-enable-lsp)
       (if lspce--server-info
           (lspce--message "Connected to lsp server.")
