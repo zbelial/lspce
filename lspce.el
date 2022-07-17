@@ -1597,6 +1597,15 @@ at point.  With prefix argument, prompt for ACTION-KIND."
           (lspce--apply-workspace-edit response)))
     (lspce--warn "Server does not support rename.")))
 
+;;; workspace
+(defun lspce-restart-workspace ()
+  (interactive)
+  (let (buffers)
+    (with-current-buffer (current-buffer)
+      )
+    )
+  )
+
 ;;; Mode-line
 ;;;
 (defvar lspce--mode-line-format `(:eval (lspce--mode-line-format)))
