@@ -555,6 +555,13 @@ Auto completion is only performed if the tick did not change."
       
       (setq-local lspce--server-info nil))))
 
+(defun lspce--server-id (&optional buffer)
+  (with-current-buffer (or buffer (current-buffer))
+    (when (and
+           lspce--server-info
+           (hash-table-p lspce--server-info))
+      (gethash "id" lspce--server-info))))
+
 (defun lspce--kill-buffer-hook ()
   (when (and buffer-file-name
              lspce-mode)
@@ -1469,7 +1476,7 @@ Doubles as an indicator of snippet support."
 (defun lspce--apply-text-edits (edits &optional version)
   (when (or (not version)
             (equal version lspce--identifier-version))
-    (message "buffer %s, edits: %s" (buffer-name) (json-encode edits))
+    ;; (lspce--message "buffer %s, edits: %s" (buffer-name) (json-encode edits))
     (atomic-change-group
       (let* ((change-group (prepare-change-group)))
         (dolist (edit edits)
@@ -1603,14 +1610,53 @@ at point.  With prefix argument, prompt for ACTION-KIND."
           (lspce--apply-workspace-edit response)))
     (lspce--warn "Server does not support rename.")))
 
-;;; workspace
-(defun lspce-restart-workspace ()
+;;; workspace server
+(defun lspce-restart-server ()
+  "Restart server running in current buffer."
   (interactive)
-  (let (buffers)
-    (with-current-buffer (current-buffer)
-      )
-    )
-  )
+  (let (buffers
+        server-id
+        server-buffers)
+    (setq server-id (lspce--server-id (current-buffer)))
+    ;; (lspce--message "server-id %S" server-id)
+    (if server-id
+        (progn
+          (cl-dolist (buf (buffer-list))
+            (with-current-buffer buf
+              (when (string-equal server-id (lspce--server-id buf))
+                (cl-pushnew buf server-buffers))))
+          (cl-dolist (buf server-buffers)
+            ;; (lspce--message "lspce-restart-server buf %s" (buffer-name buf))
+            (with-current-buffer buf
+              (lspce-mode -1)))
+          (cl-dolist (buf server-buffers)
+            (with-current-buffer buf
+              (lspce-mode 1))))
+      (lspce--message "No server running in current buffer"))))
+
+(defun lspce-restart-workspace ()
+  "Restart all server in current project."
+  (interactive)
+  (let (buffers
+        server-id
+        root-uri
+        server-buffers)
+    (setq server-id (lspce--server-id (current-buffer)))
+    (setq root-uri (lspce--root-uri))
+    (if server-id
+        (progn
+          (cl-dolist (buf (buffer-list))
+            (with-current-buffer buf
+              (when (and lspce--server-info
+                         (string-equal root-uri (lspce--root-uri)))
+                (cl-pushnew buf server-buffers))))
+          (cl-dolist (buf server-buffers)
+            (with-current-buffer buf
+              (lspce-mode -1)))
+          (cl-dolist (buf server-buffers)
+            (with-current-buffer buf
+              (lspce-mode 1))))
+      (lspce--message "No sever running in current buffer"))))
 
 ;;; Mode-line
 ;;;
