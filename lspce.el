@@ -1611,6 +1611,26 @@ at point.  With prefix argument, prompt for ACTION-KIND."
     (lspce--warn "Server does not support rename.")))
 
 ;;; workspace server
+(defun lspce-shutdown-server ()
+  "Shutdown server running in current buffer."
+  (interactive)
+  (let (buffers
+        server-id
+        server-buffers)
+    (setq server-id (lspce--server-id (current-buffer)))
+    ;; (lspce--message "server-id %S" server-id)
+    (if server-id
+        (progn
+          (cl-dolist (buf (buffer-list))
+            (with-current-buffer buf
+              (when (string-equal server-id (lspce--server-id buf))
+                (cl-pushnew buf server-buffers))))
+          (cl-dolist (buf server-buffers)
+            ;; (lspce--message "lspce-restart-server buf %s" (buffer-name buf))
+            (with-current-buffer buf
+              (lspce-mode -1))))
+      (lspce--message "No server running in current buffer"))))
+
 (defun lspce-restart-server ()
   "Restart server running in current buffer."
   (interactive)
