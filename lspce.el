@@ -81,6 +81,11 @@
   :group 'lspce
   :type 'boolean)
 
+(defcustom lspce-auto-enable-within-project t
+  "If non-nil, enable lspce when a file is opened if lspce is running in current project."
+  :group 'lspce
+  :type 'boolean)
+
 ;; Customizable via `completion-category-overrides'.
 (when (assoc 'flex completion-styles-alist)
   (add-to-list 'completion-category-defaults '(lspce-capf (styles flex basic))))
@@ -621,6 +626,23 @@ Auto completion is only performed if the tick did not change."
     (flymake-mode -1)
     (lspce--buffer-disable-lsp)
     )))
+
+(cl-defun lspce-enable-within-project ()
+  (when (and lspce-auto-enable-within-project
+             buffer-file-name)
+    (let ((root-uri (lspce--root-uri))
+          (lsp-type (lspce--lsp-type))
+          lsp-server)
+      (unless (and root-uri lsp-type)
+        (lspce--message "lspce-enable-within-project: Cannot enable lspce in current buffer.")
+        (cl-return-from lspce-enable-within-project nil))
+      
+      (setq lsp-server (lspce-module-server root-uri lsp-type))
+      (when lsp-server
+        (lspce--message "lspce-enable-within-project: Server for (%s %s) is running." root-uri lsp-type)
+        (lspce-mode t)))))
+
+(add-hook 'find-file-hook #'lspce-enable-within-project)
 
 ;;; Hooks
 (defvar-local lspce--recent-changes nil
