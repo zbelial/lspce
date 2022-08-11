@@ -300,6 +300,10 @@ be set to `lspce-move-to-lsp-abiding-column', and
   "Make `lspce-*-while-no-input' throws `input' on interrupted.")
 
 (cl-defun lspce--request-async (method &optional params)
+  (unless (and buffer-file-name
+               (file-exists-p buffer-file-name))
+    (lspce--message "lspce--request-async: current buffer has no disk file.")
+    (cl-return-from lspce--request-async nil))
   (let* ((request (lspce--make-request method params))
          (root-uri (lspce--root-uri))
          (lsp-type (funcall lspce-lsp-type-function))
@@ -402,6 +406,25 @@ be set to `lspce-move-to-lsp-abiding-column', and
   (when (lspce--server-capable-chain "textDocumentSync" "willSave")
     (lspce--notify
      "textDocument/willSave" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri)) :reason 1))))
+
+;; auto enable lspce-mode for files newly created .
+(cl-defun lspce-enable-after-save ()
+  (when (and
+         (not lspce-mode)
+         buffer-file-name
+         (file-exists-p buffer-file-name))
+    (let ((root-uri (lspce--root-uri))
+          (lsp-type (lspce--lsp-type))
+          lsp-server)
+      (unless (and root-uri lsp-type)
+        (lspce--message "lspce-enable-after-save: Cannot enable lspce in current buffer.")
+        (cl-return-from lspce-enable-after-save nil))
+      
+      (setq lsp-server (lspce-module-server root-uri lsp-type))
+      (when lsp-server
+        (lspce--message "lspce-enable-after-save: Server for (%s %s) is running." root-uri lsp-type)
+        (lspce-mode t)))))
+(add-hook 'after-save-hook #'lspce-enable-after-save)
 
 (defun lspce--notify-textDocument/didSave ()
   "Send textDocument/willSave to server."
@@ -627,19 +650,21 @@ Auto completion is only performed if the tick did not change."
     (lspce--buffer-disable-lsp)
     )))
 
+;; auto enable lspce-mode when loading files from disk, or enable lspce-mode for files newly created .
 (cl-defun lspce-enable-within-project ()
   (when (and lspce-auto-enable-within-project
-             buffer-file-name)
+             buffer-file-name
+             (file-exists-p buffer-file-name))
     (let ((root-uri (lspce--root-uri))
           (lsp-type (lspce--lsp-type))
           lsp-server)
       (unless (and root-uri lsp-type)
-        (lspce--message "lspce-enable-within-project: Cannot enable lspce in current buffer.")
+        (lspce--message "lspce-enable-after-save: Cannot enable lspce in current buffer.")
         (cl-return-from lspce-enable-within-project nil))
       
       (setq lsp-server (lspce-module-server root-uri lsp-type))
       (when lsp-server
-        (lspce--message "lspce-enable-within-project: Server for (%s %s) is running." root-uri lsp-type)
+        (lspce--message "lspce-enable-after-save: Server for (%s %s) is running." root-uri lsp-type)
         (lspce-mode t)))))
 
 (add-hook 'find-file-hook #'lspce-enable-within-project)
