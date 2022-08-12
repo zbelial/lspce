@@ -381,12 +381,14 @@ be set to `lspce-move-to-lsp-abiding-column', and
   (when lspce--recent-changes
     (let* ((sync-capability (lspce--server-capable "textDocumentSync"))
            (sync-kind (if (numberp sync-capability) sync-capability
-                        (gethash "change" sync-capability)))
+                        (or (and (hash-table-p sync-capability)
+                                 (gethash "change" sync-capability))
+                            2)))
            (full-sync-p (or (eq sync-kind 1)
                             (eq :emacs-messup lspce--recent-changes))))
-      (lspce--notify "textDocument/didChange" (lspce--make-didChangeTextDocumentParams full-sync-p))
-      (setq lspce--recent-changes nil)))
-  )
+      (when (not (eq sync-kind 0))
+        (lspce--notify "textDocument/didChange" (lspce--make-didChangeTextDocumentParams full-sync-p)))
+      (setq lspce--recent-changes nil))))
 
 (defun lspce--notify-textDocument/didOpen ()
   "Send textDocument/didOpen to server."
