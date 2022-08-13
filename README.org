@@ -26,6 +26,18 @@
 
   I have tested LSPCE with `pyright` and `rust-analyzer` in Emacs 28, and I'm using it to develop itself :).
 
+  Below are some images to illustrate what LSPCE looks like.
+
+  Complete using company-capf.
+  [[file:images/completion.png]]
+
+  Use xref to find references.
+  [[file:images/references.png]]
+
+  Display signature and hover at the same time.
+  [[file:images/eldoc.png]]
+  
+
 * Installation
   At the moment, you can only install LSPCE by cloning this repo and compile rust code manually.
 ** Installing from the Git Repository
@@ -83,6 +95,6 @@
 * Acknowledgements
   Thanks to [[https://github.com/ubolonton/emacs-module-rs][emacs-module-rs]], which makes implementing LSPCE possible.
 
-  Thanks to [[https://github.com/joaotavora/eglot][eglot]] and [[https://github.com/emacs-lsp/lsp-mode][lsp-mode]], I learned a lot about LSP from both of them while developing this package.
+  Thanks to [[https://github.com/joaotavora/eglot][eglot]] and [[https://github.com/emacs-lsp/lsp-mode][lsp-mode]], I learned a lot about LSP from both of them during developing this package.
 
   Thanks to [[https://crates.io/crates/lsp-server][lsp-server]] from rust-analyzer, I used a lot of code from it (and modified them a little to make it suitable for a client).
