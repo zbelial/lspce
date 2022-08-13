@@ -7,7 +7,7 @@
 * Introduction
   LSPCE - LSP Client for Emacs, is a simple lsp client that is implemented as an Emacs module.
 
-  CAUTION: This package is still in *pre-alpha* stage.
+  CAUTION: This package is still in *beta* stage, and I've just tested it with Emacs 28 running in Linux.
 
   It does not want to be a full-featured lsp client. The features it supports are:
   - find definitions/references/implementatoins (as a xref backend)
@@ -16,7 +16,7 @@
   - diagnostics (as a flymake backend)
     process diagnostics when idle.
   - hover (triggered by ~lspce-help-at-point~)
-  - signature help (as an ~eldoc-documentation-functions~ function)
+  - signature/hover help (as an ~eldoc-documentation-functions~ function)
   - code action (triggered by ~lspce-code-actions~)
   - rename (triggered by ~lspce-rename~ )
     
@@ -24,7 +24,7 @@
   All features I need have been implemented now, and my next step is to make it more robust and more performant.
   
 
-  I have tested LSPCE with `pyright` and `rust-analyzer`, and I'm using it to develop itself :).
+  I have tested LSPCE with `pyright` and `rust-analyzer` in Emacs 28, and I'm using it to develop itself :).
 
 * Installation
   At the moment, you can only install LSPCE by cloning this repo and compile rust code manually.
@@ -41,6 +41,7 @@
    #+END_SRC
 
    Or (if you use Linux) you can download a .so file I compiled on a Manjaro with rust 1.61.0.
+
 * Get started
   You need to install [[https://github.com/rejeep/f.el][f.el]] and [[https://github.com/joaotavora/yasnippet][yasnippet]] .
   #+BEGIN_SRC elisp
@@ -65,15 +66,18 @@
                 )
       )
   #+END_SRC
+  
+* Architecture
+  [[file:images/architecture.jpg][architecture]]
 
 * TODOs
   There are some bugs/issues that should be fixed. Here is the list:
-  - diagnostics does not work well, sometimes they won't disappear.
   - renaming class name in Java won't rename the file name (LSPCE does not support file rename/create/delete now)
-  - completion has a little bug, where it may complete foo.bar to foo.barb when current text is foo.b
   - support server request `workspace/configuration` 
   - support workspaceFolders (or not, not decided yet)
-  - new created files cannot be recognized by lsp server (workaround: revert it or close and then open it)
+  - +new created files cannot be recognized by lsp server (workaround: revert it or close and then open it)+
+  - +diagnostics does not work well, sometimes they won't disappear.+
+  - +completion has a little bug, where it may complete foo.bar to foo.barb when current text is foo.b+
   - ...
 
 * Acknowledgements
