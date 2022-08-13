@@ -1407,7 +1407,9 @@ Doubles as an indicator of snippet support."
 	    (message-log-max nil))
         (ignore-errors (delay-mode-hooks (funcall mode))))
       (font-lock-ensure)
-      (string-trim (buffer-string)))))
+      (mapconcat #'identity (seq-filter (lambda (s) (not (string-match-p "^```" s)))
+                                        (split-string (string-trim (buffer-string)) "\n"))
+                 "\n"))))
 
 (defun lspce-eldoc-hover-function (callback)
   (when lspce-mode
@@ -1471,12 +1473,12 @@ Doubles as an indicator of snippet support."
           document)
       (when hover-info
         (setq content (lspce--eldoc-render-markup (nth 1 hover-info))))
-      (when signature
-        (setq signature (concat signature "\n\n")))
-      (when (or
-             signature
-             content)
-        (setq document (concat signature content))
+      (cond
+       ((and signature content)
+        (setq document (concat signature "\n\n" content)))
+       ((or signature content)
+        (setq document (concat signature content))))
+      (when document
         (funcall callback document)))))
 
 ;;; diagnostics
