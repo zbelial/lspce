@@ -623,6 +623,7 @@ Auto completion is only performed if the tick did not change."
       (add-hook 'before-save-hook 'lspce--notify-textDocument/willSave nil t)
       (add-hook 'after-save-hook 'lspce--notify-textDocument/didSave nil t)
       (when lspce-enable-eldoc
+        (add-hook 'eldoc-documentation-functions #'lspce-eldoc-hover-function nil t)
         (add-hook 'eldoc-documentation-functions #'lspce-eldoc-signature-function nil t)
         (eldoc-mode 1))
       (when lspce-enable-flymake
@@ -647,6 +648,7 @@ Auto completion is only performed if the tick did not change."
     (remove-hook 'after-save-hook 'lspce--notify-textDocument/didSave t)
     (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
     (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-signature-function t)
+    (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-hover-function t)
     (lspce--notify-textDocument/didClose)
     (flymake-mode -1)
     (lspce--buffer-disable-lsp)
@@ -1348,44 +1350,73 @@ Doubles as an indicator of snippet support."
   "Show document of the symbol at the point using LSP's hover."
   (interactive)
   (if lspce-mode
-      (let* ((method "textDocument/hover")
-             (params (lspce--make-hoverParams))
-             (request-id (lspce--request-async method params))
-             response
-             contents kind content language)
-        (when request-id
-          (setq response (lspce--get-response request-id method)))
-        (when response
-          (setq contents (gethash "contents" response))
-          (cond
-           ((hash-table-p contents)
-            (setq kind (gethash "kind" contents))
-            (setq language (gethash "language" contents))
-            (setq content (gethash "value" contents))
-            (when (and (null kind)
-                       language)
-              (setq kind "markdown"
-                    content (concat "```" language "\n" content "\n```")))
-            (when (and kind content)
-              (lspce--display-help kind content))
-            )
-           ((listp contents)
-            (setq kind "markdown")
-            (setq content nil)
-            (dolist (c contents)
-              (cond
-               ((stringp c)
-                (setq content (concat content "\n" c)))
-               ((hash-table-p c)
-                (setq content (concat "```" (gethash "language" c) "\n" (gethash "value" c) "\n```")))
-               (t
-                )))
-            (when (and kind content)
-              (lspce--display-help kind content)))
-           (t
-            ;; nothing
-            ))))
-    (user-error "Lspce mode is not enabled.")))
+      (let ((hover-info (lspce-hover-at-point)))
+        (when hover-info
+          (lspce--display-help (nth 0 hover-info) (nth 1 hover-info))))
+    (user-error "Lspce mode is not enabled yet.")))
+
+(defun lspce-hover-at-point ()
+  "Show document of the symbol at the point using LSP's hover."
+  (when (lspce--server-capable-chain "hoverProvider")
+    (let* ((method "textDocument/hover")
+           (params (lspce--make-hoverParams))
+           (request-id (lspce--request-async method params))
+           response
+           contents kind content language hover-info)
+      (when request-id
+        (setq response (lspce--get-response request-id method)))
+      (when response
+        (setq contents (gethash "contents" response))
+        (cond
+         ((hash-table-p contents)
+          (setq kind (gethash "kind" contents))
+          (setq language (gethash "language" contents))
+          (setq content (gethash "value" contents))
+          (when (and (null kind)
+                     language)
+            (setq kind "markdown"
+                  content (concat "```" language "\n" content "\n```")))
+          (when (and kind content)
+            (setq hover-info (list kind content))))
+         ((listp contents)
+          (setq kind "markdown")
+          (setq content nil)
+          (dolist (c contents)
+            (cond
+             ((stringp c)
+              (setq content (concat content "\n" c)))
+             ((hash-table-p c)
+              (setq content (concat "```" (gethash "language" c) "\n" (gethash "value" c) "\n```")))
+             (t
+              )))
+          (when (and kind content)
+            (setq hover-info (list kind content))))
+         (t
+          ;; nothing
+          )))
+      hover-info)))
+
+(defun lspce--eldoc-render-markup (content)
+  (let (mode)
+    (with-temp-buffer
+      (setq-local markdown-fontify-code-blocks-natively t)
+      (insert content)
+      (if (fboundp 'gfm-view-mode)
+          (setq mode 'gfm-view-mode)
+        (setq mode 'gfm-mode))
+      (let ((inhibit-message t)
+	    (message-log-max nil))
+        (ignore-errors (delay-mode-hooks (funcall mode))))
+      (font-lock-ensure)
+      (string-trim (buffer-string)))))
+
+(defun lspce-eldoc-hover-function (callback)
+  (when lspce-mode
+    (let ((hover-info (lspce-hover-at-point))
+          content)
+      (when hover-info
+        (setq content (lspce--eldoc-render-markup (nth 1 hover-info)))
+        (funcall callback content)))))
 
 ;;; signature help
 
