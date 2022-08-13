@@ -320,6 +320,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defun lspce--is-tick-match ()
   (equal lspce--latest-recorded-tick (lspce--current-tick)))
 
+(defvar lspce--sit-for-interval 0.01)
 (cl-defun lspce--get-response (request-id method)
   (let ((trying t)
         (lspce--root-uri (lspce--root-uri))
@@ -328,7 +329,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
         response code msg response-error response-data)
     ;; (lspce--message "lspce--get-response for request-id %d" request-id)
     (while trying
-      (if (sit-for 0.1 t)
+      (if (sit-for lspce--sit-for-interval t)
           (progn
             (setq lrid (lspce-module-read-latest-response-id lspce--root-uri lspce--lsp-type))
             ;; (lspce--message "lrid %S" lrid)
@@ -1002,7 +1003,7 @@ When the completion is incomplete, `items' contains value of :incomplete.")
     (when request-id
       (setq response (lspce--get-response request-id method)))
     (unless response
-      (lspce--warn "lspce--request-completion failed to getting response")
+      ;; (lspce--warn "lspce--request-completion failed to getting response")
       (cl-return-from lspce--request-completion nil))
 
     ;; (lspce--message "lspce--request-completion response: %S" response)
