@@ -623,8 +623,7 @@ Auto completion is only performed if the tick did not change."
       (add-hook 'before-save-hook 'lspce--notify-textDocument/willSave nil t)
       (add-hook 'after-save-hook 'lspce--notify-textDocument/didSave nil t)
       (when lspce-enable-eldoc
-        (add-hook 'eldoc-documentation-functions #'lspce-eldoc-hover-function nil t)
-        (add-hook 'eldoc-documentation-functions #'lspce-eldoc-signature-function nil t)
+        (add-hook 'eldoc-documentation-functions #'lspce-eldoc-function nil t)
         (eldoc-mode 1))
       (when lspce-enable-flymake
         (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
@@ -647,8 +646,7 @@ Auto completion is only performed if the tick did not change."
     (remove-hook 'before-save-hook 'lspce--notify-textDocument/willSave t)
     (remove-hook 'after-save-hook 'lspce--notify-textDocument/didSave t)
     (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
-    (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-signature-function t)
-    (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-hover-function t)
+    (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-function t)
     (lspce--notify-textDocument/didClose)
     (flymake-mode -1)
     (lspce--buffer-disable-lsp)
@@ -1350,12 +1348,12 @@ Doubles as an indicator of snippet support."
   "Show document of the symbol at the point using LSP's hover."
   (interactive)
   (if lspce-mode
-      (let ((hover-info (lspce-hover-at-point)))
+      (let ((hover-info (lspce--hover-at-point)))
         (when hover-info
           (lspce--display-help (nth 0 hover-info) (nth 1 hover-info))))
     (user-error "Lspce mode is not enabled yet.")))
 
-(defun lspce-hover-at-point ()
+(defun lspce--hover-at-point ()
   "Show document of the symbol at the point using LSP's hover."
   (when (lspce--server-capable-chain "hoverProvider")
     (let* ((method "textDocument/hover")
@@ -1412,7 +1410,7 @@ Doubles as an indicator of snippet support."
 
 (defun lspce-eldoc-hover-function (callback)
   (when lspce-mode
-    (let ((hover-info (lspce-hover-at-point))
+    (let ((hover-info (lspce--hover-at-point))
           content)
       (when hover-info
         (setq content (lspce--eldoc-render-markup (nth 1 hover-info)))
@@ -1426,38 +1424,59 @@ Doubles as an indicator of snippet support."
     (let ((params (lspce--make-signatureHelpParams)))
       (lspce--request "textDocument/signatureHelp" params))))
 
+(defun lspce--signature-at-point ()
+  (let ((signature-at-point (lspce-signature-at-point))
+        label
+        signatures signature parameters parameter
+        active-signature active-parameter param-label param-start param-end)
+    (when signature-at-point
+      (setq active-signature (gethash "activeSignature" signature-at-point))
+      (setq signatures (gethash "signatures" signature-at-point))
+      (setq active-parameter (gethash "activeParameter" signature-at-point))
+      (cond
+       ((and active-signature signatures)
+        (setq signature (nth active-signature signatures)))
+       (signatures
+        (setq signature (nth 0 signatures)))
+       (t)
+       )
+      (when signature
+        (setq label (gethash "label" signature))
+        (setq parameters (gethash "parameters" signature))
+        (setq active-parameter (or (gethash "activeParameter" signature) active-parameter))
+        (when (and active-parameter parameters)
+          (setq parameter (nth active-parameter parameters)))
+        (when parameter
+          (setq param-label (gethash "label" parameter))
+          (when (not (stringp param-label))
+            (setq param-start (nth 0 param-label))
+            (setq param-end (nth 1 param-label))
+            (setq param-label (substring-no-properties label param-start param-end)))
+          (setq label (string-replace param-label
+                                      (propertize param-label 'face 'font-lock-type-face)
+                                      label)))))
+    label))
+
 (defun lspce-eldoc-signature-function (callback)
   (when lspce-mode
-    (let ((signature-at-point (lspce-signature-at-point))
-          signatures signature label parameters parameter
-          active-signature active-parameter param-label param-start param-end)
-      (when signature-at-point
-        (setq active-signature (gethash "activeSignature" signature-at-point))
-        (setq signatures (gethash "signatures" signature-at-point))
-        (setq active-parameter (gethash "activeParameter" signature-at-point))
-        (cond
-         ((and active-signature signatures)
-          (setq signature (nth active-signature signatures)))
-         (signatures
-          (setq signature (nth 0 signatures)))
-         (t)
-         )
-        (when signature
-          (setq label (gethash "label" signature))
-          (setq parameters (gethash "parameters" signature))
-          (setq active-parameter (or (gethash "activeParameter" signature) active-parameter))
-          (when (and active-parameter parameters)
-            (setq parameter (nth active-parameter parameters)))
-          (when parameter
-            (setq param-label (gethash "label" parameter))
-            (when (not (stringp param-label))
-              (setq param-start (nth 0 param-label))
-              (setq param-end (nth 1 param-label))
-              (setq param-label (substring-no-properties label param-start param-end)))
-            (setq label (string-replace param-label
-                                        (propertize param-label 'face 'font-lock-type-face)
-                                        label)))
-          (funcall callback label))))))
+    (let ((signature (lspce--signature-at-point)))
+      (funcall callback signature))))
+
+(defun lspce-eldoc-function (callback)
+  (when lspce-mode
+    (let ((hover-info (lspce--hover-at-point))
+          (signature (lspce--signature-at-point))
+          content
+          document)
+      (when hover-info
+        (setq content (lspce--eldoc-render-markup (nth 1 hover-info))))
+      (when signature
+        (setq signature (concat signature "\n\n")))
+      (when (or
+             signature
+             content)
+        (setq document (concat signature content))
+        (funcall callback document)))))
 
 ;;; diagnostics
 (put 'lspce-note 'flymake-category 'flymake-note)
