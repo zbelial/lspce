@@ -68,7 +68,7 @@
   #+END_SRC
   
 * Architecture
-  [[file:images/architecture.jpg][architecture]]
+  [[file:images/architecture.jpg]]
 
 * TODOs
   There are some bugs/issues that should be fixed. Here is the list:
