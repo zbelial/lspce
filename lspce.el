@@ -341,6 +341,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
               ;; (lspce--message "lrid is bigger than request-id")
               (setq trying nil))
             (when (= lrid request-id)
+              ;; (lspce--message "start to read response %d" request-id)
               (setq response (lspce-module-read-response-exact lspce--root-uri lspce--lsp-type request-id method))
               ;; (lspce--message "response %s" response)
               (unless response
