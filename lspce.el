@@ -331,14 +331,17 @@ be set to `lspce-move-to-lsp-abiding-column', and
   (equal lspce--latest-recorded-tick (lspce--current-tick)))
 
 (defvar lspce--sit-for-interval 0.01)
-(cl-defun lspce--get-response (request-id method)
+(cl-defun lspce--get-response (request-id method &optional timeout)
   (let ((trying t)
         (lspce--root-uri (lspce--root-uri))
         (lspce--lsp-type (lspce--lsp-type))
+        (start-time (float-time))
         lrid
         response code msg response-error response-data)
     ;; (lspce--message "lspce--get-response for request-id %d" request-id)
-    (while trying
+    (while (and trying
+                (or (null timeout)
+                    (> (+ start-time timeout) (float-time))))
       (if (sit-for lspce--sit-for-interval t)
           (progn
             (setq lrid (lspce-module-read-latest-response-id lspce--root-uri lspce--lsp-type))
@@ -374,9 +377,9 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (setq trying nil)))
     response-data))
 
-(defun lspce--request (method &optional params)
+(defun lspce--request (method &optional params timeout)
   (when-let (request-id (lspce--request-async method params))
-    (lspce--get-response request-id method)))
+    (lspce--get-response request-id method timeout)))
 
 (cl-defun lspce--notify (method &optional params)
   (let ((notification (lspce--make-notification method params))
@@ -1374,7 +1377,7 @@ Doubles as an indicator of snippet support."
            response
            contents kind content language hover-info)
       (when request-id
-        (setq response (lspce--get-response request-id method)))
+        (setq response (lspce--get-response request-id method 2.0)))
       (when response
         (setq contents (gethash "contents" response))
         (cond
@@ -1436,7 +1439,7 @@ Doubles as an indicator of snippet support."
   (interactive)
   (when (lspce--server-capable "signatureHelpProvider")
     (let ((params (lspce--make-signatureHelpParams)))
-      (lspce--request "textDocument/signatureHelp" params))))
+      (lspce--request "textDocument/signatureHelp" params 2.0))))
 
 (defun lspce--signature-at-point ()
   (let ((signature-at-point (lspce-signature-at-point))
