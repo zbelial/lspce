@@ -61,6 +61,16 @@
   :group 'lspce
   :type 'boolean)
 
+(defcustom lspce-eldoc-enable-hover t
+  "If non-nil, enable hover in eldoc."
+  :group 'lspce
+  :type 'boolean)
+
+(defcustom lspce-eldoc-enable-signature t
+  "If non-nil, enable signature in eldoc."
+  :group 'lspce
+  :type 'boolean)
+
 (defcustom lspce-enable-flymake t
   "If non-nil, enable flymake."
   :group 'lspce
@@ -1468,8 +1478,8 @@ Doubles as an indicator of snippet support."
 
 (defun lspce-eldoc-function (callback)
   (when lspce-mode
-    (let ((hover-info (lspce--hover-at-point))
-          (signature (lspce--signature-at-point))
+    (let ((hover-info (and lspce-eldoc-enable-hover (lspce--hover-at-point)))
+          (signature (and lspce-eldoc-enable-signature (lspce--signature-at-point)))
           content
           document)
       (when hover-info
