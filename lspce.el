@@ -381,10 +381,10 @@ be set to `lspce-move-to-lsp-abiding-column', and
   (when-let (request-id (lspce--request-async method params))
     (lspce--get-response request-id method timeout)))
 
-(cl-defun lspce--notify (method &optional params)
+(cl-defun lspce--notify (method &optional params lsp-type)
   (let ((notification (lspce--make-notification method params))
         (root-uri (lspce--root-uri))
-        (lsp-type (lspce--lsp-type))
+        (lsp-type (or lsp-type (lspce--lsp-type)))
         )
     (unless (and root-uri lsp-type)
       (user-error "lspce--notify: Can not get root-uri or lsp-type of current buffer.")
@@ -1793,6 +1793,31 @@ at point.  With prefix argument, prompt for ACTION-KIND."
             (with-current-buffer buf
               (lspce-mode 1))))
       (lspce--message "No sever running in current buffer"))))
+
+;;; language/server specific features
+;;;; java jdtls
+(defun lspce--jdtls-update-project-configuration ()
+  "Updates the Java configuration, refreshing settings from build artifacts"
+  (when (and 
+         buffer-file-name
+         (file-exists-p buffer-file-name))
+    (let ((file-name (file-name-nondirectory (buffer-file-name)))
+          (root-uri (lspce--root-uri))
+          ;; TODO use a more general mothod
+          (lsp-type "java-mode"))
+      (when (and root-uri
+                 lsp-type
+                 (or (string-equal file-name "pom.xml")
+                     (string-match "\\.gradle" file-name))
+                 (lspce-module-server root-uri lsp-type))
+        (lspce--notify
+         "java/projectConfigurationUpdate" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))) lsp-type)))))
+(add-hook 'after-save-hook #'lspce--jdtls-update-project-configuration)
+
+(defun lspce-jdtls-update-project-configuration ()
+  "Updates the Java configuration, refreshing settings from build artifacts"
+  (interactive)
+  (lspce--jdtls-update-project-configuration))
 
 ;;; Mode-line
 ;;;
