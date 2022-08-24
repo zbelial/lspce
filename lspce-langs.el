@@ -64,6 +64,12 @@
   :group 'lspce
   :type 'string)
 
+(defcustom lspce-jdtls-download-url
+  "https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz"
+  "URL to download the Eclipse JDT language server."
+  :type 'string
+  :group 'lspce)
+
 (defcustom lspce-jdtls-install-dir nil
   "Install directory for eclipse.jdt.ls-server."
   :group 'lspce
@@ -73,6 +79,28 @@
   "The launch mode for the Java extension"
   :group 'lspce
   :type '(choice (:tag "Standard" "LightWeight" "Hybrid")))
+
+(declare-function tar-untar-buffer "tar-mode" ())
+(defun lspce-install-jdtls-server ()
+  "Install the Eclipse JDT LSP server."
+  (interactive)
+  (let* ((dest-dir (expand-file-name lspce-jdtls-install-dir))
+         (dest-dir-bak (concat (string-trim-right dest-dir (f-path-separator)) ".bak" (format "%d" (time-convert nil 'integer))))
+         (download-url lspce-jdtls-download-url)
+         (dest-filename (file-name-nondirectory download-url))
+         (dest-abspath (expand-file-name dest-filename dest-dir))
+         (large-file-warning-threshold nil))
+    (f-move dest-dir dest-dir-bak)
+    (f-mkdir-full-path dest-dir)
+    (lspce--message "Installing Eclipse JDT LSP server, please wait...")
+    (lspce--download-file download-url dest-abspath)
+    (lspce--message "Extracting Eclipse JDT LSP archive, please wait...")
+    (with-temp-buffer
+      (let ((temporary-buffer (find-file dest-abspath)))
+        (goto-char (point-min))
+        (tar-untar-buffer)
+        (kill-buffer temporary-buffer)))
+    (lspce--message "Eclipse JDT LSP server installed in folder \n\"%s\"." dest-dir)))
 
 (defun lspce--jdtls-workspace-dir ()
   (let ((proj (project-current))
@@ -164,7 +192,6 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
     (setq options (lspce--add-option "settings.java.completion.enabled" t options))
     (setq options (lspce--add-option "settings.java.completion.maxResults" 30 options))
     (setq options (lspce--add-option "settings.java.completion.importOrder" (vector "java" "javax" "com" "org") options))
-    ;; (setq options (lspce--add-option "settings.java.completion.guessMethodArguments" :json-false options))
     (setq options (lspce--add-option "settings.java.completion.guessMethodArguments" t options))
     (setq options (lspce--add-option "settings.java.signatureHelp.enabled" t options))
     (setq options (lspce--add-option "settings.java.progressReports.enabled" t options))
@@ -177,6 +204,9 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
     (setq options (lspce--add-option "settings.java.import.gradle.offline.enabled" t options))
     (setq options (lspce--add-option "settings.java.maven.downloadSources" :json-false options))
     (setq options (lspce--add-option "settings.java.maven.updateSnapshots" :json-false options))
+    (setq options (lspce--add-option "settings.java.project.importHint" t options))
+    (setq options (lspce--add-option "settings.java.project.importOnFirstTimeStartup" "automatic" options))
+    (setq options (lspce--add-option "settings.java.project.referecedLibraries" (vector "lib/**/*.jar") options))
     (setq options (lspce--add-option "settings.java.trace.server" "off" options))
     (setq options (lspce--add-option "settings.java.configuration.updateBuildConfiguration" "automatic" options))
     (setq options (lspce--add-option "settings.java.configuration.checkProjectSettingsExclusions" t options))

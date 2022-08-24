@@ -1810,6 +1810,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
                  (or (string-equal file-name "pom.xml")
                      (string-match "\\.gradle" file-name))
                  (lspce-module-server root-uri lsp-type))
+        (lspce--message "notify java/projectConfigurationUpdate")
         (lspce--notify
          "java/projectConfigurationUpdate" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))) lsp-type)))))
 (add-hook 'after-save-hook #'lspce--jdtls-update-project-configuration)

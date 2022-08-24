@@ -125,4 +125,13 @@ This is equivalent to `display-warning', using `lspce-mode' as the type and
   (message "[lspce] %s %s" (format-time-string "%Y-%m-%d %H:%M:%S.%3N") (apply #'format format args)))
 
 
+(defun lspce--download-file (source-url dest-location)
+  "Download a file from a URL at SOURCE-URL and save it to file at DEST-LOCATION."
+  (let* ((dest-dir     (file-name-directory dest-location))
+         (dest-abspath (expand-file-name dest-location)))
+    (unless (file-exists-p dest-dir)
+      (make-directory dest-dir t))
+    (lspce--message "Downloading %s\n to %s." source-url dest-abspath)
+    (url-copy-file  source-url dest-abspath t)))
+
 (provide 'lspce-util)
