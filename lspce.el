@@ -330,7 +330,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defun lspce--is-tick-match ()
   (equal lspce--latest-recorded-tick (lspce--current-tick)))
 
-(defvar lspce--sit-for-interval 0.01)
+(defvar lspce--sit-for-interval 0.05)
 (cl-defun lspce--get-response (request-id method &optional timeout)
   (let ((trying t)
         (lspce--root-uri (lspce--root-uri))
