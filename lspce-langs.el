@@ -85,7 +85,7 @@
   "Install the Eclipse JDT LSP server."
   (interactive)
   (let* ((dest-dir (expand-file-name lspce-jdtls-install-dir))
-         (dest-dir-bak (concat (string-trim-right dest-dir (f-path-separator)) ".bak" (format "%d" (time-convert nil 'integer))))
+         (dest-dir-bak (concat (string-trim-right dest-dir (f-path-separator)) ".bak" (format ".%s" (format-time-string "%Y%m%d%H%M%S"))))
          (download-url lspce-jdtls-download-url)
          (dest-filename (file-name-nondirectory download-url))
          (dest-abspath (expand-file-name dest-filename dest-dir))

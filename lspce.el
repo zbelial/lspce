@@ -124,16 +124,16 @@
 
 
 ;;; Variables and custom
-(defvar lspce-server-programs `(("rust-mode"  "rust-analyzer" "" lspce-ra-initializationOptions)
-                                ("python-mode" "pyright-langserver" "--stdio" lspce-pyright-initializationOptions)
+(defvar lspce-server-programs `(("rust"  "rust-analyzer" "" lspce-ra-initializationOptions)
+                                ("python" "pyright-langserver" "--stdio" lspce-pyright-initializationOptions)
                                 ("C" "clangd" "")
-                                ("go-mode"  "gopls" "" lspce-gopls-initializationOptions)
+                                ("go"  "gopls" "" lspce-gopls-initializationOptions)
                                 )
   "How the command `lspce' gets the server to start.
-A list of (LSP-TYPE SERVER-COMMAND SERVER-PARAMS).  LSP-TYPE
-identifies the buffers that are to be managed by a specific
+A list of (LSP-TYPE SERVER-COMMAND SERVER-PARAMS initializationOptions).
+LSP-TYPE identifies the buffers that are to be managed by a specific
 language server, it is returned by `lspce-lsp-type-function'.
-The SERVER-COMMAND specifies which server is used for those buffers.
+SERVER-COMMAND specifies which server is used for those buffers.
 
 SERVER-PARAMS can be:
 
@@ -142,6 +142,11 @@ SERVER-PARAMS can be:
 * In the most common case, a string such as --stdio;
 
 * A function that returns the params;
+
+initializationOptions can be:
+* nil, means no options;
+
+* A function that returns the options used to in initialize request;
 ")
 
 (defvar lspce-current-column-function #'lspce-current-column
@@ -298,8 +303,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
      ((member suffix '("c" "c++" "cpp" "h" "hpp" "cxx" "cc"))
       "C")
      (t
-      ;; (string-remove-suffix "-mode" (symbol-name major-mode))
-      (symbol-name major-mode)
+      (string-remove-suffix "-mode" (symbol-name major-mode))
+      ;; (symbol-name major-mode)
       ))))
 (defalias 'lspce--buffer-language-id 'lspce--lsp-type-default "lspce--buffer-language-id")
 
@@ -330,7 +335,14 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defun lspce--is-tick-match ()
   (equal lspce--latest-recorded-tick (lspce--current-tick)))
 
-(defvar lspce--sit-for-interval 0.05)
+(defvar lspce--default-sit-for-interval 0.02)
+(defvar lspce-sit-for-interval-alist
+  '(("java" . 0.05))
+  "Associative list mapping language id to a sit-for interval used to retrieve response.")
+(defun lspce--sit-for-interval (language-id)
+  (let ((interval (or (assoc-default language-id lspce-sit-for-interval-alist) lspce--default-sit-for-interval)))
+    interval))
+
 (cl-defun lspce--get-response (request-id method &optional timeout)
   (let ((trying t)
         (lspce--root-uri (lspce--root-uri))
@@ -342,7 +354,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (while (and trying
                 (or (null timeout)
                     (> (+ start-time timeout) (float-time))))
-      (if (sit-for lspce--sit-for-interval t)
+      (if (sit-for (lspce--sit-for-interval lspce--lsp-type) t)
           (progn
             (setq lrid (lspce-module-read-latest-response-id lspce--root-uri lspce--lsp-type))
             ;; (lspce--message "lrid %S" lrid)
@@ -1804,7 +1816,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
     (let ((file-name (file-name-nondirectory (buffer-file-name)))
           (root-uri (lspce--root-uri))
           ;; TODO use a more general mothod
-          (lsp-type "java-mode"))
+          (lsp-type "java"))
       (when (and root-uri
                  lsp-type
                  (or (string-equal file-name "pom.xml")
