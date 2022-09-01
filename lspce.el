@@ -185,7 +185,10 @@ be set to `lspce-move-to-lsp-abiding-column', and
   (lspce-module-enable-logging))
 
 (defun lspce-set-log-file (filename)
-  (lspce-module-set-log-file filename))
+  (let ((dirname (f-dirname filename)))
+    (unless (file-exists-p dirname)
+      (f-mkdir-full-path dirname))
+    (lspce-module-set-log-file filename)))
 
 ;;; Create LSP params
 (defun lspce--make-didOpenTextDocumentParams ()
@@ -1607,7 +1610,7 @@ Doubles as an indicator of snippet support."
     ;; (lspce--message "buffer %s, edits: %s" (buffer-name) (json-encode edits))
     (atomic-change-group
       (let* ((change-group (prepare-change-group)))
-        (dolist (edit edits)
+        (dolist (edit (nreverse edits))
           (let* ((source (current-buffer))
                  (newText (gethash "newText" edit))
                  (range (lspce--range-region (gethash "range" edit) t))
@@ -1663,7 +1666,6 @@ Doubles as an indicator of snippet support."
           (lspce--message "User cancelled server edit")))
 
     (when confirmed
-      (setq all-edits (nreverse all-edits))
       (dolist (aedits all-edits)
         (let ((filename (nth 0 aedits))
               (edits (nth 1 aedits))
