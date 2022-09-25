@@ -267,7 +267,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defalias 'lspce--make-signatureHelpParams 'lspce--make-textDocumentPositionParams "lspce--make-signatureHelpParams")
 
 (defun lspce--make-initializeParams (root-uri initializationOptions)
-  (lspce--initializeParams root-uri (lspce--clientCapabilities) initializationOptions))
+  (lspce--initializeParams root-uri initializationOptions))
 
 
 ;;; LSP functions

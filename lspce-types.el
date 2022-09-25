@@ -19,10 +19,6 @@
       (puthash :params params notification))
     notification))
 
-(defun lspce--synchronizationClientCapabilities ()
-  (let ((params (make-hash-table)))
-    params))
-
 (defun lspce--documentationFormat ()
   (let (format)
     (setq format (vector "plaintext"))
@@ -30,168 +26,111 @@
       (setq format (vector "markdown" "plaintext")))
     format))
 
-(defun lspce--resolveSupport ()
-  (let ((params (make-hash-table)))
-    (puthash :properties (vector "documentation" "detail") params)
-    params))
-
-(defun lspce--completionItem ()
-  (let ((params (make-hash-table)))
-    (puthash :snippetSupport t params)
-    (puthash :commitCharactersSupport :json-false params)
-    (puthash :documentationFormat (lspce--documentationFormat) params)
-    (puthash :deprecatedSupport :json-false params)
-    (puthash :contextSupport t params)
-    ;; TODO https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_completion
-    (puthash :preselectSupoort :json-false params)
-    (puthash :insertReplaceSupport :json-false params)
-    (puthash :resolveSupport (lspce--resolveSupport) params)
-    params))
-
-(defun lspce--completionClientCapabilities ()
-  (let ((params (make-hash-table)))
-    (puthash :dynamicRegistration :json-false params)
-    (puthash :completionItem (lspce--completionItem) params)
-    params))
-
-(defun lspce--hoverClientCapabilities ()
-  (let ((params (make-hash-table)))
-    (puthash :dynamicRegistration :json-false params)
-    (puthash :contentFormat (lspce--documentationFormat) params)
-    params))
-
-(defun lspce--signatureHelpClientCapabilities()
-  (let ((params (make-hash-table))
-        (signatureInformation (make-hash-table))
-        (parameterInformation (make-hash-table)))
-    (puthash :labelOffsetSupport :json-false parameterInformation)
-
-    (puthash :documentationFormat (lspce--documentationFormat) signatureInformation)
-    (puthash :parameterInformation parameterInformation signatureInformation)
-    (puthash :activeParameterSupport :json-false signatureInformation)
-
-    (puthash :dynamicRegistration :json-false params)
-    (puthash :signatureInformation signatureInformation params)
-    (puthash :contextSupport :json-false params)
-    params))
-
-(defun lspce--declarationClientCapabilities ()
-  (let ((params (make-hash-table)))
-    (puthash :dynamicRegistration :json-false params)
-    (puthash :linkSupport :json-false params)
-    params))
-
-(defun lspce--definitionClientCapabilities ()
-  (let ((params (make-hash-table)))
-    (puthash :dynamicRegistration :json-false params)
-    (puthash :linkSupport :json-false params)
-    params))
-
-(defun lspce--typeDefinitionClientCapabilities ()
-  (let ((params (make-hash-table)))
-    (puthash :dynamicRegistration :json-false params)
-    (puthash :linkSupport :json-false params)
-    params))
-
-(defun lspce--implementationClientCapabilities ()
-  (let ((params (make-hash-table)))
-    (puthash :dynamicRegistration :json-false params)
-    (puthash :linkSupport :json-false params)
-    params))
-
-(defun lspce--referencesClientCapabilities ()
-  (let ((params (make-hash-table)))
-    (puthash :dynamicRegistration :json-false params)
-    params))
-
-(defun lspce--codeActionClientCapabilities ()
-  (let ((params (make-hash-table)))
-    (puthash :dynamicRegistration :json-false params)
-    (puthash :codeActionLiteralSupport (list :codeActionKind
-                                             (list :valueSet ["quickfix"
-                                                              "refactor" "refactor.extract"
-                                                              "refactor.inline" "refactor.rewrite"
-                                                              "source" "source.organizeImports"]))
-             params)
-    (puthash :isPreferredSupport t params)
-    (puthash :disabledSupport :json-false params)
-    (puthash :dataSupport :json-false params)
-    params))
-
-(defun lspce--renameClientCapabitlities ()
-  (let ((params (make-hash-table)))
-    (puthash :dynamicRegistration :json-false params)
-    (puthash :prepareSupport :json-false params)
-    (puthash :honorsChangeAnnotations :json-false params)
-    params))
-
-(defun lspce--publishDiagnosticsClientCapabilities ()
-  (let ((params (make-hash-table)))
-    (puthash :relatedInformation :json-false params)
-    (puthash :versionSupport :json-false params)
-    (puthash :codeDescriptionSupport :json-false params)
-    (puthash :dataSupport :json-false params)
-    (puthash :tagSupport (list :valueSet (vector 1 2)) params)
-    params))
-
-(defun lspce--textDocumentSyncClientCapabilities ()
-  (let ((params (make-hash-table)))
-    (puthash :willSave t params)
-    (puthash :didSave t params)
-    params))
-
-(defun lspce--textDocumentClientCapabilities ()
-  (let ((capabilities (make-hash-table)))
-    (puthash :synchronization (lspce--textDocumentSyncClientCapabilities) capabilities)
-    (puthash :completion (lspce--completionClientCapabilities) capabilities)
-    (puthash :hover (lspce--hoverClientCapabilities) capabilities)
-    (puthash :signatureHelp (lspce--signatureHelpClientCapabilities) capabilities)
-    (puthash :declaration (lspce--declarationClientCapabilities) capabilities)
-    (puthash :definition (lspce--definitionClientCapabilities) capabilities)
-    (puthash :typeDefinition (lspce--typeDefinitionClientCapabilities) capabilities)
-    (puthash :implementation (lspce--implementationClientCapabilities) capabilities)
-    (puthash :references (lspce--referencesClientCapabilities) capabilities)
-    (puthash :codeAction (lspce--codeActionClientCapabilities) capabilities)
-    (puthash :rename (lspce--renameClientCapabitlities) capabilities)
-    (puthash :publishDiagnostics (lspce--publishDiagnosticsClientCapabilities) capabilities)
-    capabilities))
-
 (defun lspce--clientInfo ()
   (let ((params (make-hash-table)))
     (puthash :name LSPCE-NAME params)
     (puthash :version LSPCE-VERSION params)
     params))
 
-(defun lspce--fileOperations ()
-  (let ((params (make-hash-table)))
-    params))
-
-(defun lspce--workspace ()
-  (let ((params (make-hash-table)))
-    (puthash :applyEdit :json-false params)
-    (puthash :workspaceEdit (list :documentChanges t
-                                  :resourceOperations (vector "create" "rename" "delete")) params)
-    (puthash :workspaceFolders :json-false params)
-    (puthash :configuration :json-false params)
-    params))
-
-(defun lspce--window ()
-  (let ((params (make-hash-table)))
-    params))
-
 (defun lspce--clientCapabilities ()
-  (let ((capabilities (make-hash-table)))
-    (puthash :workspace (lspce--workspace) capabilities)    
-    (puthash :textDocument (lspce--textDocumentClientCapabilities) capabilities)
-    ;; (puthash :window (lspce--window) capabilities)
-    capabilities))
+  (list
+   :workspace (list
+               :applyEdit :json-false
+               :executeCommand (list
+                                :dynamicRegistration :json-false)
+               :workspaceEdit (list
+                               :documentChanges t
+                               :resourceOperations (vector "create" "rename" "delete"))
+               :symbol (list
+                        :dynamicRegistration :json-false)
+               :configuration :json-false
+               :workspaceFolders :json-false)
+   :textDocument (list
+                  :synchronization (list
+                                    :dynamicRegistration :json-false
+                                    :willSave t
+                                    :didSave t)
+                  :completion      (list
+                                    :dynamicRegistration :json-false
+                                    :completionItem (list
+                                                     :snippetSupport (if (lspce--snippet-expansion-fn)
+                                                                         t
+                                                                       :json-false)
+                                                     :commitCharactersSupport :json-false
+                                                     :documentationFormat (if (fboundp 'gfm-view-mode)
+                                                                              ["markdown" "plaintext"]
+                                                                            ["plaintext"])
+                                                     :deprecatedSupport :json-false
+                                                     :preselectSupoort :json-false
+                                                     :insertReplaceSupport :json-false
+                                                     :resolveSupport (list :properties (vector "documentation" "detail"))
+                                                     )
+                                    :contextSupport t)
+                  :hover              (list
+                                       :dynamicRegistration :json-false
+                                       :contentFormat (if (fboundp 'gfm-view-mode)
+                                                          ["markdown" "plaintext"]
+                                                        ["plaintext"]))
+                  :signatureHelp      (list :dynamicRegistration :json-false
+                                            :signatureInformation (list
+                                                                   :documentationFormat (if (fboundp 'gfm-view-mode)
+                                                                                            ["markdown" "plaintext"]
+                                                                                          ["plaintext"])
+                                                                   :parameterInformation (list
+                                                                                          :labelOffsetSupport :json-false)
+                                                                   :activeParameterSupport :json-false)
+                                            :contextSupport :json-false)
+                  :references         (list
+                                       :dynamicRegistration :json-false)
+                  :definition         (list
+                                       :dynamicRegistration :json-false
+                                       :linkSupport :json-false)
+                  :declaration        (list
+                                       :dynamicRegistration :json-false
+                                       :linkSupport :json-false)
+                  :implementation     (list
+                                       :dynamicRegistration :json-false
+                                       :linkSupport :json-false)
+                  :typeDefinition     (list
+                                       :dynamicRegistration :json-false
+                                       :linkSupport :json-false)
+                  :documentHighlight  (list
+                                       :dynamicRegistration :json-false)
+                  :codeAction         (list
+                                       :dynamicRegistration :json-false
+                                       :codeActionLiteralSupport (list
+                                                                  :codeActionKind (list :valueSet
+                                                                                        ["quickfix"
+                                                                                         "refactor" "refactor.extract"
+                                                                                         "refactor.inline" "refactor.rewrite"
+                                                                                         "source" "source.organizeImports"]))
+                                       :isPreferredSupport t
+                                       :disabledSupport :json-false
+                                       :dataSupport :json-false)
+                  :formatting         (list
+                                       :dynamicRegistration :json-false)
+                  :rangeFormatting    (list
+                                       :dynamicRegistration :json-false)
+                  :rename             (list
+                                       :dynamicRegistration :json-false
+                                       :prepareSupport :json-false
+                                       :honorsChangeAnnotations :json-false)
+                  :publishDiagnostics (list
+                                       :relatedInformation :json-false
+                                       :codeDescriptionSupport :json-false
+                                       :codeDescriptionSupport :json-false
+                                       :dataSupport :json-false
+                                       :versionSupport :json-false
+                                       :tagSupport (list :valueSet [1 2])))
+   :experimental lspce--{})
+  )
 
-(defun lspce--initializeParams (rootUri capabilities &optional initializationOptions trace workspaceFolders)
+(defun lspce--initializeParams (rootUri &optional initializationOptions trace workspaceFolders)
   "初始化参数"
   (let ((params (make-hash-table)))
     (puthash :processId (emacs-pid) params)
     (puthash :rootUri rootUri params)
-    (puthash :capabilities capabilities params)
+    (puthash :capabilities (lspce--clientCapabilities) params)
     (when initializationOptions
       (puthash :initializationOptions initializationOptions params))
     (puthash :clientInfo (lspce--clientInfo) params)
