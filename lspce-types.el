@@ -169,7 +169,8 @@
 (defun lspce--workspace ()
   (let ((params (make-hash-table)))
     (puthash :applyEdit :json-false params)
-    (puthash :workspaceEdit (list :documentChanges t) params)
+    (puthash :workspaceEdit (list :documentChanges t
+                                  :resourceOperations (vector "create" "rename" "delete")) params)
     (puthash :workspaceFolders :json-false params)
     (puthash :configuration :json-false params)
     params))

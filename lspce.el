@@ -19,6 +19,7 @@
   (require 'lspce-util))
 (require 'lspce-types)
 (require 'lspce-langs)
+(require 'lspce-structs)
 
 ;;; User tweakable stuff
 (defgroup lspce nil
@@ -1600,9 +1601,27 @@ Doubles as an indicator of snippet support."
 (defun lspce--execute-command (command arguments)
   (if (string-equal command "java.apply.workspaceEdit")
       (progn
-        (mapc #'lspce--apply-workspace-edit arguments))
+        (mapc #'lspce--apply-workspace-edit arguments t))
     (let ((params (list :command command :arguments arguments)))
       (lspce--request "workspace/executeCommand" params))))
+
+(defun lspce--apply-file-edits (change &optional version)
+  ;; TODO
+  (let* ((kind (gethash "kind" change))
+         (uri (gethash "uri" change))
+         (new-uri (gethash "newUri" change))
+         (options (gethash "options" change))
+         (filename (lspce--uri-to-path uri))
+         (new-filename (when (equal kind "rename") (lspce--uri-to-path new-uri))))
+    (cond
+     ((equal kind "create")
+      )
+     ((equal kind "rename")
+      )
+     ((equal kind "delete"))
+     )
+    )
+  )
 
 (defun lspce--apply-text-edits (edits &optional version)
   (when (or (not version)
@@ -1637,42 +1656,74 @@ Doubles as an indicator of snippet support."
 (defun lspce--apply-workspace-edit (wedit &optional confirm)
   (let ((changes (gethash "changes" wedit))
         (documentChanges (gethash "documentChanges" wedit))
-        (confirmed t)
+        (confirmed nil)
+        kind
         filename edits all-edits)
     (if documentChanges
         (progn
-          (cond
-           ((listp documentChanges))
-           ((hash-table-p documentChanges)
-            (setq documentChanges (list documentChanges))))
           (dolist (dc documentChanges)
-            (let ((textDocument (gethash "textDocument" dc))
-                  (edits (gethash "edits" dc))
-                  version)
-              (setq filename (lspce--uri-to-path (gethash "uri" textDocument))
-                    version (gethash "version" textDocument))
-              (cl-pushnew (list filename edits version) all-edits))))
+            (setq kind (gethash "kind" dc))
+            (if kind
+                (cl-pushnew (make-documentChange :kind kind :change dc) all-edits)
+              (cl-pushnew (make-documentChange :kind "documentChange" :change dc) all-edits))))
       (when changes
-        (dolist (filename (hash-table-keys changes))
-          (cl-pushnew (list (lspce--uri-to-path filename) (gethash filename changes) nil) all-edits))))
-
-    (if (or confirm
-            (cl-notevery #'find-buffer-visiting
-                         (mapcar #'car all-edits)))
-        (unless (y-or-n-p
-                 (format "[lspce] Server wants to edit:\n  %s\n Proceed? "
-                         (mapconcat #'identity (mapcar #'car all-edits) "\n  ")))
-          (setq confirmed nil)
-          (lspce--message "User cancelled server edit")))
-
-    (when confirmed
-      (dolist (aedits all-edits)
-        (let ((filename (nth 0 aedits))
-              (edits (nth 1 aedits))
-              (version (nth 2 aedits)))
-          (with-current-buffer (find-file-noselect filename)
-            (lspce--message "lspce--apply-workspace-edit filename %s" filename)
-            (lspce--apply-text-edits edits version)))))))
+        (let (change)
+          (dolist (filename (hash-table-keys changes))
+            (setq edits (gethash filename changes))
+            (setq change (make-hash-table :test #'equal))
+            (puthash "uri" filename change)
+            (puthash "edits" edits change)
+            (cl-pushnew (make-documentChange :kind "change" :change change) all-edits)))))
+    (when confirm
+      (if (length> all-edits 0)
+          (unless (y-or-n-p
+                   (format "[lspce] Server wants to:\n  %s\n Proceed? "
+                           (mapconcat #'identity (mapcar (lambda (edit)
+                                                           (let ((kind (documentChange-kind edit))
+                                                                 (change (documentChange-change edit))
+                                                                 uri new-uri)
+                                                             (cond
+                                                              ((equal kind "change")
+                                                               (format "edit %s" (gethash "uri" change)))
+                                                              ((equal kind "documentChange")
+                                                               (format "edit %s" (gethash "uri" (gethash "textDocument" change))))
+                                                              ((equal kind "rename")
+                                                               (format "rename %s to %s" (gethash "uri" change) (gethash "newUri" change)))
+                                                              ((equal kind "delete")
+                                                               (format "delete %s" (gethash "uri" change)))
+                                                              ((equal kind "create")
+                                                               (format "create %s" (gethash "uri" change))))))
+                                                         all-edits) "\n ")))
+            (setq confirmed nil)
+            (lspce--message "User cancelled server edit"))
+        (lspce--message "No edits to apply")
+        (setq confirmed nil)))
+    (when (and confirmed
+               (length> all-edits 0))
+      (let (change
+            kind
+            textDocument filename edits version)
+        (dolist (aedits all-edits)
+          (setq change (documentChange-change aedits))
+          (setq kind (documentChange-kind aedits))
+          (cond
+           ((equal kind "change")
+            (setq filename (lspce--uri-to-path (gethash "uri" change))
+                  edits (gethash "edits" change)
+                  version nil)
+            (with-current-buffer (find-file-noselect filename)
+              (lspce--message "lspce--apply-workspace-edit filename %s" filename)
+              (lspce--apply-text-edits edits version)))
+           ((equal kind "documentChange")
+            (setq textDocument (gethash "textDocument" change)
+                  edits (gethash "edits" change))
+            (setq filename (lspce--uri-to-path (gethash "uri" textDocument))
+                  version (gethash "version" textDocument))
+            (with-current-buffer (find-file-noselect filename)
+              (lspce--message "lspce--apply-workspace-edit filename %s" filename)
+              (lspce--apply-text-edits edits version)))
+           (t
+            (lspce--apply-file-edits change))))))))
 
 (cl-defun lspce-code-actions (beg &optional end action-kind)
   "Offer to execute actions of ACTION-KIND between BEG and END.
@@ -1737,7 +1788,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
   (if (lspce--server-capable-chain "renameProvider")
       (let ((response (lspce--request "textDocument/rename" (lspce--make-renameParams newname))))
         (when response
-          (lspce--apply-workspace-edit response)))
+          (lspce--apply-workspace-edit response t)))
     (lspce--warn "Server does not support rename.")))
 
 ;;; workspace server
