@@ -1605,28 +1605,100 @@ Doubles as an indicator of snippet support."
     (let ((params (list :command command :arguments arguments)))
       (lspce--request "workspace/executeCommand" params))))
 
-(defun lspce--apply-file-edits (change &optional version)
-  ;; TODO
+(defun lspce--apply-file-edits (change)
+  ;; (lspce--message "lspce--apply-file-edits change %s" change)
   (let* ((kind (gethash "kind" change))
-         (uri (gethash "uri" change))
-         (new-uri (gethash "newUri" change))
          (options (gethash "options" change))
-         (filename (lspce--uri-to-path uri))
-         (new-filename (when (equal kind "rename") (lspce--uri-to-path new-uri))))
+         uri
+         filename
+         new-uri new-filename
+         overwrite ignoreIfExists recursive ignoreIfNotExists)
     (cond
      ((equal kind "create")
-      )
+      (setq uri (gethash "uri" change))
+      (setq filename (lspce--uri-to-path uri))
+      (when options
+        (setq overwrite (gethash "overwrite" options)
+              ignoreIfExists (gethash "ignoreIfExists" options)))
+      (if (file-exists-p filename)
+          (if (or overwrite
+                  (not ignoreIfExists))
+              (progn
+                (when (find-buffer-visiting filename)
+                  (with-current-buffer (find-buffer-visiting filename)
+                    (save-buffer)
+                    (kill-buffer)))
+                (delete-file filename t)
+                (with-current-buffer (find-file-noselect filename)
+                  (save-buffer)))
+            (lspce--warn "Cannot create file %s." filename))
+        (when (find-buffer-visiting filename)
+          (with-current-buffer (find-buffer-visiting filename)
+            (save-buffer)
+            (kill-buffer)))
+        (delete-file filename t)
+        (with-current-buffer (find-file-noselect new-filename)
+          (save-buffer))))
      ((equal kind "rename")
-      )
-     ((equal kind "delete"))
-     )
-    )
-  )
+      (setq uri (gethash "oldUri" change))
+      (setq filename (lspce--uri-to-path uri))
+      (setq new-uri (gethash "newUri" change))
+      (setq new-filename (lspce--uri-to-path new-uri))
+      (when options
+        (setq overwrite (gethash "overwrite" options)
+              ignoreIfExists (gethash "ignoreIfExists" options)))
+      (if (file-exists-p new-filename)
+          (if (or overwrite
+                  (not ignoreIfExists))
+              (progn
+                (when (find-buffer-visiting filename)
+                  (with-current-buffer (find-buffer-visiting filename)
+                    (save-buffer)
+                    (kill-buffer)))
+                (when (find-buffer-visiting new-filename)
+                  (with-current-buffer (find-buffer-visiting new-filename)
+                    (save-buffer)
+                    (kill-buffer)))
+                (rename-file filename new-filename t))
+            (lspce--warn "Cannot rename %s to %s" filename new-filename))
+        (if (find-buffer-visiting filename) ;; new filename not existing
+            (progn
+              (with-current-buffer (find-buffer-visiting filename)
+                (save-buffer)
+                (kill-buffer))
+              (rename-file filename new-filename t)
+              (find-file new-filename))
+          (rename-file filename new-filename t))))
+     ((equal kind "delete")
+      (setq uri (gethash "uri" change))
+      (setq filename (lspce--uri-to-path uri))
+      (when options
+        (setq recursive (gethash "recursive" options)
+              ignoreIfNotExists (gethash "ignoreIfNotExists" options)))
+      (when (file-exists-p filename)
+        (if (file-directory-p filename)
+            (progn
+              (if recursive
+                  (progn
+                    (dolist (buf (buffer-list))
+                      (with-current-buffer buf
+                        (when (and buffer-file-name
+                                   (f-parent-of-p filename buffer-file-name))
+                          (save-buffer)
+                          (kill-buffer))))
+                    (delete-directory filename t t))
+                (lspce--warn "Cannot delete directory %s" filename)))
+          (if (find-buffer-visiting filename)
+              (with-current-buffer (find-buffer-visiting filename)
+                (save-buffer)
+                (kill-buffer)))
+          (delete-file filename t)))))))
 
 (defun lspce--apply-text-edits (edits &optional version)
+  ;; (lspce--message "buffer %s, version %s, edits: %s" (buffer-name) version (json-encode edits))
   (when (or (not version)
+            (equal version :null)
             (equal version lspce--identifier-version))
-    ;; (lspce--message "buffer %s, edits: %s" (buffer-name) (json-encode edits))
     (atomic-change-group
       (let* ((change-group (prepare-change-group)))
         (dolist (edit (nreverse edits))
@@ -1656,7 +1728,7 @@ Doubles as an indicator of snippet support."
 (defun lspce--apply-workspace-edit (wedit &optional confirm)
   (let ((changes (gethash "changes" wedit))
         (documentChanges (gethash "documentChanges" wedit))
-        (confirmed nil)
+        (confirmed t)
         kind
         filename edits all-edits)
     (if documentChanges
@@ -1674,10 +1746,11 @@ Doubles as an indicator of snippet support."
             (puthash "uri" filename change)
             (puthash "edits" edits change)
             (cl-pushnew (make-documentChange :kind "change" :change change) all-edits)))))
+    (setq all-edits (reverse all-edits))
     (when confirm
       (if (length> all-edits 0)
           (unless (y-or-n-p
-                   (format "[lspce] Server wants to:\n  %s\n Proceed? "
+                   (format "[lspce] Server wants to:\n %s\n Proceed? "
                            (mapconcat #'identity (mapcar (lambda (edit)
                                                            (let ((kind (documentChange-kind edit))
                                                                  (change (documentChange-change edit))
@@ -1688,12 +1761,13 @@ Doubles as an indicator of snippet support."
                                                               ((equal kind "documentChange")
                                                                (format "edit %s" (gethash "uri" (gethash "textDocument" change))))
                                                               ((equal kind "rename")
-                                                               (format "rename %s to %s" (gethash "uri" change) (gethash "newUri" change)))
+                                                               (format "rename %s to %s" (gethash "oldUri" change) (gethash "newUri" change)))
                                                               ((equal kind "delete")
                                                                (format "delete %s" (gethash "uri" change)))
                                                               ((equal kind "create")
                                                                (format "create %s" (gethash "uri" change))))))
-                                                         all-edits) "\n ")))
+                                                         all-edits)
+                                      "\n ")))
             (setq confirmed nil)
             (lspce--message "User cancelled server edit"))
         (lspce--message "No edits to apply")
@@ -1712,7 +1786,7 @@ Doubles as an indicator of snippet support."
                   edits (gethash "edits" change)
                   version nil)
             (with-current-buffer (find-file-noselect filename)
-              (lspce--message "lspce--apply-workspace-edit filename %s" filename)
+              (lspce--message "lspce--apply-text-edit filename %s" filename)
               (lspce--apply-text-edits edits version)))
            ((equal kind "documentChange")
             (setq textDocument (gethash "textDocument" change)
@@ -1720,9 +1794,10 @@ Doubles as an indicator of snippet support."
             (setq filename (lspce--uri-to-path (gethash "uri" textDocument))
                   version (gethash "version" textDocument))
             (with-current-buffer (find-file-noselect filename)
-              (lspce--message "lspce--apply-workspace-edit filename %s" filename)
+              (lspce--message "lspce--apply-text-edit filename %s" filename)
               (lspce--apply-text-edits edits version)))
            (t
+            (lspce--message "lspce--apply-file-edits filename %s" filename)
             (lspce--apply-file-edits change))))))))
 
 (cl-defun lspce-code-actions (beg &optional end action-kind)
