@@ -461,9 +461,18 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (defun lspce--notify-textDocument/didSave ()
   "Send textDocument/willSave to server."
-  (when (lspce--server-capable-chain "textDocumentSync" "save")
-    (lspce--notify
-     "textDocument/didSave" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))))))
+  (let ((capability (lspce--server-capable-chain "textDocumentSync" "save"))
+        (includeText nil))
+    (when capability
+      (when (hash-table-p capability)
+        (setq includeText (gethash "includeText" capability)))
+      (if includeText
+          (lspce--notify
+           "textDocument/didSave" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))
+                                        :text (lspce--widening
+                                               (buffer-substring-no-properties (point-min) (point-max)))))
+        (lspce--notify
+         "textDocument/didSave" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))))))))
 
 (defun lspce--server-program (lsp-type)
   (let ((server (assoc-default lsp-type lspce-server-programs)))
@@ -1601,7 +1610,7 @@ Doubles as an indicator of snippet support."
 (defun lspce--execute-command (command arguments)
   (if (string-equal command "java.apply.workspaceEdit")
       (progn
-        (mapc #'lspce--apply-workspace-edit arguments t))
+        (mapc #'lspce--apply-workspace-edit arguments))
     (let ((params (list :command command :arguments arguments)))
       (lspce--request "workspace/executeCommand" params))))
 
