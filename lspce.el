@@ -13,6 +13,7 @@
   (require 'posframe-plus))
 (require 'markdown-mode)
 (require 'flymake)
+(require 'hierarchy)
 
 (require 'lspce-module)
 (eval-when-compile
@@ -1874,6 +1875,57 @@ at point.  With prefix argument, prompt for ACTION-KIND."
         (when response
           (lspce--apply-workspace-edit response t)))
     (lspce--warn "Server does not support rename.")))
+
+(defun lspce--format-lsp-position (position)
+  (let ((line (gethash "line" position))
+        (character (gethash "character" position)))
+    (format "line: %d, character %d" line character)))
+
+;;; call tree
+
+(defun lspce--format-call-hierarchy-item (item)
+  (let (name kind detail uri range start end)
+    (setq name (gethash "name" item)
+          kind (gethash "kind" item)
+          detail (gethash "detail" item)
+          uri (gethash "uri" item)
+          range (gethash "range" item))
+    (setq start (gethash "start" range)
+          end (gethash "end" range))
+
+    (lspce--message "name: %s" name)
+    (lspce--message "kind: %s" kind)
+    (lspce--message "detail: %s" detail)
+    (lspce--message "uri: %s" uri)
+    (lspce--message "start: [%s]" (lspce--format-lsp-position start))
+    (lspce--message "end: [%s]" (lspce--format-lsp-position end))))
+
+(defun lspce--incoming-calls (item)
+  (let ((response (lspce--request "callHierarchy/incomingCalls" (list :item item)))
+        from)
+    (when response
+      (lspce--message "incoming calls %s" response)
+      (dolist (incoming response)
+        (setq from (gethash "from" incoming))
+        )))
+  )
+
+(defun lspce-call-hierarchy ()
+  (interactive)
+  (if (lspce--server-capable-chain "callHierarchyProvider")
+      (let ((response (lspce--request "textDocument/prepareCallHierarchy" (lspce--make-textDocumentPositionParams)))
+            name kind detail uri range)
+        (when response
+          (lspce--message "call hierachy %s" response)
+          (dolist (item response)
+            (setq name (gethash "name" item)
+                  kind (gethash "kind" item)
+                  detail (gethash "detail" item)
+                  uri (gethash "uri" item)
+                  range (gethash "range" item))
+            (lspce--format-call-hierarchy-item item)
+            )))
+    (lspce--warn "Server does not support call hierarchy.")))
 
 ;;; workspace server
 (defun lspce-shutdown-server ()

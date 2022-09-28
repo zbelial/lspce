@@ -121,7 +121,9 @@
                                        :codeDescriptionSupport :json-false
                                        :dataSupport :json-false
                                        :versionSupport :json-false
-                                       :tagSupport (list :valueSet [1 2])))
+                                       :tagSupport (list :valueSet [1 2]))
+                  :callHierarchy (list
+                                  :dynamicRegistration :json-false))
    :experimental lspce--{})
   )
 
