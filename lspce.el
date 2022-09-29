@@ -1883,48 +1883,28 @@ at point.  With prefix argument, prompt for ACTION-KIND."
 
 ;;; call tree
 
-(defun lspce--format-call-hierarchy-item (item)
-  (let (name kind detail uri range start end)
-    (setq name (gethash "name" item)
-          kind (gethash "kind" item)
-          detail (gethash "detail" item)
-          uri (gethash "uri" item)
-          range (gethash "range" item))
-    (setq start (gethash "start" range)
-          end (gethash "end" range))
-
-    (lspce--message "name: %s" name)
-    (lspce--message "kind: %s" kind)
-    (lspce--message "detail: %s" detail)
-    (lspce--message "uri: %s" uri)
-    (lspce--message "start: [%s]" (lspce--format-lsp-position start))
-    (lspce--message "end: [%s]" (lspce--format-lsp-position end))))
 
 (defun lspce--incoming-calls (item)
   (let ((response (lspce--request "callHierarchy/incomingCalls" (list :item item)))
-        from)
+        children child
+        from result)
     (when response
-      (lspce--message "incoming calls %s" response)
       (dolist (incoming response)
         (setq from (gethash "from" incoming))
-        )))
-  )
+        (cl-pushnew (list from (lspce--incoming-calls from)) children)))
+    (setq result (reverse children))
+    result))
 
-(defun lspce-call-hierarchy ()
+(defun lspce--query-incoming-calls ()
   (interactive)
   (if (lspce--server-capable-chain "callHierarchyProvider")
       (let ((response (lspce--request "textDocument/prepareCallHierarchy" (lspce--make-textDocumentPositionParams)))
-            name kind detail uri range)
+            name kind detail uri range
+            tree)
         (when response
-          (lspce--message "call hierachy %s" response)
           (dolist (item response)
-            (setq name (gethash "name" item)
-                  kind (gethash "kind" item)
-                  detail (gethash "detail" item)
-                  uri (gethash "uri" item)
-                  range (gethash "range" item))
-            (lspce--format-call-hierarchy-item item)
-            )))
+            (cl-pushnew (list item (lspce--incoming-calls item)) tree))
+          tree))
     (lspce--warn "Server does not support call hierarchy.")))
 
 ;;; workspace server
