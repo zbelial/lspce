@@ -30,7 +30,7 @@
 
       (setq label (format "%30s:%s%s%s"
                           (propertize (truncate-string-to-width (f-filename (lspce--uri-to-path uri)) 30) 'face 'compilation-info)
-                          (propertize (format "%4d" (gethash "line" start)) 'face 'compilation-line-number)
+                          (propertize (format "%4d" (1+ (gethash "line" start))) 'face 'compilation-line-number)
                           (make-string (* indent 4) ?\s) name ))
       (cons label info)))
 
