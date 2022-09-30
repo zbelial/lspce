@@ -1874,7 +1874,8 @@ at point.  With prefix argument, prompt for ACTION-KIND."
       (let ((response (lspce--request "textDocument/rename" (lspce--make-renameParams newname))))
         (when response
           (lspce--apply-workspace-edit response t)))
-    (lspce--warn "Server does not support rename.")))
+    (lspce--warn "Server does not support rename.")
+    nil))
 
 (defun lspce--format-lsp-position (position)
   (let ((line (gethash "line" position))
@@ -1896,7 +1897,6 @@ at point.  With prefix argument, prompt for ACTION-KIND."
     result))
 
 (defun lspce--query-incoming-calls ()
-  (interactive)
   (if (lspce--server-capable-chain "callHierarchyProvider")
       (let ((response (lspce--request "textDocument/prepareCallHierarchy" (lspce--make-textDocumentPositionParams)))
             name kind detail uri range
@@ -1905,7 +1905,8 @@ at point.  With prefix argument, prompt for ACTION-KIND."
           (dolist (item response)
             (cl-pushnew (list item (lspce--incoming-calls item)) tree))
           tree))
-    (lspce--warn "Server does not support call hierarchy.")))
+    (lspce--warn "Server does not support call hierarchy.")
+    nil))
 
 ;;; workspace server
 (defun lspce-shutdown-server ()
