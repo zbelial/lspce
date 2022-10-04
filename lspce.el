@@ -441,25 +441,6 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (lspce--notify
      "textDocument/willSave" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri)) :reason 1))))
 
-;; auto enable lspce-mode for files newly created .
-(cl-defun lspce-enable-after-save ()
-  (when (and
-         (not lspce-mode)
-         buffer-file-name
-         (file-exists-p buffer-file-name))
-    (let ((root-uri (lspce--root-uri))
-          (lsp-type (lspce--lsp-type))
-          lsp-server)
-      (unless (and root-uri lsp-type)
-        (lspce--message "lspce-enable-after-save: Cannot enable lspce in current buffer.")
-        (cl-return-from lspce-enable-after-save nil))
-      
-      (setq lsp-server (lspce-module-server root-uri lsp-type))
-      (when lsp-server
-        (lspce--message "lspce-enable-after-save: Server for (%s %s) is running." root-uri lsp-type)
-        (lspce-mode t)))))
-(add-hook 'after-save-hook #'lspce-enable-after-save)
-
 (defun lspce--notify-textDocument/didSave ()
   "Send textDocument/willSave to server."
   (let ((capability (lspce--server-capable-chain "textDocumentSync" "save"))
@@ -693,7 +674,7 @@ Auto completion is only performed if the tick did not change."
     (lspce--buffer-disable-lsp)
     )))
 
-;; auto enable lspce-mode when loading files from disk, or enable lspce-mode for files newly created .
+;; auto enable lspce-mode for files when some files in its project has enabled lspce-mode.
 (cl-defun lspce-enable-within-project ()
   (when (and lspce-auto-enable-within-project
              buffer-file-name
@@ -702,15 +683,32 @@ Auto completion is only performed if the tick did not change."
           (lsp-type (lspce--lsp-type))
           lsp-server)
       (unless (and root-uri lsp-type)
-        (lspce--message "lspce-enable-after-save: Cannot enable lspce in current buffer.")
         (cl-return-from lspce-enable-within-project nil))
       
       (setq lsp-server (lspce-module-server root-uri lsp-type))
       (when lsp-server
         (lspce--message "lspce-enable-after-save: Server for (%s %s) is running." root-uri lsp-type)
         (lspce-mode t)))))
-
 (add-hook 'find-file-hook #'lspce-enable-within-project)
+
+;; auto enable lspce-mode for files newly created when some files in its project has enabled lspce-mode.
+(cl-defun lspce-enable-after-save ()
+  (when (and
+         (not lspce-mode)
+         buffer-file-name
+         (file-exists-p buffer-file-name))
+    (let ((root-uri (lspce--root-uri))
+          (lsp-type (lspce--lsp-type))
+          lsp-server)
+      (unless (and root-uri lsp-type)
+        (cl-return-from lspce-enable-after-save nil))
+      
+      (setq lsp-server (lspce-module-server root-uri lsp-type))
+      (when lsp-server
+        (lspce--message "lspce-enable-after-save: Server for (%s %s) is running." root-uri lsp-type)
+        (lspce-mode t)))))
+(add-hook 'after-save-hook #'lspce-enable-after-save)
+
 
 ;;; Hooks
 (defvar-local lspce--recent-changes nil
