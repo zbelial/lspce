@@ -99,8 +99,8 @@
   :type 'boolean)
 
 ;; Customizable via `completion-category-overrides'.
-(when (assoc 'flex completion-styles-alist)
-  (add-to-list 'completion-category-defaults '(lspce-capf (styles flex basic))))
+;; (when (assoc 'flex completion-styles-alist)
+;;   (add-to-list 'completion-category-defaults '(lspce-capf (styles flex basic))))
 
 ;;; Constants
 ;;;
