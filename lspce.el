@@ -356,6 +356,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
         lrid
         response code msg response-error response-data)
     ;; (lspce--message "lspce--get-response for request-id %d" request-id)
+    (lspce--message "request-id %s, method %s, start-time %s" request-id method start-time)
     (while (and trying
                 (or (null timeout)
                     (> (+ start-time timeout) (float-time))))
@@ -392,6 +393,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
             )
         ;; (lspce--message "sit-for is interrupted.")
         (setq trying nil)))
+    (lspce--message "request-id %s, method %s, end-time %s" request-id method (float-time))
     response-data))
 
 (defun lspce--request (method &optional params timeout)
@@ -1222,9 +1224,11 @@ Doubles as an indicator of snippet support."
              nil)
             ((null action)                                 ; try-completion
              (setq collection (funcall proxies))
+             (lspce--message "after proxies in try-completion %s" (float-time))
              (try-completion probe collection))
             ((eq action t)                                 ; all-completions
              (setq collection (funcall proxies))
+             (lspce--message "after proxies in all-completions %s" (float-time))
              (all-completions
               probe
               collection

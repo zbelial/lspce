@@ -42,7 +42,7 @@ pub(crate) fn stdio_transport(
                     }
                 }
             }
-            let recv_value = writer_receiver.recv_timeout(std::time::Duration::from_millis(50));
+            let recv_value = writer_receiver.recv_timeout(std::time::Duration::from_millis(10));
             match recv_value {
                 Ok(r) => {
                     Logger::log(&format!(

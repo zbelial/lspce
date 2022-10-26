@@ -218,15 +218,17 @@ impl LspServer {
                         // TODO save request into the queue
                     }
                     Message::Response(r) => {
-                        {
-                            let mut lrid = latest_response_id2.lock().unwrap();
-                            if lrid.lt(&r.id) {
-                                *lrid = r.id.clone();
-                            }
-                        }
+                        let id = r.id.clone();
                         {
                             let mut responses = responses2.lock().unwrap();
                             responses.push_back(r);
+                        }
+                        {
+                            let mut lrid = latest_response_id2.lock().unwrap();
+                            if lrid.lt(&id) {
+                                *lrid = id;
+                            }
+                            Logger::log(&format!("update latest_response_id to {}", *lrid));
                         }
                     }
                     Message::Notification(r) => {
@@ -247,7 +249,7 @@ impl LspServer {
                     }
                 }
             } else {
-                thread::sleep(std::time::Duration::from_millis(100));
+                thread::sleep(std::time::Duration::from_millis(10));
             }
         });
 
