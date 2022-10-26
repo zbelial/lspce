@@ -124,6 +124,10 @@ This is equivalent to `display-warning', using `lspce-mode' as the type and
   "Message out with FORMAT with ARGS."
   (message "[lspce] %s %s" (format-time-string "%Y-%m-%d %H:%M:%S.%3N") (apply #'format format args)))
 
+(defvar lspce--debug-enabled nil)
+(defun lspce--debug (format &rest args)
+  (when lspce--debug-enabled
+    (lspce--message format args)))
 
 (defun lspce--download-file (source-url dest-location)
   "Download a file from a URL at SOURCE-URL and save it to file at DEST-LOCATION."
