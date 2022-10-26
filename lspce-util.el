@@ -127,7 +127,7 @@ This is equivalent to `display-warning', using `lspce-mode' as the type and
 (defvar lspce--debug-enabled nil)
 (defun lspce--debug (format &rest args)
   (when lspce--debug-enabled
-    (lspce--message format args)))
+    (apply #'lspce--message format args)))
 
 (defun lspce--download-file (source-url dest-location)
   "Download a file from a URL at SOURCE-URL and save it to file at DEST-LOCATION."
