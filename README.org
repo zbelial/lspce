@@ -90,6 +90,7 @@
   - +new created files cannot be recognized by lsp server (workaround: revert it or close and then open it)+
   - +diagnostics does not work well, sometimes they won't disappear.+
   - +completion has a little bug, where it may complete foo.bar to foo.barb when current text is foo.b+
+  - after editing pom.xml, jdt.ls cannot automatically update configuration(e.g. cannot find class from the new added jar)
   - ...
 
 * Acknowledgements
