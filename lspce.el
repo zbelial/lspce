@@ -322,7 +322,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (cl-defun lspce--request-async (method &optional params)
   (unless (and buffer-file-name
                (file-exists-p buffer-file-name))
-    (lspce--message "lspce--request-async: current buffer has no disk file.")
+    (lspce--warn "lspce--request-async: current buffer has no disk file.")
     (cl-return-from lspce--request-async nil))
   (let* ((request (lspce--make-request method params))
          (root-uri (lspce--root-uri))
@@ -355,33 +355,33 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (start-time (float-time))
         lrid
         response code msg response-error response-data)
-    ;; (lspce--message "lspce--get-response for request-id %d" request-id)
-    (lspce--debug "request-id %s, method %s, start-time %s" request-id method start-time)
+    (lspce--debug "lspce--get-response for request-id %d" request-id)
+    (lspce--log-perf "request-id %s, method %s, start-time %s" request-id method start-time)
     (while (and trying
                 (or (null timeout)
                     (> (+ start-time timeout) (float-time))))
       (if (sit-for (lspce--sit-for-interval lspce--lsp-type) t)
           (progn
             (setq lrid (lspce-module-read-latest-response-id lspce--root-uri lspce--lsp-type))
-            ;; (lspce--message "lrid %S" lrid)
+            (lspce--debug "lrid %S" lrid)
             (unless lrid
               (cl-return-from lspce--get-response nil))
 
             (setq lrid (string-to-number lrid))
             (when (> lrid request-id)
-              ;; (lspce--message "lrid is bigger than request-id")
+              (lspce--debug "lrid is bigger than request-id")
               (setq trying nil))
             (when (= lrid request-id)
-              ;; (lspce--message "start to read response %d" request-id)
+              (lspce--debug "start to read response %d" request-id)
               (setq response (lspce-module-read-response-exact lspce--root-uri lspce--lsp-type request-id method))
-              ;; (lspce--message "response %s" response)
+              (lspce--debug "response %s" response)
               (unless response
                 (cl-return-from lspce--get-response nil))
 
               (setq response (json-parse-string response :array-type 'list))
               (setq code (gethash "code" response))
               (setq msg (gethash "msg" response))
-              ;; (lspce--message "code %d, msg %s" code msg)
+              (lspce--debug "code %d, msg %s" code msg)
               (unless (= code 0)
                 (cl-return-from lspce--get-response nil))
 
@@ -391,9 +391,9 @@ be set to `lspce-move-to-lsp-abiding-column', and
                 (setq response-data (gethash "result" msg)))
               (setq trying nil))
             )
-        ;; (lspce--message "sit-for is interrupted.")
+        (lspce--debug "sit-for is interrupted.")
         (setq trying nil)))
-    (lspce--debug "request-id %s, method %s, end-time %s" request-id method (float-time))
+    (lspce--log-perf "request-id %s, method %s, end-time %s" request-id method (float-time))
     response-data))
 
 (defun lspce--request (method &optional params timeout)
@@ -471,12 +471,12 @@ be set to `lspce-move-to-lsp-abiding-column', and
         server server-cmd server-args initialize-options
         response-str response response-error response-result)
     (unless (and root-uri lsp-type)
-      (lspce--message "lspce--connect: Can not get root-uri or lsp-type of current buffer.")
+      (lspce--warn "lspce--connect: Can not get root-uri or lsp-type of current buffer.")
       (cl-return-from lspce--connect nil))
     
     (setq lsp-server (lspce-module-server root-uri lsp-type))
     (when lsp-server
-      (lspce--message "lspce--connect: Server for (%s %s) is running." root-uri lsp-type)
+      (lspce--info "lspce--connect: Server for (%s %s) is running." root-uri lsp-type)
       (cl-return-from lspce--connect lsp-server))
 
     (setq server (lspce--server-program lsp-type))
@@ -484,7 +484,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
       (user-error "lspce--connect: Do not support current buffer.")
       (cl-return-from lspce--connect nil))
 
-    ;; (lspce--message "server %S" server)
+    (lspce--debug "server %S" server)
     (setq server-cmd (nth 0 server)
           server-args (nth 1 server)
           initialize-options (nth 2 server))
@@ -500,8 +500,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (when (functionp initialize-options)
       (setq initialize-options (funcall initialize-options)))
 
-    ;; (lspce--message "server-args: %s" server-args)
-    ;; (lspce--message "initialize-options: %s" initialize-options)
+    (lspce--debug "server-args: %s" server-args)
+    (lspce--debug "initialize-options: %s" initialize-options)
 
     (setq initialize-params (lspce--make-initializeParams root-uri initialize-options))
 
@@ -582,7 +582,7 @@ Auto completion is only performed if the tick did not change."
     (setq server-info (lspce--connect))
     (unless server-info
       (cl-return-from lspce--buffer-enable-lsp nil))
-    ;; (lspce--message "server-info: %s" server-info)
+    (lspce--debug "server-info: %s" server-info)
 
     (when (lspce--notify-textDocument/didOpen)
       (setq-local lspce--server-info (json-parse-string server-info :array-type 'list))
@@ -654,7 +654,7 @@ Auto completion is only performed if the tick did not change."
         (flymake-mode 1))
       (lspce--buffer-enable-lsp)
       (if lspce--server-info
-          (lspce--message "Connected to lsp server.")
+          (lspce--info "Connected to lsp server.")
         (lspce--warn "Failed to connect to lsp server.")
         (setq lspce-mode nil)))))
    (t
@@ -689,7 +689,7 @@ Auto completion is only performed if the tick did not change."
       
       (setq lsp-server (lspce-module-server root-uri lsp-type))
       (when lsp-server
-        (lspce--message "lspce-enable-after-save: Server for (%s %s) is running." root-uri lsp-type)
+        (lspce--info "lspce-enable-after-save: Server for (%s %s) is running." root-uri lsp-type)
         (lspce-mode t)))))
 (add-hook 'find-file-hook #'lspce-enable-within-project)
 
@@ -707,7 +707,7 @@ Auto completion is only performed if the tick did not change."
       
       (setq lsp-server (lspce-module-server root-uri lsp-type))
       (when lsp-server
-        (lspce--message "lspce-enable-after-save: Server for (%s %s) is running." root-uri lsp-type)
+        (lspce--info "lspce-enable-after-save: Server for (%s %s) is running." root-uri lsp-type)
         (lspce-mode t)))))
 (add-hook 'after-save-hook #'lspce-enable-after-save)
 
@@ -923,12 +923,9 @@ If optional MARKERS, make markers."
 (cl-defmethod xref-backend-definitions ((_backend (eql xref-lspce)) identifier)
   (save-excursion
     (let* ((method "textDocument/definition")
-           (request-id (lspce--request-async method (lspce--make-definitionParams)))
-           response)
-      (when request-id
-        (setq response (lspce--get-response request-id method))
-        (when response
-          (lspce--locations-to-xref response))))))
+           (response (lspce--request method (lspce--make-definitionParams))))
+      (when response
+        (lspce--locations-to-xref response)))))
 
 ;; NOTE if you use `ivy-xref-show-xrefs' as the `xref-show-xrefs-function',
 ;; you will find `xref-backend-references' is called twice.
@@ -936,12 +933,9 @@ If optional MARKERS, make markers."
 (cl-defmethod xref-backend-references ((_backend (eql xref-lspce)) identifier)
   (save-excursion
     (let* ((method "textDocument/references")
-           (request-id (lspce--request-async method (lspce--make-referenceParams)))
-           response)
-      (when request-id
-        (setq response (lspce--get-response request-id method))
-        (when response
-          (lspce--locations-to-xref response))))))
+           (response (lspce--request method (lspce--make-definitionParams))))
+      (when response
+        (lspce--locations-to-xref response)))))
 
 (cl-defmethod xref-backend-identifier-completion-table ((_backend (eql xref-lspce)))
   (list (propertize (or (thing-at-point 'symbol) "")
@@ -965,12 +959,9 @@ To create an xref object, call `xref-make'.")
 (cl-defmethod xref-backend-implementations ((_backend (eql xref-lspce)) identifier)
   (save-excursion
     (let* ((method "textDocument/implementation")
-           (request-id (lspce--request-async method (lspce--make-implementationParams)))
-           response)
-      (when request-id
-        (setq response (lspce--get-response request-id method))
-        (when response
-          (lspce--locations-to-xref response))))))
+           (response (lspce--request method (lspce--make-implementationParams))))
+      (when response
+        (lspce--locations-to-xref response)))))
 
 ;;;###autoload
 (defun xref-find-implementations (identifier)
@@ -1037,17 +1028,14 @@ When the completion is incomplete, `items' contains value of :incomplete.")
 (cl-defun lspce--request-completion ()
   (let* ((method "textDocument/completion")
          (params (lspce--make-completionParams))
-         request-id
-         response items complete?)
-    (setq request-id (lspce--request-async method params))
-    (when request-id
-      (setq response (lspce--get-response request-id method)))
+         (response (lspce--request method params))
+         items complete?)
     (unless response
-      ;; (lspce--warn "lspce--request-completion failed to getting response")
+      (lspce--warn "lspce--request-completion failed to getting response")
       (cl-return-from lspce--request-completion nil))
 
-    ;; (lspce--message "lspce--request-completion response: %S" response)
-    ;; (lspce--message "lspce--request-completion response type-of: %s" (type-of response))
+    (lspce--debug "lspce--request-completion response: %S" response)
+    (lspce--debug "lspce--request-completion response type-of: %s" (type-of response))
     (cond
      ((listp response)
       (setq complete? t
@@ -1224,11 +1212,11 @@ Doubles as an indicator of snippet support."
              nil)
             ((null action)                                 ; try-completion
              (setq collection (funcall proxies))
-             (lspce--debug "after proxies in try-completion %s" (float-time))
+             (lspce--log-perf "after proxies in try-completion %s" (float-time))
              (try-completion probe collection))
             ((eq action t)                                 ; all-completions
              (setq collection (funcall proxies))
-             (lspce--debug "after proxies in all-completions %s" (float-time))
+             (lspce--log-perf "after proxies in all-completions %s" (float-time))
              (all-completions
               probe
               collection
@@ -1238,11 +1226,7 @@ Doubles as an indicator of snippet support."
                   (and (or (null pred) (funcall pred proxy))
                        (string-prefix-p
                         probe (or filterText proxy) lspce-completion-ignore-case))))
-              )
-             ;; (lspce--debug "after all-completions %s" (float-time))
-             )
-            ))
-         )
+              )))))
        :annotation-function
        (lambda (proxy)
          (let* ((item (get-text-property 0 'lspce--lsp-item proxy))
@@ -1311,7 +1295,7 @@ Doubles as an indicator of snippet support."
                     (additionalTextEdits (gethash "additionalTextEdits" lsp-item))
                     (snippet-fn (and (eql insertTextFormat 2)
                                      (lspce--snippet-expansion-fn))))
-               ;; (lspce--message "lsp-item %S" (json-encode lsp-item))
+               (lspce--debug "lsp-item %S" (json-encode lsp-item))
                (cond (textEdit
                       ;; Undo (yes, undo) the newly inserted completion.
                       ;; If before completion the buffer was "foo.b" and
@@ -1403,11 +1387,8 @@ Doubles as an indicator of snippet support."
   (when (lspce--server-capable-chain "hoverProvider")
     (let* ((method "textDocument/hover")
            (params (lspce--make-hoverParams))
-           (request-id (lspce--request-async method params))
-           response
+           (response (lspce--request method params))
            contents kind content language hover-info)
-      (when request-id
-        (setq response (lspce--get-response request-id method 2.0)))
       (when response
         (setq contents (gethash "contents" response))
         (cond
@@ -1549,11 +1530,11 @@ Doubles as an indicator of snippet support."
       (let (diagnostics
             flymake-diags range start end severity msg)
         (setq diagnostics (lspce-module-read-file-diagnostics (lspce--root-uri) (lspce--lsp-type) (lspce--uri)))
-        ;; (lspce--message "diagnostics: %S" diagnostics)
+        (lspce--debug "diagnostics: %S" diagnostics)
         (when diagnostics
           ;; FIXME 根据diag-type和位置排序。
           (dolist (d (json-parse-string diagnostics :array-type 'list))
-            ;; (lspce--message "d %S" d)
+            (lspce--debug "d %S" d)
             (setq range (gethash "range" d)
                   severity (gethash "severity" d)
                   msg (gethash "message" d))
@@ -1620,7 +1601,7 @@ Doubles as an indicator of snippet support."
       (lspce--request "workspace/executeCommand" params))))
 
 (defun lspce--apply-file-edits (change)
-  ;; (lspce--message "lspce--apply-file-edits change %s" change)
+  (lspce--debug "lspce--apply-file-edits change %s" change)
   (let* ((kind (gethash "kind" change))
          (options (gethash "options" change))
          uri
@@ -1709,7 +1690,7 @@ Doubles as an indicator of snippet support."
           (delete-file filename t)))))))
 
 (defun lspce--apply-text-edits (edits &optional version)
-  ;; (lspce--message "buffer %s, version %s, edits: %s" (buffer-name) version (json-encode edits))
+  (lspce--debug "buffer %s, version %s, edits: %s" (buffer-name) version (json-encode edits))
   (when (or (not version)
             (equal version :null)
             (equal version lspce--identifier-version))
@@ -1783,8 +1764,8 @@ Doubles as an indicator of snippet support."
                                                          all-edits)
                                       "\n ")))
             (setq confirmed nil)
-            (lspce--message "User cancelled server edit"))
-        (lspce--message "No edits to apply")
+            (lspce--info "User cancelled server edit"))
+        (lspce--info "No edits to apply")
         (setq confirmed nil)))
     (when (and confirmed
                (length> all-edits 0))
@@ -1800,7 +1781,7 @@ Doubles as an indicator of snippet support."
                   edits (gethash "edits" change)
                   version nil)
             (with-current-buffer (find-file-noselect filename)
-              (lspce--message "lspce--apply-text-edit filename %s" filename)
+              (lspce--debug "lspce--apply-text-edit filename %s" filename)
               (lspce--apply-text-edits edits version)))
            ((equal kind "documentChange")
             (setq textDocument (gethash "textDocument" change)
@@ -1808,10 +1789,10 @@ Doubles as an indicator of snippet support."
             (setq filename (lspce--uri-to-path (gethash "uri" textDocument))
                   version (gethash "version" textDocument))
             (with-current-buffer (find-file-noselect filename)
-              (lspce--message "lspce--apply-text-edit filename %s" filename)
+              (lspce--debug "lspce--apply-text-edit filename %s" filename)
               (lspce--apply-text-edits edits version)))
            (t
-            (lspce--message "lspce--apply-file-edits filename %s" filename)
+            (lspce--debug "lspce--apply-file-edits filename %s" filename)
             (lspce--apply-file-edits change))))))))
 
 (cl-defun lspce-code-actions (beg &optional end action-kind)
@@ -1859,7 +1840,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
                 (lspce--apply-workspace-edit edit))
               (when command
                 (lspce--execute-command (gethash "command" command) (gethash "arguments" command))))))
-      (lspce--message "No code actions here."))))
+      (lspce--info "No code actions here."))))
 
 ;;; rename
 (defun lspce--make-renameParams (newname)
@@ -1920,7 +1901,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
         server-id
         server-buffers)
     (setq server-id (lspce--server-id (current-buffer)))
-    ;; (lspce--message "server-id %S" server-id)
+    (lspce--debug "server-id %S" server-id)
     (if server-id
         (progn
           (cl-dolist (buf (buffer-list))
@@ -1928,10 +1909,9 @@ at point.  With prefix argument, prompt for ACTION-KIND."
               (when (string-equal server-id (lspce--server-id buf))
                 (cl-pushnew buf server-buffers))))
           (cl-dolist (buf server-buffers)
-            ;; (lspce--message "lspce-restart-server buf %s" (buffer-name buf))
             (with-current-buffer buf
               (lspce-mode -1))))
-      (lspce--message "No server running in current buffer"))))
+      (lspce--warn "No server running in current buffer"))))
 
 (defun lspce-restart-server ()
   "Restart server running in current buffer."
@@ -1940,7 +1920,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
         server-id
         server-buffers)
     (setq server-id (lspce--server-id (current-buffer)))
-    ;; (lspce--message "server-id %S" server-id)
+    (lspce--debug "server-id %S" server-id)
     (if server-id
         (progn
           (cl-dolist (buf (buffer-list))
@@ -1948,13 +1928,13 @@ at point.  With prefix argument, prompt for ACTION-KIND."
               (when (string-equal server-id (lspce--server-id buf))
                 (cl-pushnew buf server-buffers))))
           (cl-dolist (buf server-buffers)
-            ;; (lspce--message "lspce-restart-server buf %s" (buffer-name buf))
+            (lspce--debug "lspce-restart-server buf %s" (buffer-name buf))
             (with-current-buffer buf
               (lspce-mode -1)))
           (cl-dolist (buf server-buffers)
             (with-current-buffer buf
               (lspce-mode 1))))
-      (lspce--message "No server running in current buffer"))))
+      (lspce--warn "No server running in current buffer"))))
 
 (defun lspce-restart-workspace ()
   "Restart all server in current project."
@@ -1978,7 +1958,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
           (cl-dolist (buf server-buffers)
             (with-current-buffer buf
               (lspce-mode 1))))
-      (lspce--message "No sever running in current buffer"))))
+      (lspce--info "No sever running in current buffer"))))
 
 ;;; language/server specific features
 ;;;; java jdtls
@@ -1997,7 +1977,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
                  (or (string-equal file-name "pom.xml")
                      (string-match "\\.gradle" file-name))
                  (lspce-module-server root-uri lsp-type))
-        (lspce--message "notify java/projectConfigurationUpdate")
+        (lspce--info "send java/projectConfigurationUpdate")
         (setq response (lspce--request
                         "java/projectConfigurationUpdate" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))) lsp-type))))))
 (add-hook 'after-save-hook #'lspce--jdtls-update-project-configuration)

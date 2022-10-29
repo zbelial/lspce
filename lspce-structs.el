@@ -8,4 +8,10 @@
   (change) ;; 
   )
 
+(cl-defstruct lsp-response
+  (request-id)
+  (response-data)
+  (latest-request-id)
+  )
+
 (provide 'lspce-structs)

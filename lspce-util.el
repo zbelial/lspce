@@ -3,10 +3,20 @@
 (eval-when-compile
   (require 'cl-macs))
 
-(defconst LSPCE-VERSION "0.1")
+(defconst LSPCE-VERSION "0.3")
 (defconst LSPCE-NAME "lspce")
 
+(defconst LSPCE-LOG-ERROR 4)
+(defconst LSPCE-LOG-WARN 3)
+(defconst LSPCE-LOG-INFO 2)
+(defconst LSPCE-LOG-DEBUG 1)
+
 (defconst lspce--{} (make-hash-table) "The empty JSON object.")
+
+(defcustom lspce-log-level LSPCE-LOG-INFO
+  "lspce log level."
+  :type 'integer
+  :group 'stock)
 
 
 (defun lspce-current-column () (- (point) (point-at-bol)))
@@ -114,20 +124,35 @@
   (unless (file-directory-p path)
     (make-directory path t)))
 
-(defun lspce--warn (message &rest args)
-  "Display a warning message made from (`format-message' MESSAGE ARGS...).
-This is equivalent to `display-warning', using `lspce-mode' as the type and
-`:warning' as the level."
-  (display-warning 'lspce-mode (apply #'format-message message args)))
-
 (defun lspce--message (format &rest args)
   "Message out with FORMAT with ARGS."
   (message "[lspce] %s %s" (format-time-string "%Y-%m-%d %H:%M:%S.%3N") (apply #'format format args)))
 
-(defvar lspce--debug-enabled nil)
+(defun lspce--log (level format &rest args)
+  "Message out with FORMAT with ARGS."
+  (message "[lspce] [%s] %s %s" level (format-time-string "%Y-%m-%d %H:%M:%S.%3N") (apply #'format format args)))
+
+(defun lspce--error (format &rest args)
+  (when (<= lspce-log-level LSPCE-LOG-ERROR)
+    (apply #'lspce--log "ERROR" format args)
+    (display-warning 'lspce-mode (apply #'format-message format args) :error)))
+
+(defun lspce--warn (format &rest args)
+  (when (<= lspce-log-level LSPCE-LOG-WARN)
+    (apply #'lspce--log "WARN" format args)))
+
+(defun lspce--info (format &rest args)
+  (when (<= lspce-log-level LSPCE-LOG-INFO)
+    (apply #'lspce--log "INFO" format args)))
+
 (defun lspce--debug (format &rest args)
-  (when lspce--debug-enabled
-    (apply #'lspce--message format args)))
+  (when (<= lspce-log-level LSPCE-LOG-DEBUG)
+    (apply #'lspce--log "DEBUG" format args)))
+
+(defvar lspce--log-perf-enabled nil)
+(defun lspce--log-perf (format &rest args)
+  (when lspce--log-perf-enabled
+    (apply #'lspce--log "PERF" format args)))
 
 (defun lspce--download-file (source-url dest-location)
   "Download a file from a URL at SOURCE-URL and save it to file at DEST-LOCATION."
