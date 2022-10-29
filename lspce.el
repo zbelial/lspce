@@ -1025,29 +1025,36 @@ When the completion is incomplete, `items' contains value of :incomplete.")
                            (lspce--make-position)
                            (lspce--make-completionContext)))
 
+(defvar lspce--in-completion-p nil)
 (cl-defun lspce--request-completion ()
-  (let* ((method "textDocument/completion")
-         (params (lspce--make-completionParams))
-         (response (lspce--request method params))
-         items complete?)
-    (unless response
-      (lspce--warn "lspce--request-completion failed to getting response")
-      (cl-return-from lspce--request-completion nil))
+  (setq lspce--in-completion-p t)
+  (condition-case nil
+      (let* ((method "textDocument/completion")
+             (params (lspce--make-completionParams))
+             (response (lspce--request method params))
+             items complete?)
+        (setq lspce--in-completion-p nil)
+        (unless response
+          (lspce--debug "lspce--request-completion failed to getting response")
+          (cl-return-from lspce--request-completion nil))
 
-    (lspce--debug "lspce--request-completion response: %S" response)
-    (lspce--debug "lspce--request-completion response type-of: %s" (type-of response))
-    (cond
-     ((listp response)
-      (setq complete? t
-            items response))
-     ((hash-table-p response)
-      (setq complete? (not (gethash "isIncomplete" response))
-            items (gethash "items" response))
-      )
-     (t
-      (lspce--warn "Unknown response type: %s" (type-of response))
-      (cl-return-from lspce--request-completion nil)))
-    (list complete? items)))
+        (lspce--debug "lspce--request-completion response: %S" response)
+        (lspce--debug "lspce--request-completion response type-of: %s" (type-of response))
+        (cond
+         ((listp response)
+          (setq complete? t
+                items response))
+         ((hash-table-p response)
+          (setq complete? (not (gethash "isIncomplete" response))
+                items (gethash "items" response))
+          )
+         (t
+          (lspce--warn "Unknown response type: %s" (type-of response))
+          (cl-return-from lspce--request-completion nil)))
+        (list complete? items))
+    ((error quit)
+     (setq lspce--in-completion-p nil)
+     nil)))
 
 (defun lspce--snippet-expansion-fn ()
   "Compute a function to expand snippets.
@@ -1384,7 +1391,9 @@ Doubles as an indicator of snippet support."
 
 (defun lspce--hover-at-point ()
   "Show document of the symbol at the point using LSP's hover."
-  (when (lspce--server-capable-chain "hoverProvider")
+  (when (and
+         (not lspce--in-completion-p)
+         (lspce--server-capable-chain "hoverProvider"))
     (let* ((method "textDocument/hover")
            (params (lspce--make-hoverParams))
            (response (lspce--request method params))
