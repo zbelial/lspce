@@ -1990,15 +1990,16 @@ at point.  With prefix argument, prompt for ACTION-KIND."
     (let ((file-name (file-name-nondirectory (buffer-file-name)))
           (root-uri (lspce--root-uri))
           ;; TODO use a more general mothod
-          (lsp-type "java"))
+          (lsp-type "java")
+          response)
       (when (and root-uri
                  lsp-type
                  (or (string-equal file-name "pom.xml")
                      (string-match "\\.gradle" file-name))
                  (lspce-module-server root-uri lsp-type))
         (lspce--message "notify java/projectConfigurationUpdate")
-        (lspce--notify
-         "java/projectConfigurationUpdate" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))) lsp-type)))))
+        (setq response (lspce--request
+                        "java/projectConfigurationUpdate" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))) lsp-type))))))
 (add-hook 'after-save-hook #'lspce--jdtls-update-project-configuration)
 
 (defun lspce-jdtls-update-project-configuration ()
