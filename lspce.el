@@ -933,7 +933,7 @@ If optional MARKERS, make markers."
 (cl-defmethod xref-backend-references ((_backend (eql xref-lspce)) identifier)
   (save-excursion
     (let* ((method "textDocument/references")
-           (response (lspce--request method (lspce--make-definitionParams))))
+           (response (lspce--request method (lspce--make-referenceParams))))
       (when response
         (lspce--locations-to-xref response)))))
 
