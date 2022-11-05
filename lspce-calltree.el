@@ -6,11 +6,6 @@
 (declare-function lspce--uri-to-path "lspce-util")
 (declare-function lspce--widening "lspce-util")
 
-(defcustom lspce-call-hierarchy-display-method 'ivy
-  "How to display call hierarchy. Only support ivy ATM."
-  :group 'lspce
-  :type 'symbol)
-
 (defvar lspce--incoming-call-indent 0)
 (defvar lspce--incoming-call-items nil)
 

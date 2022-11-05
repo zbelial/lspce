@@ -66,24 +66,6 @@
    until (zerop diff)
    do (forward-char (/ (if (> diff 0) (1+ diff) (1- diff)) 2))))
 
-;; (defun lspce--lsp-position-to-point (pos-plist &optional marker)
-;;   "Convert LSP position POS-PLIST to Emacs point.
-;; If optional MARKER, return a marker instead"
-;;   (save-excursion
-;;     (goto-char (point-min))
-;;     (forward-line (min most-positive-fixnum
-;;                        (plist-get pos-plist :line)))
-;;     (unless (eobp) ;; if line was excessive leave point at eob
-;;       (let ((tab-width 1)
-;;             (col (plist-get pos-plist :character)))
-;;         (unless (wholenump col)
-;;           (lspce--warn
-;;            "Caution: LSP server sent invalid character position %s. Using 0 instead."
-;;            col)
-;;           (setq col 0))
-;;         (funcall lspce-move-to-column-function col)))
-;;     (if marker (copy-marker (point-marker)) (point))))
-
 (defconst lspce--uri-path-allowed-chars
   (let ((vec (copy-sequence url-path-allowed-chars)))
     (aset vec ?: nil) ;; see github#639

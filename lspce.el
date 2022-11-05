@@ -13,7 +13,6 @@
   (require 'posframe-plus))
 (require 'markdown-mode)
 (require 'flymake)
-(require 'hierarchy)
 
 (require 'lspce-module)
 (eval-when-compile
@@ -129,12 +128,14 @@
 (defvar lspce-server-programs `(("rust"  "rust-analyzer" "" lspce-ra-initializationOptions)
                                 ("python" "pyright-langserver" "--stdio" lspce-pyright-initializationOptions)
                                 ("C" "clangd" "")
-                                ("go"  "gopls" "" lspce-gopls-initializationOptions)
-                                )
+                                ("sh" "bash-language-server" "start")
+                                ("go"  "gopls" "" lspce-gopls-initializationOptions))
   "How the command `lspce' gets the server to start.
 A list of (LSP-TYPE SERVER-COMMAND SERVER-PARAMS initializationOptions).
+
 LSP-TYPE identifies the buffers that are to be managed by a specific
 language server, it is returned by `lspce-lsp-type-function'.
+
 SERVER-COMMAND specifies which server is used for those buffers.
 
 SERVER-PARAMS can be:
@@ -202,8 +203,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (defun lspce--make-didCloseTextDocumentParams ()
   (let ((uri (lspce--path-to-uri buffer-file-name)))
-    (lspce--didCloseTextDocumentParams (lspce--textDocumentIdenfitier uri)))
-  )
+    (lspce--didCloseTextDocumentParams (lspce--textDocumentIdenfitier uri))))
 
 (defun lspce--make-didChangeTextDocumentParams (&optional full)
   (let ((uri (lspce--path-to-uri buffer-file-name))
@@ -233,8 +233,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
       (setq line (1- (line-number-at-pos pos t)))
       (setq character (progn (when pos (goto-char pos))
                              (funcall lspce-current-column-function)))
-      (lspce--position line character)))
-  )
+      (lspce--position line character))))
 
 (defun lspce--make-range (start end)
   (list :start (lspce--make-position start) :end (lspce--make-position end)))
@@ -337,8 +336,6 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (when (lspce-module-request-async root-uri lsp-type (json-encode request))
       request-id)))
 
-(defun lspce--is-tick-match ()
-  (equal lspce--latest-recorded-tick (lspce--current-tick)))
 
 (defvar lspce--default-sit-for-interval 0.02)
 (defvar lspce-sit-for-interval-alist
@@ -403,8 +400,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (cl-defun lspce--notify (method &optional params lsp-type)
   (let ((notification (lspce--make-notification method params))
         (root-uri (lspce--root-uri))
-        (lsp-type (or lsp-type (lspce--lsp-type)))
-        )
+        (lsp-type (or lsp-type (lspce--lsp-type))))
     (unless (and root-uri lsp-type)
       (user-error "lspce--notify: Can not get root-uri or lsp-type of current buffer.")
       (cl-return-from lspce--notify nil))
@@ -434,8 +430,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
   (with-demoted-errors
       "[lspce] error sending textDocument/didClose: %s"
     (lspce--notify
-     "textDocument/didClose" (lspce--make-didCloseTextDocumentParams)))
-  )
+     "textDocument/didClose" (lspce--make-didCloseTextDocumentParams))))
 
 (defun lspce--notify-textDocument/willSave ()
   "Send textDocument/willSave to server."
@@ -525,8 +520,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 ;;;
 (cl-defstruct lspce--hash-key
   (root-uri)
-  (lsp-type)
-  )
+  (lsp-type))
 
 (defun lspce--hash-key-test-fn (k1 k2)
   (and (string-equal (lspce--hash-key-root-uri k1)
@@ -555,13 +549,6 @@ The value is also a hash table, with uri as the key and the value is just t.")
 (defvar-local lspce--lsp-type nil)
 (defvar-local lspce--server-info nil)
 (defvar-local lspce--server-capabilities nil)
-(defvar-local lspce--latest-recorded-tick nil)
-
-(defun lspce--current-tick ()
-  "Return the current tick/status of the buffer.
-Auto completion is only performed if the tick did not change."
-  (list (current-buffer) (buffer-chars-modified-tick) (point)))
-
 
 (defvar lspce-mode-map (make-sparse-keymap))
 
@@ -620,9 +607,12 @@ Auto completion is only performed if the tick did not change."
   (when (and buffer-file-name
              lspce-mode)
     (lspce--notify-textDocument/didClose)
-    (lspce--buffer-disable-lsp)
-    )
-  )
+    (lspce--buffer-disable-lsp)))
+
+(defvar-local lspce--flymake-already-enabled nil
+  "Whether flymake is enabled before lspce starting.")
+(defvar-local lspce--eldoc-already-enabled nil
+  "Whether eldoc is enabled before lspce starting.")
 
 ;; TODO add kill-emacs-hook to kill all lsp servers.
 (define-minor-mode lspce-mode
@@ -647,9 +637,13 @@ Auto completion is only performed if the tick did not change."
       (add-hook 'before-save-hook 'lspce--notify-textDocument/willSave nil t)
       (add-hook 'after-save-hook 'lspce--notify-textDocument/didSave nil t)
       (when lspce-enable-eldoc
+        (when eldoc-mode
+          (setq-local lspce--eldoc-already-enabled t))
         (add-hook 'eldoc-documentation-functions #'lspce-eldoc-function nil t)
         (eldoc-mode 1))
       (when lspce-enable-flymake
+        (when flymake-mode
+          (setq-local lspce--flymake-already-enabled t))
         (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
         (flymake-mode 1))
       (lspce--buffer-enable-lsp)
@@ -672,9 +666,13 @@ Auto completion is only performed if the tick did not change."
     (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
     (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-function t)
     (lspce--notify-textDocument/didClose)
-    (flymake-mode -1)
-    (lspce--buffer-disable-lsp)
-    )))
+    (when (and lspce-enable-flymake
+               (not lspce--flymake-already-enabled))
+      (flymake-mode -1))
+    (when (and lspce-enable-eldoc
+               (not lspce--eldoc-already-enabled))
+      (eldoc-mode -1))
+    (lspce--buffer-disable-lsp))))
 
 ;; auto enable lspce-mode for files when some files in its project has enabled lspce-mode.
 (cl-defun lspce-enable-within-project ()
@@ -778,8 +776,7 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
                               (setq lspce--change-idle-timer nil))))))))
 
 (defun lspce--before-revert-hook ()
-  (lspce--notify-textDocument/didClose)
-  )
+  (lspce--notify-textDocument/didClose))
 
 (defun lspce--after-revert-hook ()
   "Lspce's `after-revert-hook'."
@@ -791,11 +788,12 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
 
 (cl-defstruct lspce--xref-item
   (filename)
+  (start-pos)
   (start-line)
   (start-column)
+  (end-pos)
   (end-line)
-  (end-column)
-  )
+  (end-column))
 
 (defun lspce--location-before-p (left right)
   "Sort first by file, then by line, then by column."
@@ -819,36 +817,33 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
       (goto-char point)
       (buffer-substring (line-beginning-position) (line-end-position)))))
 
-(defun lspce--lsp-position-to-point (line character &optional markers)
+(defun lspce--lsp-position-to-point (pos &optional markers)
   "Convert LSP position to Emacs point."
-  (save-excursion
-    (save-restriction
-      (widen)
-      (goto-char (point-min))
-      (forward-line line)
-      (unless (eobp) ;; if line was excessive leave point at eob
-        (let ((tab-width 1)
-              (col character))
-          (unless (wholenump col)
-            (lspce--warn
-             "Caution: LSP server sent invalid character position %s. Using 0 instead."
-             col)
-            (setq col 0))
-          (funcall lspce-move-to-column-function col)))
-      (if markers (copy-marker (point-marker)) (point)))))
-
-(defun lspce--lsp-position-to-point2 (pos &optional markers)
   (let ((line (gethash "line" pos))
         (character (gethash "character" pos)))
-    (lspce--lsp-position-to-point line character markers)))
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (point-min))
+        (forward-line line)
+        (unless (eobp) ;; if line was excessive leave point at eob
+          (let ((tab-width 1)
+                (col character))
+            (unless (wholenump col)
+              (lspce--warn
+               "Caution: LSP server sent invalid character position %s. Using 0 instead."
+               col)
+              (setq col 0))
+            (funcall lspce-move-to-column-function col)))
+        (if markers (copy-marker (point-marker)) (point))))))
 
 (defun lspce--range-region (range &optional markers)
   "Return region (BEG . END) that represents LSP RANGE.
 If optional MARKERS, make markers."
   (let* ((start (gethash "start" range))
          (end (gethash "end" range))
-         (beg (lspce--lsp-position-to-point2 start markers))
-         (end (lspce--lsp-position-to-point2 end markers)))
+         (beg (lspce--lsp-position-to-point start markers))
+         (end (lspce--lsp-position-to-point end markers)))
     (cons beg end)))
 
 (defun lspce--locations-to-xref (locations)
@@ -879,9 +874,7 @@ If optional MARKERS, make markers."
               (setq filename (lspce--uri-to-path uri)))
 
             (when filename
-              (cl-pushnew (make-lspce--xref-item :filename filename :start-line start-line :start-column start-column :end-line end-line :end-column end-column) xref-items)
-              )
-            )
+              (cl-pushnew (make-lspce--xref-item :filename filename :start-pos start :start-line start-line :start-column start-column :end-pos end :end-line end-line :end-column end-column) xref-items)))
 
           (setq groups (seq-group-by (lambda (x) (lspce--xref-item-filename x))
                                      (seq-sort #'lspce--location-before-p xref-items)))
@@ -891,10 +884,8 @@ If optional MARKERS, make markers."
                    (visiting (find-buffer-visiting filename))
                    (collect (lambda (item)
                               (lspce--widening
-                               (let* ((beg (lspce--lsp-position-to-point (lspce--xref-item-start-line item)
-                                                                         (lspce--xref-item-start-column item)))
-                                      (end (lspce--lsp-position-to-point (lspce--xref-item-end-line item)
-                                                                         (lspce--xref-item-end-column item)))
+                               (let* ((beg (lspce--lsp-position-to-point (lspce--xref-item-start-pos item)))
+                                      (end (lspce--lsp-position-to-point (lspce--xref-item-end-pos item)))
                                       (bol (progn (goto-char beg) (point-at-bol)))
                                       (substring (buffer-substring bol (point-at-eol)))
                                       (hi-beg (- beg bol))
@@ -912,8 +903,7 @@ If optional MARKERS, make markers."
       (error (lspce--warn "Failed to process xref entry for filename '%s': %s"
                           filename (error-message-string err)))
       (file-error (lspce--warn "Failed to process xref entry, file-error, '%s': %s"
-                               filename (error-message-string err)))
-      )
+                               filename (error-message-string err))))
     (nreverse xrefs)))
 
 (cl-defmethod xref-backend-identifier-at-point ((_backend (eql xref-lspce)))
@@ -956,6 +946,7 @@ IDENTIFIER can be any string returned by
 To create an xref object, call `xref-make'.")
 
   )
+
 (cl-defmethod xref-backend-implementations ((_backend (eql xref-lspce)) identifier)
   (save-excursion
     (let* ((method "textDocument/implementation")
@@ -1210,7 +1201,6 @@ Doubles as an indicator of snippet support."
            (cond
             ((eq action 'metadata) `(metadata (category . lspce-capf)
                                               (display-sort-function . ,sort-completions)
-                                              ;; (display-sort-function . identity)
                                               (cycle-sort-function . identity)))               ; metadata
             ((eq (car-safe action) 'boundaries) nil)       ; boundaries
             ;; test-completion: not return exact match so that the selection will
@@ -1293,9 +1283,6 @@ Doubles as an indicator of snippet support."
                     (lsp-item (get-text-property 0 'lspce--lsp-item proxy))
                     (lsp-markers (get-text-property 0 'lspce--lsp-markers proxy))
                     (lsp-prefix (get-text-property 0 'lspce--lsp-prefix proxy))
-                    ;; (lsp-item (or (get-text-property 0 'lspce--lsp-item proxy)
-                    ;;               (get-text-property 0 'lspce--lsp-item
-                    ;;                                  (cl-find proxy (funcall proxies) :test #'string=))))
                     (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
                     (insertText (gethash "insertText" lsp-item))
                     (textEdit (gethash "textEdit" lsp-item))
@@ -1304,17 +1291,6 @@ Doubles as an indicator of snippet support."
                                      (lspce--snippet-expansion-fn))))
                (lspce--debug "lsp-item %S" (json-encode lsp-item))
                (cond (textEdit
-                      ;; Undo (yes, undo) the newly inserted completion.
-                      ;; If before completion the buffer was "foo.b" and
-                      ;; now is "foo.bar", `proxy' will be "bar".  We
-                      ;; want to delete only "ar" (`proxy' minus the
-                      ;; symbol whose bounds we've calculated before)
-                      ;; (github#160).
-                      ;; (delete-region (+ (- (point) (length proxy))
-                      ;;                   (if bounds
-                      ;;                       (- (cdr bounds) (car bounds))
-                      ;;                     0))
-                      ;;                (point))
                       (let ((range (gethash "range" textEdit))
                             (newText (gethash "newText" textEdit)))
                         (apply #'delete-region lsp-markers)
@@ -1550,8 +1526,8 @@ Doubles as an indicator of snippet support."
             (setq start (gethash "start" range)
                   end (gethash "end" range))
             (push (flymake-make-diagnostic (current-buffer)
-                                           (lspce--lsp-position-to-point2 start)
-                                           (lspce--lsp-position-to-point2 end)
+                                           (lspce--lsp-position-to-point start)
+                                           (lspce--lsp-position-to-point end)
                                            (lspce--diag-type severity)
                                            msg `((lspce-lsp-diag . ,d))) flymake-diags)))
         flymake-diags)))
@@ -1995,6 +1971,13 @@ at point.  With prefix argument, prompt for ACTION-KIND."
   "Updates the Java configuration, refreshing settings from build artifacts"
   (interactive)
   (lspce--jdtls-update-project-configuration))
+
+;;; helpers
+
+;;;###autoload
+(defun lspce-trigger ()
+  "Just to trigger loading lspce in order to use xref to navigate lspce's source code."
+  (interactive))
 
 ;;; Mode-line
 ;;;

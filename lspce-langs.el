@@ -21,9 +21,7 @@
         (when (null options)
           (setq options (make-hash-table :test #'equal)))
         (setq ht (gethash left options))
-        (puthash left (lspce--add-option-internal remain value ht) options)
-        )
-      )
+        (puthash left (lspce--add-option-internal remain value ht) options)))
     options))
 
 ;;; rust rust-analyzer
