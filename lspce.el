@@ -512,9 +512,9 @@ be set to `lspce-move-to-lsp-abiding-column', and
       (user-error "lspce--shutdown: Can not get root-uri or lsp-type of current buffer.")
       (cl-return-from lspce--shutdown nil))
 
-    (setq response-str (lspce-module-shutdown root-uri lsp-type (json-encode (lspce--make-request "shutdown"))))
-
-    response-str))
+    (make-thread (lambda ()
+                   (lspce-module-shutdown root-uri lsp-type (json-encode (lspce--make-request "shutdown")))))
+    ))
 
 ;;; Minor modes
 ;;;
