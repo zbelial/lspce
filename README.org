@@ -85,7 +85,8 @@
 * TODOs
   There are some bugs/issues that should be fixed. Here is the list:
   - +renaming class name in Java won't rename the file name (LSPCE does not support file rename/create/delete now)+
-  - support server request `workspace/configuration` 
+  - +support server request `workspace/configuration`+ 
+    I've decided not to support it, unless this makes it impossible to implement some necessary features/functions.
   - support workspaceFolders (or not, not decided yet)
   - +new created files cannot be recognized by lsp server (workaround: revert it or close and then open it)+
   - +diagnostics does not work well, sometimes they won't disappear.+
