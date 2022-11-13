@@ -17,12 +17,11 @@ use crate::{
 
 pub(crate) fn socket_transport(
     stream: TcpStream,
-    message_queue: Arc<Mutex<VecDeque<Message>>>,
     exit: Arc<Mutex<bool>>,
 ) -> (Sender<Message>, Receiver<Message>, IoThreads) {
     let exit_reader = Arc::clone(&exit);
     let (reader_receiver, reader) =
-        make_reader(stream.try_clone().unwrap(), message_queue, exit_reader);
+        make_reader(stream.try_clone().unwrap(), exit_reader);
 
     let exit_writer = Arc::clone(&exit);
     let (writer_sender, writer) = make_writer(stream.try_clone().unwrap(), exit_writer);
@@ -33,17 +32,20 @@ pub(crate) fn socket_transport(
 
 fn make_reader(
     stream: TcpStream,
-    message_queue: Arc<Mutex<VecDeque<Message>>>,
     exit: Arc<Mutex<bool>>,
 ) -> (Receiver<Message>, thread::JoinHandle<io::Result<()>>) {
-    let (reader_sender, reader_receiver) = bounded::<Message>(0);
-    let reader = thread::spawn(move || {
+    let (sender_to_client, receiver_for_client) = bounded::<Message>(0);
+    let reader_thread = thread::spawn(move || {
         let mut buf_read = BufReader::new(stream);
         while let Some(msg) = Message::read(&mut buf_read).unwrap() {
-            let mut queue = message_queue.lock().unwrap();
+            Logger::log(&format!("socket read {:#?}", &msg));
 
-            Logger::log(&format!("stdio read {:#?}", &msg));
-            queue.push_back(msg);
+            match sender_to_client.send(msg) {
+                Ok(_) => {}
+                Err(e) => {
+                    Logger::log(&format!("send to client error {}", e));
+                }
+            }
 
             let exit = exit.lock().unwrap();
             if *exit {
@@ -53,16 +55,16 @@ fn make_reader(
         }
         Ok(())
     });
-    (reader_receiver, reader)
+    (receiver_for_client, reader_thread)
 }
 
 fn make_writer(
     mut stream: TcpStream,
     exit_writer: Arc<Mutex<bool>>,
 ) -> (Sender<Message>, thread::JoinHandle<io::Result<()>>) {
-    let (writer_sender, writer_receiver) = bounded::<Message>(0);
-    let writer = thread::spawn(move || {
-        writer_receiver
+    let (sender_for_client, receiver_from_client) = bounded::<Message>(0);
+    let writer_thread = thread::spawn(move || {
+        receiver_from_client
             .into_iter()
             .try_for_each(|it| {
                 let exit = exit_writer.lock().unwrap();
@@ -78,5 +80,5 @@ fn make_writer(
             .unwrap();
         Ok(())
     });
-    (writer_sender, writer)
+    (sender_for_client, writer_thread)
 }

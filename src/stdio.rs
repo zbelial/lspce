@@ -21,12 +21,11 @@ use crate::{
 pub(crate) fn stdio_transport(
     mut child_stdin: ChildStdin,
     mut child_stdout: ChildStdout,
-    message_queue: Arc<Mutex<VecDeque<Message>>>,
     exit: Arc<Mutex<bool>>,
 ) -> (Sender<Message>, Receiver<Message>, IoThreads) {
     let exit_writer = Arc::clone(&exit);
-    let (writer_sender, writer_receiver) = bounded::<Message>(10);
-    let writer = thread::spawn(move || {
+    let (sender_for_client, receiver_from_client) = bounded::<Message>(10);
+    let writer_thread = thread::spawn(move || {
         let mut stdin = child_stdin;
         loop {
             {
@@ -42,7 +41,7 @@ pub(crate) fn stdio_transport(
                     }
                 }
             }
-            let recv_value = writer_receiver.recv_timeout(std::time::Duration::from_millis(10));
+            let recv_value = receiver_from_client.recv_timeout(std::time::Duration::from_millis(10));
             match recv_value {
                 Ok(r) => {
                     Logger::log(&format!(
@@ -60,8 +59,8 @@ pub(crate) fn stdio_transport(
     });
 
     let exit_reader = Arc::clone(&exit);
-    let (reader_sender, reader_receiver) = bounded::<Message>(10);
-    let reader = thread::spawn(move || {
+    let (sender_to_client, receiver_for_client) = bounded::<Message>(10);
+    let reader_thread = thread::spawn(move || {
         let mut stdout = child_stdout;
         let mut reader = std::io::BufReader::new(stdout);
 
@@ -82,18 +81,10 @@ pub(crate) fn stdio_transport(
             match Message::read(&mut reader) {
                 Ok(m) => {
                     if let Some(msg) = m {
-                        match message_queue.lock() {
-                            Ok(mut q) => {
-                                Logger::log(&format!(
-                                    "stdio read {}",
-                                    serde_json::to_string_pretty(&msg)
-                                        .unwrap_or("invalid json".to_string())
-                                ));
-                                q.push_back(msg);
-                            }
-                            Err(e) => {
-                                Logger::log(&format!("stdio read error {}", e));
-                            }
+                        Logger::log(&format!("stdio read {}", serde_json::to_string_pretty(&msg).unwrap_or("invalid json".to_string())));
+                        let r = sender_to_client.send(msg);
+                        if r.is_err() {
+                            Logger::log(&format!("stdio read error {}", r.err().unwrap()));
                         }
                     } else {
                         // Logger::log(&format!("stdio read null"));
@@ -109,8 +100,8 @@ pub(crate) fn stdio_transport(
         Logger::log(&format!("stdio read finished"));
         Ok(())
     });
-    let threads = IoThreads { reader, writer };
-    (writer_sender, reader_receiver, threads)
+    let threads = IoThreads { reader: reader_thread, writer: writer_thread };
+    (sender_for_client, receiver_for_client, threads)
 }
 
 // Creates an IoThreads

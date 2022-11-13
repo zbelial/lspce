@@ -30,7 +30,6 @@ pub const REQUEST_MAX: usize = 10;
 pub struct Connection {
     sender: Sender<Message>,
     receiver: Receiver<Message>,
-    messages: Arc<Mutex<VecDeque<Message>>>,
     exit: Arc<Mutex<bool>>,
 }
 
@@ -40,10 +39,12 @@ impl Connection {
     }
 
     pub fn read(&self) -> Option<Message> {
-        let msg = match self.messages.lock() {
-            Ok(mut q) => q.pop_front(),
+        let msg = match self.receiver.recv_timeout(std::time::Duration::from_millis(10)) {
+            Ok(q) => {
+                Some(q)
+            }
             Err(e) => {
-                Logger::log(&format!("Connect read error {}", e));
+                // Logger::log(&format!("Connection read error {}", e));
                 None
             }
         };
@@ -67,18 +68,15 @@ impl Connection {
     ///
     /// Use this to create a real language server.
     pub fn stdio(mut stdin: ChildStdin, mut stdout: ChildStdout) -> (Connection, IoThreads) {
-        let messages = Arc::new(Mutex::new(VecDeque::new()));
         let exit = Arc::new(Mutex::new(false));
 
-        let messages2 = Arc::clone(&messages);
         let exit2 = Arc::clone(&exit);
         let (sender, receiver, io_threads) =
-            stdio::stdio_transport(stdin, stdout, messages2, exit2);
+            stdio::stdio_transport(stdin, stdout, exit2);
         (
             Connection {
                 sender,
                 receiver,
-                messages,
                 exit,
             },
             io_threads,
@@ -90,19 +88,16 @@ impl Connection {
     ///
     /// Use this to create a real language server.
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<(Connection, IoThreads)> {
-        let messages = Arc::new(Mutex::new(VecDeque::new()));
         let exit = Arc::new(Mutex::new(false));
 
-        let messages2 = Arc::clone(&messages);
         let exit2 = Arc::clone(&exit);
 
         let stream = TcpStream::connect(addr)?;
-        let (sender, receiver, io_threads) = socket::socket_transport(stream, messages2, exit2);
+        let (sender, receiver, io_threads) = socket::socket_transport(stream, exit2);
         Ok((
             Connection {
                 sender,
                 receiver,
-                messages,
                 exit,
             },
             io_threads,

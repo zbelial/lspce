@@ -568,7 +568,6 @@ fn initialize(
     }
 }
 
-// FIXME shutdown in a separate thread?
 #[defun]
 fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Result<Option<String>> {
     let mut projects = projects().lock().unwrap();
@@ -779,6 +778,7 @@ fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result
     return Ok(None);
 }
 
+/// precondition: have called read_latest_response_id and gotten the id.
 #[defun]
 fn read_response_exact(
     env: &Env,
@@ -794,19 +794,16 @@ fn read_response_exact(
         if let Some(server) = p.servers.get(&file_type) {
             let lrid = server.latest_response_id.lock().unwrap();
             if lrid.lt(&req_id) {
-                let r4e = Response4E::new(-1, None);
-                return Ok(Some(serde_json::to_string(&r4e).unwrap()));
+                return Ok(None);
             }
 
             let response = server.read_response_exact(req_id, method);
             match response {
                 Some(r) => {
-                    let r4e = Response4E::new(0, Some(r));
-                    return Ok(Some(serde_json::to_string(&r4e).unwrap()));
+                    return Ok(Some(r.str));
                 }
                 None => {
-                    let r4e = Response4E::new(-9, None);
-                    return Ok(Some(serde_json::to_string(&r4e).unwrap()));
+                    return Ok(None);
                 }
             }
         } else {

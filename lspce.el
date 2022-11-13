@@ -375,13 +375,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
               (unless response
                 (cl-return-from lspce--get-response nil))
 
-              (setq response (json-parse-string response :array-type 'list))
-              (setq code (gethash "code" response))
-              (setq msg (gethash "msg" response))
-              (lspce--debug "code %d, msg %s" code msg)
-              (unless (= code 0)
-                (cl-return-from lspce--get-response nil))
-
+              (setq msg (json-parse-string response :array-type 'list :null-object nil))
               (setq response-error (gethash "error" msg))
               (if response-error
                   (lspce--warn "LSP error %s" (gethash "message" response-error))
@@ -572,10 +566,10 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (lspce--debug "server-info: %s" server-info)
 
     (when (lspce--notify-textDocument/didOpen)
-      (setq-local lspce--server-info (json-parse-string server-info :array-type 'list))
+      (setq-local lspce--server-info (json-parse-string server-info :array-type 'list :null-object nil))
       (if-let (capabilities (gethash "capabilities" lspce--server-info))
           (progn
-            (setq lspce--server-capabilities (json-parse-string capabilities :array-type 'list)))
+            (setq lspce--server-capabilities (json-parse-string capabilities :array-type 'list :null-object nil)))
         (setq lspce--server-capabilities (make-hash-table :test #'equal)))
       (setq server-key (make-lspce--hash-key :root-uri root-uri :lsp-type lsp-type))
       (setq server-managed-buffers (gethash server-key lspce--managed-buffers))
@@ -1518,7 +1512,7 @@ Doubles as an indicator of snippet support."
         (lspce--debug "diagnostics: %S" diagnostics)
         (when diagnostics
           ;; FIXME 根据diag-type和位置排序。
-          (dolist (d (json-parse-string diagnostics :array-type 'list))
+          (dolist (d (json-parse-string diagnostics :array-type 'list :null-object nil))
             (lspce--debug "d %S" d)
             (setq range (gethash "range" d)
                   severity (gethash "severity" d)
