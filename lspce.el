@@ -318,14 +318,14 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defvar lspce--throw-on-input nil
   "Make `lspce-*-while-no-input' throws `input' on interrupted.")
 
-(cl-defun lspce--request-async (method &optional params)
+(cl-defun lspce--request-async (method &optional params root-uri lsp-type)
   (unless (and buffer-file-name
                (file-exists-p buffer-file-name))
     (lspce--warn "lspce--request-async: current buffer has no disk file.")
     (cl-return-from lspce--request-async nil))
   (let* ((request (lspce--make-request method params))
-         (root-uri (lspce--root-uri))
-         (lsp-type (funcall lspce-lsp-type-function))
+         (root-uri (or root-uri (lspce--root-uri)))
+         (lsp-type (or lsp-type (lspce--lsp-type)))
          (request-id (gethash :id request)))
     (unless (and root-uri lsp-type)
       (user-error "lspce--request-async: Can not get root-uri or lsp-type of current buffer.")
@@ -345,10 +345,10 @@ be set to `lspce-move-to-lsp-abiding-column', and
   (let ((interval (or (assoc-default language-id lspce-sit-for-interval-alist) lspce--default-sit-for-interval)))
     interval))
 
-(cl-defun lspce--get-response (request-id method &optional timeout)
+(cl-defun lspce--get-response (request-id method &optional timeout root-uri lsp-type)
   (let ((trying t)
-        (lspce--root-uri (lspce--root-uri))
-        (lspce--lsp-type (lspce--lsp-type))
+        (lspce--root-uri (or root-uri (lspce--root-uri)))
+        (lspce--lsp-type (or lsp-type (lspce--lsp-type)))
         (start-time (float-time))
         lrid
         response code msg response-error response-data)
@@ -387,13 +387,13 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (lspce--log-perf "request-id %s, method %s, end-time %s" request-id method (float-time))
     response-data))
 
-(defun lspce--request (method &optional params timeout)
-  (when-let (request-id (lspce--request-async method params))
-    (lspce--get-response request-id method timeout)))
+(defun lspce--request (method &optional params timeout root-uri lsp-type)
+  (when-let (request-id (lspce--request-async method params root-uri lsp-type))
+    (lspce--get-response request-id method timeout root-uri lsp-type)))
 
-(cl-defun lspce--notify (method &optional params lsp-type)
+(cl-defun lspce--notify (method &optional params root-uri lsp-type)
   (let ((notification (lspce--make-notification method params))
-        (root-uri (lspce--root-uri))
+        (root-uri (or root-uri (lspce--root-uri)))
         (lsp-type (or lsp-type (lspce--lsp-type))))
     (unless (and root-uri lsp-type)
       (user-error "lspce--notify: Can not get root-uri or lsp-type of current buffer.")
@@ -498,6 +498,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
     response-str))
 
+(defvar lspce--shutdown-status 0)
 (defun lspce--shutdown ()
   (let ((root-uri (lspce--root-uri))
         (lsp-type (funcall lspce-lsp-type-function))
@@ -506,8 +507,12 @@ be set to `lspce-move-to-lsp-abiding-column', and
       (user-error "lspce--shutdown: Can not get root-uri or lsp-type of current buffer.")
       (cl-return-from lspce--shutdown nil))
 
+    (setq lspce--shutdown-status 1)
     (make-thread (lambda ()
-                   (lspce-module-shutdown root-uri lsp-type (json-encode (lspce--make-request "shutdown")))))
+                   (ignore-errors
+                     (lspce--info "shutdown server %s %s" root-uri lsp-type)
+                     (lspce-module-shutdown root-uri lsp-type (json-encode (lspce--make-request "shutdown"))))
+                   (setq lspce--shutdown-status 0)))
     ))
 
 ;;; Minor modes
@@ -1907,10 +1912,13 @@ at point.  With prefix argument, prompt for ACTION-KIND."
               (when (string-equal server-id (lspce--server-id buf))
                 (cl-pushnew buf server-buffers))))
           (cl-dolist (buf server-buffers)
-            (lspce--debug "lspce-restart-server buf %s" (buffer-name buf))
+            (lspce--info "lspce-restart-server disable lspce for buf %s" (buffer-name buf))
             (with-current-buffer buf
               (lspce-mode -1)))
+          (while (= lspce--shutdown-status 1)
+            (sleep-for 0.005))
           (cl-dolist (buf server-buffers)
+            (lspce--info "lspce-restart-server enable lspce for buf %s" (buffer-name buf))
             (with-current-buffer buf
               (lspce-mode 1))))
       (lspce--warn "No server running in current buffer"))))
@@ -1934,6 +1942,8 @@ at point.  With prefix argument, prompt for ACTION-KIND."
           (cl-dolist (buf server-buffers)
             (with-current-buffer buf
               (lspce-mode -1)))
+          (while (= lspce--shutdown-status 1)
+            (sleep-for 0.005))
           (cl-dolist (buf server-buffers)
             (with-current-buffer buf
               (lspce-mode 1))))
@@ -1957,8 +1967,8 @@ at point.  With prefix argument, prompt for ACTION-KIND."
                      (string-match "\\.gradle" file-name))
                  (lspce-module-server root-uri lsp-type))
         (lspce--info "send java/projectConfigurationUpdate")
-        (setq response (lspce--request
-                        "java/projectConfigurationUpdate" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))) lsp-type))))))
+        (lspce--notify
+         "java/projectConfigurationUpdate" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))) root-uri lsp-type)))))
 (add-hook 'after-save-hook #'lspce--jdtls-update-project-configuration)
 
 (defun lspce-jdtls-update-project-configuration ()
