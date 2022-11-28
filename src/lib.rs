@@ -18,7 +18,7 @@ use logger::Logger;
 use logger::LOG_ENABLE;
 use logger::LOG_FILE_NAME;
 
-use lsp_types::DidChangeTextDocumentParams;use lsp_types::request::Shutdown;
+use lsp_types::DidChangeTextDocumentParams;
 use lsp_types::Diagnostic;
 use lsp_types::InitializeParams;
 use lsp_types::InitializeResult;
