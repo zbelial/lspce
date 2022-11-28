@@ -1432,15 +1432,18 @@ Doubles as an indicator of snippet support."
 
 (defun lspce-signature-at-point ()
   (interactive)
-  (when (lspce--server-capable "signatureHelpProvider")
-    (let ((params (lspce--make-signatureHelpParams)))
-      (lspce--request "textDocument/signatureHelp" params 2.0))))
+  (lspce--signature-at-point))
 
 (defun lspce--signature-at-point ()
-  (let ((signature-at-point (lspce-signature-at-point))
+  (let (signature-at-point
         label
         signatures signature parameters parameter
         active-signature active-parameter param-label param-start param-end)
+    (when (and
+           (not lspce--in-completion-p)
+           (lspce--server-capable "signatureHelpProvider"))
+      (let ((params (lspce--make-signatureHelpParams)))
+        (setq signature-at-point (lspce--request "textDocument/signatureHelp" params 2.0))))
     (when signature-at-point
       (setq active-signature (gethash "activeSignature" signature-at-point))
       (setq signatures (gethash "signatures" signature-at-point))
