@@ -220,15 +220,15 @@ impl LspServer {
                     Message::Response(r) => {
                         let id = r.id.clone();
                         {
-                            let mut responses = responses2.lock().unwrap();
-                            responses.push_back(r);
-                        }
-                        {
                             let mut lrid = latest_response_id2.lock().unwrap();
                             if lrid.lt(&id) {
                                 *lrid = id;
                             }
                             Logger::log(&format!("update latest_response_id to {}", *lrid));
+                        }
+                        {
+                            let mut responses = responses2.lock().unwrap();
+                            responses.push_back(r);
                         }
                     }
                     Message::Notification(r) => {
@@ -309,9 +309,9 @@ impl LspServer {
 
     //
     pub fn read_response_exact(&self, id: RequestId, method: String) -> Option<Response> {
-        let mut responses = self.responses.lock().unwrap();
         let mut result: Option<Response>;
         loop {
+            let mut responses = self.responses.lock().unwrap();
             let resp = responses.pop_front();
             if resp.is_some() {
                 let resp = resp.unwrap();
@@ -792,9 +792,11 @@ fn read_response_exact(
     let projects = projects().lock().unwrap();
     if let Some(p) = projects.get(&root_uri) {
         if let Some(server) = p.servers.get(&file_type) {
-            let lrid = server.latest_response_id.lock().unwrap();
-            if lrid.lt(&req_id) {
-                return Ok(None);
+            {
+                let lrid = server.latest_response_id.lock().unwrap();
+                if lrid.lt(&req_id) {
+                    return Ok(None);
+                }
             }
 
             let response = server.read_response_exact(req_id, method);
