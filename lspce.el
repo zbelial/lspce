@@ -1683,29 +1683,34 @@ Doubles as an indicator of snippet support."
             (equal version lspce--identifier-version))
     (atomic-change-group
       (let* ((change-group (prepare-change-group)))
-        (dolist (edit (nreverse edits))
-          (let* ((source (current-buffer))
-                 (newText (gethash "newText" edit))
-                 (range (lspce--range-region (gethash "range" edit) t))
-                 (start (car range))
-                 (end (cdr range)))
-            (with-temp-buffer
-              (insert newText)
-              (let ((temp (current-buffer)))
-                (with-current-buffer source
-                  (save-excursion
-                    (save-restriction
-                      (narrow-to-region start end)
-                      (let ((inhibit-modification-hooks t)
-                            (length (- end start))
-                            (start (marker-position start))
-                            (end (marker-position end)))
-                        (run-hook-with-args 'before-change-functions
-                                            start end)
-                        (replace-buffer-contents temp)
-                        (run-hook-with-args 'after-change-functions
-                                            start (+ start (length newText))
-                                            length)))))))))))))
+        (mapc (lambda (edit)
+                (let* ((source (current-buffer))
+                       (newText (car edit))
+                       (range (cdr edit))
+                       (start (car range))
+                       (end (cdr range)))
+                  (with-temp-buffer
+                    (insert newText)
+                    (let ((temp (current-buffer)))
+                      (with-current-buffer source
+                        (save-excursion
+                          (save-restriction
+                            (narrow-to-region start end)
+                            (let ((inhibit-modification-hooks t)
+                                  (length (- end start))
+                                  (start (marker-position start))
+                                  (end (marker-position end)))
+                              (run-hook-with-args 'before-change-functions
+                                                  start end)
+                              (replace-buffer-contents temp)
+                              (run-hook-with-args 'after-change-functions
+                                                  start (+ start (length newText))
+                                                  length)))))))))
+              (mapcar (lambda (edit)
+                        (let* ((newText (gethash "newText" edit))
+                               (range (lspce--range-region (gethash "range" edit) t)))
+                          (cons newText range)))
+                      (nreverse edits)))))))
 
 (defun lspce--apply-workspace-edit (wedit &optional confirm)
   (let ((changes (gethash "changes" wedit))
