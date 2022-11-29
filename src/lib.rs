@@ -310,8 +310,8 @@ impl LspServer {
     //
     pub fn read_response_exact(&self, id: RequestId, method: String) -> Option<Response> {
         let mut result: Option<Response>;
+        let mut responses = self.responses.lock().unwrap();
         loop {
-            let mut responses = self.responses.lock().unwrap();
             let resp = responses.pop_front();
             if resp.is_some() {
                 let resp = resp.unwrap();

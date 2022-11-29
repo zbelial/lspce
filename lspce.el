@@ -300,16 +300,18 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (defun lspce--lsp-type-default ()
   "The return value is also used as language-id."
-  (let ((suffix ""))
+  (let ((suffix "")
+        (mm (symbol-name major-mode)))
     (when buffer-file-name
       (setq suffix (file-name-extension buffer-file-name)))
     (cond
      ((member suffix '("c" "c++" "cpp" "h" "hpp" "cxx" "cc"))
       "C")
+     ((string-suffix-p "-ts-mode" mm)
+      (string-remove-suffix "-ts-mode" mm))
      (t
-      (string-remove-suffix "-mode" (symbol-name major-mode))
-      ;; (symbol-name major-mode)
-      ))))
+      (string-remove-suffix "-mode" (symbol-name major-mode))))))
+
 (defalias 'lspce--buffer-language-id 'lspce--lsp-type-default "lspce--buffer-language-id")
 
 (defvar lspce-lsp-type-function #'lspce--lsp-type-default
@@ -448,8 +450,17 @@ be set to `lspce-move-to-lsp-abiding-column', and
          "textDocument/didSave" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))))))))
 
 (defun lspce--server-program (lsp-type)
-  (let ((server (assoc-default lsp-type lspce-server-programs)))
-    server))
+  (assoc-default lsp-type lspce-server-programs))
+
+;; (defun lspce--server-program (lsp-type)
+;;   (let (server types servers)
+;;     (cdr (nth 0 (seq-filter (lambda (prog)
+;;                               (let ((types (nth 0 prog)))
+;;                                 (or (and (stringp types)
+;;                                          (string-equal types lsp-type))
+;;                                     (and (listp types)
+;;                                          (member lsp-type types)))))
+;;                             lspce-server-programs)))))
 
 ;; 返回server info.
 (cl-defun lspce--connect ()
@@ -1972,7 +1983,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
       (when (and root-uri
                  lsp-type
                  (or (string-equal file-name "pom.xml")
-                     (string-match "\\.gradle" file-name))
+                     (string-match-p "\\.gradle" file-name))
                  (lspce-module-server root-uri lsp-type))
         (lspce--info "send java/projectConfigurationUpdate")
         (lspce--notify
