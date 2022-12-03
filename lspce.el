@@ -377,7 +377,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
               (unless response
                 (cl-return-from lspce--get-response nil))
 
-              (setq msg (json-parse-string response :array-type 'list :null-object nil))
+              (setq msg (json-parse-string response :array-type 'list :null-object nil :false-object nil))
               (setq response-error (gethash "error" msg))
               (if response-error
                   (lspce--warn "LSP error %s" (gethash "message" response-error))
@@ -582,10 +582,10 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (lspce--debug "server-info: %s" server-info)
 
     (when (lspce--notify-textDocument/didOpen)
-      (setq-local lspce--server-info (json-parse-string server-info :array-type 'list :null-object nil))
+      (setq-local lspce--server-info (json-parse-string server-info :array-type 'list :null-object nil :false-object nil))
       (if-let (capabilities (gethash "capabilities" lspce--server-info))
           (progn
-            (setq lspce--server-capabilities (json-parse-string capabilities :array-type 'list :null-object nil)))
+            (setq lspce--server-capabilities (json-parse-string capabilities :array-type 'list :null-object nil :false-object nil)))
         (setq lspce--server-capabilities (make-hash-table :test #'equal)))
       (setq server-key (make-lspce--hash-key :root-uri root-uri :lsp-type lsp-type))
       (setq server-managed-buffers (gethash server-key lspce--managed-buffers))
@@ -1201,8 +1201,12 @@ Doubles as an indicator of snippet support."
                                                               :markers markers
                                                               :prefix prefix))
                           (setq lspce--completion-last-result cached-proxies))
-                      (when same-session? lspce--completion-last-result)
-                      ))))))))
+                      (when same-session? lspce--completion-last-result))))))))
+           (resolved (make-hash-table))
+           (resolve-maybe (lambda (lsp-item)
+                            (or (gethash lsp-item resolved)
+                                (setf (gethash lsp-item resolved)
+                                      (or (lspce--completion-resolve lsp-item) lsp-item))))))
       (list
        bounds-start
        (point)
@@ -1261,7 +1265,7 @@ Doubles as an indicator of snippet support."
        (lambda (proxy)
          (let* ((documentation
                  (let* ((lsp-item (get-text-property 0 'lspce--lsp-item proxy))
-                        (resolve (lspce--completion-resolve lsp-item)))
+                        (resolve (funcall resolve-maybe lsp-item)))
                    (when resolve
                      (gethash "documentation" resolve))))
                 (formatted (and documentation
@@ -1290,7 +1294,7 @@ Doubles as an indicator of snippet support."
              (let* ((proxy (if (plist-member (text-properties-at 0 proxy) 'lspce--lsp-item)
                                proxy
                              (cl-find proxy (funcall proxies) :test #'equal)))
-                    (lsp-item (get-text-property 0 'lspce--lsp-item proxy))
+                    (lsp-item (funcall resolve-maybe (get-text-property 0 'lspce--lsp-item proxy)))
                     (lsp-markers (get-text-property 0 'lspce--lsp-markers proxy))
                     (lsp-prefix (get-text-property 0 'lspce--lsp-prefix proxy))
                     (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
@@ -1531,7 +1535,7 @@ Doubles as an indicator of snippet support."
         (lspce--debug "diagnostics: %S" diagnostics)
         (when diagnostics
           ;; FIXME 根据diag-type和位置排序。
-          (dolist (d (json-parse-string diagnostics :array-type 'list :null-object nil))
+          (dolist (d (json-parse-string diagnostics :array-type 'list :null-object nil :false-object nil))
             (lspce--debug "d %S" d)
             (setq range (gethash "range" d)
                   severity (gethash "severity" d)

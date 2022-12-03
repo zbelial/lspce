@@ -63,7 +63,7 @@
                                                      :deprecatedSupport :json-false
                                                      :preselectSupoort :json-false
                                                      :insertReplaceSupport :json-false
-                                                     :resolveSupport (list :properties (vector "documentation" "detail"))
+                                                     :resolveSupport (list :properties (vector "documentation" "detail" "additionalTextEdits"))
                                                      )
                                     :contextSupport t)
                   :hover              (list

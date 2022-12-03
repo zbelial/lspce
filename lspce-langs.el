@@ -29,7 +29,6 @@
   (let ((options (make-hash-table :test #'equal)))
     (setq options (lspce--add-option "diagnostics.enable" t options))
     (setq options (lspce--add-option "enableExperimental" :json-false options))
-    (setq options (lspce--add-option "cargo.allFeatures" t options))
     (setq options (lspce--add-option "cargo.features" "all" options))
     (setq options (lspce--add-option "cargo.noDefaultFeatures" :json-false options))
     (setq options (lspce--add-option "cargo.runBuildScripts" t options))
@@ -39,6 +38,7 @@
     (setq options (lspce--add-option "completion.addCallParenthesis" t options))
     (setq options (lspce--add-option "completion.addCallArgumentSnippets" :json-false options))
     (setq options (lspce--add-option "completion.postfix.enable" :json-false options))
+    (setq options (lspce--add-option "completion.autoimport.enable" t options))
     (setq options (lspce--add-option "procMacro.enable" t options))
     (setq options (lspce--add-option "lens.enable" :json-false options))
     options
