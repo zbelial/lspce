@@ -382,8 +382,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
               (if response-error
                   (lspce--warn "LSP error %s" (gethash "message" response-error))
                 (setq response-data (gethash "result" msg)))
-              (setq trying nil))
-            )
+              (setq trying nil)))
         (lspce--debug "sit-for is interrupted.")
         (setq trying nil)))
     (lspce--log-perf "request-id %s, method %s, end-time %s" request-id method (float-time))
@@ -523,8 +522,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
                    (ignore-errors
                      (lspce--info "shutdown server %s %s" root-uri lsp-type)
                      (lspce-module-shutdown root-uri lsp-type (json-encode (lspce--make-request "shutdown"))))
-                   (setq lspce--shutdown-status 0)))
-    ))
+                   (setq lspce--shutdown-status 0)))))
 
 ;;; Minor modes
 ;;;
@@ -1047,8 +1045,7 @@ When the completion is incomplete, `items' contains value of :incomplete.")
                 items response))
          ((hash-table-p response)
           (setq complete? (not (gethash "isIncomplete" response))
-                items (gethash "items" response))
-          )
+                items (gethash "items" response)))
          (t
           (lspce--warn "Unknown response type: %s" (type-of response))
           (cl-return-from lspce--request-completion nil)))
@@ -1185,8 +1182,7 @@ Doubles as an indicator of snippet support."
                                      (unless (zerop (length proxy))
                                        (put-text-property 0 1 'lspce--lsp-item item proxy)
                                        (put-text-property 0 1 'lspce--lsp-markers markers proxy)
-                                       (put-text-property 0 1 'lspce--lsp-prefix prefix proxy)
-                                       )
+                                       (put-text-property 0 1 'lspce--lsp-prefix prefix proxy))
                                      proxy))
                                  items))
                           (setf done? complete?
@@ -1236,8 +1232,7 @@ Doubles as an indicator of snippet support."
                        (filterText (gethash "filterText" item)))
                   (and (or (null pred) (funcall pred proxy))
                        (string-prefix-p
-                        probe (or filterText proxy) lspce-completion-ignore-case))))
-              )))))
+                        probe (or filterText proxy) lspce-completion-ignore-case)))))))))
        :annotation-function
        (lambda (proxy)
          (let* ((item (get-text-property 0 'lspce--lsp-item proxy))
@@ -1309,8 +1304,7 @@ Doubles as an indicator of snippet support."
                             (newText (gethash "newText" textEdit)))
                         (apply #'delete-region lsp-markers)
                         (goto-char (nth 0 lsp-markers))
-                        (funcall (or snippet-fn #'insert) newText)
-                        )
+                        (funcall (or snippet-fn #'insert) newText))
                       (when (cl-plusp (length additionalTextEdits))
                         (lspce--apply-text-edits additionalTextEdits)))
                      (snippet-fn
@@ -1319,14 +1313,8 @@ Doubles as an indicator of snippet support."
                       ;; whole completion, since `insertText' is the full
                       ;; completion's text.
                       (delete-region (- (point) (length proxy)) (point))
-                      (funcall snippet-fn (or insertText label))))
-               )
-             (lspce--notify-textDocument/didChange)
-             )
-           )
-         )
-       )))
-  )
+                      (funcall snippet-fn (or insertText label)))))
+             (lspce--notify-textDocument/didChange))))))))
 
 ;;; hover
 (defvar lspce--doc-buffer-name "*lspce-hover*")
@@ -1468,8 +1456,7 @@ Doubles as an indicator of snippet support."
         (setq signature (nth active-signature signatures)))
        (signatures
         (setq signature (nth 0 signatures)))
-       (t)
-       )
+       (t))
       (when signature
         (setq label (gethash "label" signature))
         (setq parameters (gethash "parameters" signature))
@@ -1556,8 +1543,7 @@ Doubles as an indicator of snippet support."
            (setq lspce--current-flymake-report-fn report-fn)
            (lspce--report-to-flymake diagnostics))
           (t
-           (funcall report-fn nil))))
-  )
+           (funcall report-fn nil)))))
 
 (defun lspce--report-to-flymake (diags)
   "Internal helper for `lspce-flymake-backend'."
