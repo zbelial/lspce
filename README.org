@@ -80,7 +80,7 @@
   #+END_SRC
   
 * Architecture
-  [[file:images/Architecture of LSPCE.png]]
+  [[file:images/Architecture_of_LSPCE.png]]
 
   Some notes about the architecture:
   1. Every project is represented by a ~Project~ struct in LSPCE (aka the largest Box in the above image).
