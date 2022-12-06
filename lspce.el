@@ -507,7 +507,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (lspce--debug "lspce--connect initialize-params: %s" (json-encode initialize-params))
 
     (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params)) lspce-connect-server-timeout))
-    (lspce--info "lspce--connect response: %s" response-str)
+    (lspce--debug "lspce--connect response: %s" response-str)
 
     response-str))
 
