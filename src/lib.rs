@@ -519,38 +519,33 @@ fn initialize(
         let response = server.read_response();
         match response {
             Some(m) => {
-                let r_id = m.id.clone();
-                if r_id.eq(&id) {
-                    if m.error.is_some() {
-                        // 有错误
-                        env.message(&format!("Lsp error {:?}", m.error));
-                        return false;
+                if m.error.is_some() {
+                    // 有错误
+                    env.message(&format!("Lsp error {:?}", m.error));
+                    return false;
+                }
+
+                if let Ok(ir) = serde_json::from_value::<InitializeResult>(m.result.unwrap()) {
+                    let initialized = Notification::new(
+                        "initialized".to_string(),
+                        serde_json::to_value(InitializedParams {}).unwrap(),
+                    );
+
+                    _notify(env, server, initialized);
+
+                    // 记录server初始化完成
+                    server.status = SERVER_STATUS_RUNNING;
+
+                    if let Some(si) = ir.server_info {
+                        server.server_info.name = si.name.clone();
+                        server.server_info.version = si.version.expect("");
                     }
+                    server.server_info.capabilities =
+                        serde_json::to_string(&ir.capabilities).unwrap();
 
-                    if let Ok(ir) = serde_json::from_value::<InitializeResult>(m.result.unwrap()) {
-                        let initialized = Notification::new(
-                            "initialized".to_string(),
-                            serde_json::to_value(InitializedParams {}).unwrap(),
-                        );
-
-                        _notify(env, server, initialized);
-
-                        // 记录server初始化完成
-                        server.status = SERVER_STATUS_RUNNING;
-
-                        if let Some(si) = ir.server_info {
-                            server.server_info.name = si.name.clone();
-                            server.server_info.version = si.version.expect("");
-                        }
-                        server.server_info.capabilities =
-                            serde_json::to_string(&ir.capabilities).unwrap();
-
-                        return true;
-                    } else {
-                        return false;
-                    }
+                    return true;
                 } else {
-                    thread::sleep(std::time::Duration::from_millis(100));
+                    return false;
                 }
             }
             None => {

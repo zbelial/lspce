@@ -16,9 +16,8 @@ use std::{
 use crossbeam_channel::{Receiver, SendError, Sender};
 
 use crate::{
-    error::{ExtractError, ProtocolError},
     logger::Logger,
-    msg::{ErrorCode, Message, Notification, Request, RequestId, Response, ResponseError},
+    msg::{Message, Notification, Request},
     stdio::IoThreads,
 };
 use crate::{socket, stdio};

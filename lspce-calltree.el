@@ -47,7 +47,7 @@
        (t
         (cl-pushnew (lspce--call-hierarchy-ivy-item-transfer item lspce--incoming-call-indent) lspce--incoming-call-items)))))
 
-  ;;;###autoload
+;;;###autoload
   (defun lspce-incoming-calls-to-ivy ()
     "Fetch incoming calls to current symbol, render the result with ivy."
     (interactive)

@@ -11,6 +11,7 @@ use std::{
 use bytes::BytesMut;
 use crossbeam_channel::{bounded, Receiver, Sender};
 
+use crate::msg::{Response, RequestId, ErrorCode};
 use crate::{
     connection::{NOTIFICATION_MAX, REQUEST_MAX},
     logger::Logger,
@@ -93,6 +94,9 @@ pub(crate) fn stdio_transport(
                 }
                 Err(e) => {
                     Logger::log(&format!("stdio read error {}", e));
+
+                    let msg = Response::new_err(RequestId::from(1), -32603, format!("{}", e));
+                    sender_to_client.send(Message::Response(msg));
                 }
             }
         }

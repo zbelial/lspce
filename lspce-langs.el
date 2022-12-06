@@ -80,6 +80,7 @@
   :type '(choice (:tag "Standard" "LightWeight" "Hybrid")))
 
 (declare-function tar-untar-buffer "tar-mode" ())
+;;;###autoload
 (defun lspce-install-jdtls-server ()
   "Install the Eclipse JDT LSP server."
   (interactive)
