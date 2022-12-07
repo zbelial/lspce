@@ -326,8 +326,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (lspce--warn "lspce--request-async: current buffer has no disk file.")
     (cl-return-from lspce--request-async nil))
   (let* ((request (lspce--make-request method params))
-         (root-uri (or root-uri (lspce--root-uri)))
-         (lsp-type (or lsp-type (lspce--lsp-type)))
+         (root-uri (or root-uri lspce--root-uri))
+         (lsp-type (or lsp-type lspce--lsp-type))
          (request-id (gethash :id request)))
     (unless (and root-uri lsp-type)
       (user-error "lspce--request-async: Can not get root-uri or lsp-type of current buffer.")
@@ -349,8 +349,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (cl-defun lspce--get-response (request-id method &optional timeout root-uri lsp-type)
   (let ((trying t)
-        (lspce--root-uri (or root-uri (lspce--root-uri)))
-        (lspce--lsp-type (or lsp-type (lspce--lsp-type)))
+        (lspce--root-uri (or root-uri lspce--root-uri))
+        (lspce--lsp-type (or lsp-type lspce--lsp-type))
         (start-time (float-time))
         lrid
         response code msg response-error response-data)
@@ -394,8 +394,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (cl-defun lspce--notify (method &optional params root-uri lsp-type)
   (let ((notification (lspce--make-notification method params))
-        (root-uri (or root-uri (lspce--root-uri)))
-        (lsp-type (or lsp-type (lspce--lsp-type))))
+        (root-uri (or root-uri lspce--root-uri))
+        (lsp-type (or lsp-type lspce--lsp-type)))
     (unless (and root-uri lsp-type)
       (user-error "lspce--notify: Can not get root-uri or lsp-type of current buffer.")
       (cl-return-from lspce--notify nil))
@@ -463,8 +463,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 ;; 返回server info.
 (cl-defun lspce--connect ()
-  (let ((root-uri (lspce--root-uri))
-        (lsp-type (lspce--lsp-type))
+  (let ((root-uri lspce--root-uri)
+        (lsp-type lspce--lsp-type)
         (initialize-params nil)
         lsp-server
         server server-cmd server-args initialize-options
@@ -513,8 +513,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (defvar lspce--shutdown-status 0)
 (defun lspce--shutdown ()
-  (let ((root-uri (lspce--root-uri))
-        (lsp-type (lspce--lsp-type))
+  (let ((root-uri lspce--root-uri)
+        (lsp-type lspce--lsp-type)
         response-str)
     (unless (and root-uri lsp-type)
       (user-error "lspce--shutdown: Can not get root-uri or lsp-type of current buffer.")
@@ -596,16 +596,24 @@ The value is also a hash table, with uri as the key and the value is just t.")
       (puthash server-key server-managed-buffers lspce--managed-buffers))))
 
 (cl-defun lspce--buffer-disable-lsp ()
-  (let (server-key server-managed-buffers)
-    (setq server-key (make-lspce--hash-key :root-uri (lspce--root-uri) :lsp-type (lspce--lsp-type)))
-    (setq server-managed-buffers (gethash server-key lspce--managed-buffers))
-    (when server-managed-buffers
-      (remhash (lspce--uri) server-managed-buffers)
-      (when (= (hash-table-count server-managed-buffers) 0)
-        (lspce--shutdown))
-      (puthash server-key server-managed-buffers lspce--managed-buffers)
-      
-      (setq-local lspce--server-info nil))))
+  (when (and lspce--root-uri
+             lspce--lsp-type)
+    (let (server-key server-managed-buffers)
+      (setq server-key (make-lspce--hash-key :root-uri lspce--root-uri :lsp-type lspce--lsp-type))
+      (setq server-managed-buffers (gethash server-key lspce--managed-buffers))
+      (when server-managed-buffers
+        (remhash (lspce--uri) server-managed-buffers)
+        (when (= (hash-table-count server-managed-buffers) 0)
+          (lspce--shutdown))
+        (puthash server-key server-managed-buffers lspce--managed-buffers)
+        
+        (setq-local lspce--server-info nil)
+        (setq-local lspce--root-uri nil)
+        (setq-local lspce--lsp-type nil)
+        (setq-local lspce--recent-changes nil
+                    lspce--identifier-version 0
+                    lspce--uri nil))))
+  )
 
 (defun lspce--server-id (&optional buffer)
   (with-current-buffer (or buffer (current-buffer))
@@ -1521,7 +1529,7 @@ Doubles as an indicator of snippet support."
   (if lspce-mode
       (let (diagnostics
             flymake-diags range start end severity msg)
-        (setq diagnostics (lspce-module-read-file-diagnostics (lspce--root-uri) (lspce--lsp-type) (lspce--uri)))
+        (setq diagnostics (lspce-module-read-file-diagnostics lspce--root-uri lspce--lsp-type (lspce--uri)))
         (lspce--debug "diagnostics: %S" diagnostics)
         (when diagnostics
           ;; FIXME 根据diag-type和位置排序。
