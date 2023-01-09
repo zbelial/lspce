@@ -1991,10 +1991,38 @@ at point.  With prefix argument, prompt for ACTION-KIND."
          "java/projectConfigurationUpdate" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))) root-uri lsp-type)))))
 (add-hook 'after-save-hook #'lspce--jdtls-update-project-configuration)
 
+;;;###autoload
 (defun lspce-jdtls-update-project-configuration ()
   "Updates the Java configuration, refreshing settings from build artifacts"
   (interactive)
   (lspce--jdtls-update-project-configuration))
+
+;;;###autoload
+(defun lspce-jdtls-reset-project ()
+  "Updates the Java configuration, refreshing settings from build artifacts"
+  (interactive)
+  (let* ((project-current (project-current))
+         (jdtls-flag nil)
+         project-root)
+    (when project-current
+      (setq project-root (project-root project-current))
+      (let ((default-directory project-root))
+        (cl-dolist (f '(".project" ".classpath" ".factorypath"))
+          (when (file-exists-p f)
+            (setq jdtls-flag t))))
+      (when jdtls-flag
+        (let ((root-uri (lspce--root-uri))
+              (lsp-type (lspce--lsp-type))
+              (file-name (file-name-nondirectory (buffer-file-name))))
+          (if (and root-uri lsp-type
+                   (lspce-module-server root-uri lsp-type))
+              (progn
+                (let ((default-directory project-root))
+                  (cl-dolist (f '(".project" ".classpath" ".factorypath"))
+                    (when (file-exists-p f)
+                      (delete-file f t))))            
+                (call-interactively #'lspce-restart-server))
+            (lspce--warn "lspce-jdtls-reset-project - No server running in current server.")))))))
 
 ;;; helpers
 
