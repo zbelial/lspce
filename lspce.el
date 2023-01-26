@@ -97,6 +97,16 @@
   :group 'lspce
   :type 'boolean)
 
+(defcustom lspce-after-text-edit-hook '()
+  "Functions called after finishing text edits in a buffer. When running hooks,
+current buffer is set to the buffer being edited."
+  :type 'hook)
+
+(defcustom lspce-after-each-text-edit-hook '()
+  "Functions called after finishing each text edit in a buffer. When running hooks,
+current buffer is set to the buffer being edited."
+  :type 'hook)
+
 ;; Customizable via `completion-category-overrides'.
 ;; (when (assoc 'flex completion-styles-alist)
 ;;   (add-to-list 'completion-category-defaults '(lspce-capf (styles flex basic))))
@@ -1313,9 +1323,13 @@ Doubles as an indicator of snippet support."
                (cond (textEdit
                       (let ((range (gethash "range" textEdit))
                             (newText (gethash "newText" textEdit)))
+                        (lspce--log-perf "before delete-region1(%s) %s" (apply #'buffer-substring-no-properties lsp-markers) (float-time))
                         (apply #'delete-region lsp-markers)
+                        (lspce--log-perf "after delete-region1 %s" (float-time))
                         (goto-char (nth 0 lsp-markers))
-                        (funcall (or snippet-fn #'insert) newText))
+                        (funcall (or snippet-fn #'insert) newText)
+                        (lspce--log-perf "after insert newText1(%s) %s" newText (float-time))
+                        )
                       (when (cl-plusp (length additionalTextEdits))
                         (lspce--apply-text-edits additionalTextEdits)))
                      (snippet-fn
@@ -1323,8 +1337,12 @@ Doubles as an indicator of snippet support."
                       ;; `insertText'.  This requires us to delete the
                       ;; whole completion, since `insertText' is the full
                       ;; completion's text.
+                      (lspce--log-perf "before delete-region2 %s" (float-time))
                       (delete-region (- (point) (length proxy)) (point))
-                      (funcall snippet-fn (or insertText label)))))
+                      (lspce--log-perf "before delete-region2 %s" (float-time))
+                      (funcall snippet-fn (or insertText label))
+                      (lspce--log-perf "after insert newText2(%s) %s" newText (float-time))
+                      )))
              (lspce--notify-textDocument/didChange))))))))
 
 ;;; hover
@@ -1715,6 +1733,8 @@ Doubles as an indicator of snippet support."
                               (run-hook-with-args 'before-change-functions
                                                   start end)
                               (replace-buffer-contents temp)
+                              (run-hook-with-args 'lspce-after-each-text-edit-hook
+                                                  start (+ start (length newText)))
                               (run-hook-with-args 'after-change-functions
                                                   start (+ start (length newText))
                                                   length)))))))))
@@ -1722,7 +1742,8 @@ Doubles as an indicator of snippet support."
                         (let* ((newText (gethash "newText" edit))
                                (range (lspce--range-region (gethash "range" edit) t)))
                           (cons newText range)))
-                      (nreverse edits)))))))
+                      (nreverse edits)))))
+    (run-hooks 'lspce-after-text-edit-hook)))
 
 (defun lspce--apply-workspace-edit (wedit &optional confirm)
   (let ((changes (gethash "changes" wedit))
@@ -1898,6 +1919,10 @@ at point.  With prefix argument, prompt for ACTION-KIND."
     nil))
 
 ;;; workspace server
+(defun lspce-server-info ()
+  (interactive)
+  lspce--server-info)
+
 (defun lspce-shutdown-server ()
   "Shutdown server running in current buffer."
   (interactive)
