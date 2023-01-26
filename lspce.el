@@ -1194,7 +1194,10 @@ Doubles as an indicator of snippet support."
                                            (cond 
                                             ((and (eql insertTextFormat 2)
                                                   (lspce--snippet-expansion-fn))
-                                             (string-trim-left label))
+                                             (string-trim-left (or (and insertText
+                                                                        (not (string-empty-p insertText))
+                                                                        insertText)
+                                                                   label)))
                                             ((and insertText
                                                   (not (string-empty-p insertText)))
                                              insertText)
@@ -1307,6 +1310,7 @@ Doubles as an indicator of snippet support."
                                     (window-buffer (minibuffer-selected-window))
                                   (current-buffer))
              (setq-local lspce--completion-complete? nil)
+             (lspce--log-perf "before completing %s" (float-time))
              (let* ((proxy (if (plist-member (text-properties-at 0 proxy) 'lspce--lsp-item)
                                proxy
                              (cl-find proxy (funcall proxies) :test #'equal)))
@@ -1322,14 +1326,18 @@ Doubles as an indicator of snippet support."
                (lspce--debug "lsp-item %S" (json-encode lsp-item))
                (cond (textEdit
                       (let ((range (gethash "range" textEdit))
-                            (newText (gethash "newText" textEdit)))
-                        (lspce--log-perf "before delete-region1(%s) %s" (apply #'buffer-substring-no-properties lsp-markers) (float-time))
-                        (apply #'delete-region lsp-markers)
-                        (lspce--log-perf "after delete-region1 %s" (float-time))
-                        (goto-char (nth 0 lsp-markers))
-                        (funcall (or snippet-fn #'insert) newText)
-                        (lspce--log-perf "after insert newText1(%s) %s" newText (float-time))
-                        )
+                            (newText (gethash "newText" textEdit))
+                            (old-text (apply #'buffer-substring-no-properties lsp-markers)))
+                        (if (string-prefix-p old-text newText)
+                            (progn
+                              (funcall (or snippet-fn #'insert) (substring newText (length old-text))))
+                          (progn
+                            (lspce--log-perf "before delete-region1(%s) %s" old-text (float-time))
+                            (apply #'delete-region lsp-markers)
+                            (lspce--log-perf "after delete-region1 %s" (float-time))
+                            (goto-char (nth 0 lsp-markers))
+                            (funcall (or snippet-fn #'insert) newText)
+                            (lspce--log-perf "after insert newText1(%s) %s" newText (float-time)))))
                       (when (cl-plusp (length additionalTextEdits))
                         (lspce--apply-text-edits additionalTextEdits)))
                      (snippet-fn
@@ -1337,12 +1345,15 @@ Doubles as an indicator of snippet support."
                       ;; `insertText'.  This requires us to delete the
                       ;; whole completion, since `insertText' is the full
                       ;; completion's text.
-                      (lspce--log-perf "before delete-region2 %s" (float-time))
-                      (delete-region (- (point) (length proxy)) (point))
-                      (lspce--log-perf "before delete-region2 %s" (float-time))
-                      (funcall snippet-fn (or insertText label))
-                      (lspce--log-perf "after insert newText2(%s) %s" newText (float-time))
-                      )))
+                      (let ((newText (or insertText label))
+                            (old-text (apply #'buffer-substring-no-properties (- (point) (length proxy)) (point))))
+                        (if (string-prefix-p old-text newText)
+                            (funcall snippet-fn (substring newText (length old-text)))
+                          (lspce--log-perf "before delete-region2 %s" (float-time))
+                          (delete-region (- (point) (length proxy)) (point))
+                          (lspce--log-perf "before delete-region2 %s" (float-time))
+                          (funcall snippet-fn (or insertText label))
+                          (lspce--log-perf "after insert newText2(%s) %s" newText (float-time)))))))
              (lspce--notify-textDocument/didChange))))))))
 
 ;;; hover
