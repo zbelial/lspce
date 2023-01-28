@@ -1080,7 +1080,7 @@ When the completion is incomplete, `items' contains value of :incomplete.")
 Doubles as an indicator of snippet support."
   (and (boundp 'yas-minor-mode)
        (symbol-value 'yas-minor-mode)
-       'yas-expand-snippet))
+       'lspce--yas-expand-snippet))
 
 (defun lspce--completion-resolve (item)
   (when (and (lspce--server-capable-chain "completionProvider" "resolveProvider")
@@ -1194,10 +1194,7 @@ Doubles as an indicator of snippet support."
                                            (cond 
                                             ((and (eql insertTextFormat 2)
                                                   (lspce--snippet-expansion-fn))
-                                             (string-trim-left (or (and insertText
-                                                                        (not (string-empty-p insertText))
-                                                                        insertText)
-                                                                   label)))
+                                             (string-trim-left label))
                                             ((and insertText
                                                   (not (string-empty-p insertText)))
                                              insertText)
@@ -1264,7 +1261,7 @@ Doubles as an indicator of snippet support."
                 (kind (gethash "kind" item))
                 annotation)
            (setq detail (and (stringp detail)
-                             (not (string-equal detail ""))
+                             (not (string-empty-p detail))
                              detail))
            (setq annotation (or detail
                                 (cdr (assoc kind lspce--kind-names))))
@@ -1330,7 +1327,9 @@ Doubles as an indicator of snippet support."
                             (old-text (apply #'buffer-substring-no-properties lsp-markers)))
                         (if (string-prefix-p old-text newText)
                             (progn
-                              (funcall (or snippet-fn #'insert) (substring newText (length old-text))))
+                              (lspce--log-perf "before insert newText0(%s) %s" newText (float-time))
+                              (funcall (or snippet-fn #'insert) (substring newText (length old-text)))
+                              (lspce--log-perf "after insert newText0(%s) %s" newText (float-time)))
                           (progn
                             (lspce--log-perf "before delete-region1(%s) %s" old-text (float-time))
                             (apply #'delete-region lsp-markers)
@@ -1348,12 +1347,15 @@ Doubles as an indicator of snippet support."
                       (let ((newText (or insertText label))
                             (old-text (apply #'buffer-substring-no-properties (- (point) (length proxy)) (point))))
                         (if (string-prefix-p old-text newText)
-                            (funcall snippet-fn (substring newText (length old-text)))
-                          (lspce--log-perf "before delete-region2 %s" (float-time))
+                            (progn
+                              (lspce--log-perf "before insert newText2(%s) %s" newText (float-time))
+                              (funcall snippet-fn (substring newText (length old-text)))
+                              (lspce--log-perf "before insert newText2(%s) %s" newText (float-time)))
+                          (lspce--log-perf "before delete-region3 %s" (float-time))
                           (delete-region (- (point) (length proxy)) (point))
-                          (lspce--log-perf "before delete-region2 %s" (float-time))
+                          (lspce--log-perf "before delete-region3 %s" (float-time))
                           (funcall snippet-fn (or insertText label))
-                          (lspce--log-perf "after insert newText2(%s) %s" newText (float-time)))))))
+                          (lspce--log-perf "after insert newText3(%s) %s" newText (float-time)))))))
              (lspce--notify-textDocument/didChange))))))))
 
 ;;; hover
