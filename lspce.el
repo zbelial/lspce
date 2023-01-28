@@ -57,6 +57,12 @@
   :group 'lspce
   :type 'boolean)
 
+(defcustom lspce-auto-enable-corfu-extension nil
+  "If non-nil, automatically enable corfu extension.
+See `lspce-enable-corfu-extension' for more information."
+  :group 'lspce
+  :type 'boolean)
+
 (defcustom lspce-enable-eldoc t
   "If non-nil, enable eldoc."
   :group 'lspce
@@ -1138,6 +1144,43 @@ Doubles as an indicator of snippet support."
 ;; (advice-add #'delete-region :before #'delete-region-advice)
 ;; (advice-remove #'delete-region #'delete-region-advice)
 
+(defvar lspce-use-corfu-extension nil)
+(defun lspce--corfu-insert-advice (status)
+  (pcase-let* ((`(,beg ,end . ,_) completion-in-region--data)
+               (str (buffer-substring-no-properties beg end))
+               (input-function (plist-get corfu--extra :input-function)))
+    (if input-function
+        (progn
+          (funcall input-function (nth corfu--index corfu--candidates)))
+      (setq str (concat corfu--base (substring-no-properties
+                                     (nth corfu--index corfu--candidates))))
+      ;; bug#55205: completion--replace removes properties!
+      (completion--replace beg end (concat str)))
+    (corfu--goto -1) ;; Reset selection, but continue completion.
+    (when status (corfu--done str status))))
+
+(defun lspce-enable-corfu-extension ()
+  (interactive)
+  (require 'corfu nil t)
+  (if (and (boundp #'corfu-mode)
+           (symbol-value 'corfu-mode))
+      (progn
+        (advice-add #'corfu--insert :override #'lspce--corfu-insert-advice)
+        (setq lspce-use-corfu-extension t))
+    (progn
+      (setq lspce-use-corfu-extension nil)
+      (advice-remove #'corfu--insert #'lspce--corfu-insert-advice))))
+
+(defun lspce-disable-corfu-extension ()
+  (interactive)
+  (require 'corfu nil t)
+  (when lspce-use-corfu-extension
+    (progn
+      (advice-remove #'corfu--insert #'lspce--corfu-insert-advice)
+      (setq lspce-use-corfu-extension nil))))
+
+(when lspce-auto-enable-corfu-extension
+  (call-interactively #'lspce-enable-corfu-extension))
 
 (defun lspce-completion-at-point()
   (when-let (completion-capability (lspce--server-capable "completionProvider"))
@@ -1300,9 +1343,66 @@ Doubles as an indicator of snippet support."
             (regexp-opt
              (cl-coerce (gethash "triggerCharacters" completion-capability) 'list))
             (line-beginning-position))))
+       :input-function
+       (lambda (proxy)
+         (with-current-buffer (if (minibufferp)
+                                  (window-buffer (minibuffer-selected-window))
+                                (current-buffer))
+           (setq-local lspce--completion-complete? nil)
+           (lspce--log-perf "before completing %s" (float-time))
+           (let* ((proxy (if (plist-member (text-properties-at 0 proxy) 'lspce--lsp-item)
+                             proxy
+                           (cl-find proxy (funcall proxies) :test #'equal)))
+                  (lsp-item (funcall resolve-maybe (get-text-property 0 'lspce--lsp-item proxy)))
+                  (lsp-markers (get-text-property 0 'lspce--lsp-markers proxy))
+                  (lsp-prefix (get-text-property 0 'lspce--lsp-prefix proxy))
+                  (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
+                  (insertText (gethash "insertText" lsp-item))
+                  (textEdit (gethash "textEdit" lsp-item))
+                  (additionalTextEdits (gethash "additionalTextEdits" lsp-item))
+                  (snippet-fn (and (eql insertTextFormat 2)
+                                   (lspce--snippet-expansion-fn))))
+             (lspce--debug "lsp-item %S" (json-encode lsp-item))
+             (cond (textEdit
+                    (let ((range (gethash "range" textEdit))
+                          (newText (gethash "newText" textEdit))
+                          (old-text (apply #'buffer-substring-no-properties lsp-markers)))
+                      (if (string-prefix-p old-text newText)
+                          (progn
+                            (lspce--log-perf "before insert newText0(%s) %s" newText (float-time))
+                            (funcall (or snippet-fn #'insert) (substring newText (length old-text)))
+                            (lspce--log-perf "after insert newText0(%s) %s" newText (float-time)))
+                        (progn
+                          (lspce--log-perf "before delete-region1(%s) %s" old-text (float-time))
+                          (apply #'delete-region lsp-markers)
+                          (lspce--log-perf "after delete-region1 %s" (float-time))
+                          (goto-char (nth 0 lsp-markers))
+                          (funcall (or snippet-fn #'insert) newText)
+                          (lspce--log-perf "after insert newText1(%s) %s" newText (float-time)))))
+                    (when (cl-plusp (length additionalTextEdits))
+                      (lspce--apply-text-edits additionalTextEdits)))
+                   (snippet-fn
+                    ;; A snippet should be inserted, but using plain
+                    ;; `insertText'.  This requires us to delete the
+                    ;; whole completion, since `insertText' is the full
+                    ;; completion's text.
+                    (let ((newText (or insertText label))
+                          (old-text (apply #'buffer-substring-no-properties (- (point) (length proxy)) (point))))
+                      (if (string-prefix-p old-text newText)
+                          (progn
+                            (lspce--log-perf "before insert newText2(%s) %s" newText (float-time))
+                            (funcall snippet-fn (substring newText (length old-text)))
+                            (lspce--log-perf "before insert newText2(%s) %s" newText (float-time)))
+                        (lspce--log-perf "before delete-region3 %s" (float-time))
+                        (delete-region (- (point) (length proxy)) (point))
+                        (lspce--log-perf "before delete-region3 %s" (float-time))
+                        (funcall snippet-fn (or insertText label))
+                        (lspce--log-perf "after insert newText3(%s) %s" newText (float-time)))))))
+           (lspce--notify-textDocument/didChange)))
        :exit-function
        (lambda (proxy status)
-         (when (memq status '(finished exact))
+         (when (and (memq status '(finished exact))
+                    (not lspce-use-corfu-extension))
            (with-current-buffer (if (minibufferp)
                                     (window-buffer (minibuffer-selected-window))
                                   (current-buffer))
