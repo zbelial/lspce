@@ -1361,7 +1361,8 @@ Doubles as an indicator of snippet support."
                   (textEdit (gethash "textEdit" lsp-item))
                   (additionalTextEdits (gethash "additionalTextEdits" lsp-item))
                   (snippet-fn (and (eql insertTextFormat 2)
-                                   (lspce--snippet-expansion-fn))))
+                                   (lspce--snippet-expansion-fn)))
+                  (inhibit-redisplay t))
              (lspce--debug "lsp-item %S" (json-encode lsp-item))
              (cond (textEdit
                     (let ((range (gethash "range" textEdit))
@@ -1419,7 +1420,8 @@ Doubles as an indicator of snippet support."
                     (textEdit (gethash "textEdit" lsp-item))
                     (additionalTextEdits (gethash "additionalTextEdits" lsp-item))
                     (snippet-fn (and (eql insertTextFormat 2)
-                                     (lspce--snippet-expansion-fn))))
+                                     (lspce--snippet-expansion-fn)))
+                    (inhibit-redisplay t))
                (lspce--debug "lsp-item %S" (json-encode lsp-item))
                (cond (textEdit
                       (let ((range (gethash "range" textEdit))
