@@ -158,7 +158,7 @@ SNIPPET may be a snippet structure (e.g., as returned by
 `yas-lookup-snippet'), or just a snippet body (which is a string
 for normal snippets, and a list for command snippets)."
   ;; If not a snippet, no need to invoke the expensive snippet expanding.
-  (if (not (string-search "${" snippet))
+  (if (not (string-search "$" snippet))
       (insert snippet)
     (cl-assert (and yas-minor-mode
                     (memq 'yas--post-command-handler post-command-hook))
@@ -228,7 +228,6 @@ for normal snippets, and a list for command snippets)."
                      ;; Keep region for ${0:exit text}.
                      (setq deactivate-mark nil))))
                (yas--message 4 "snippet %d expanded." (yas--snippet-id snippet))
-               t)))))
-  )
+               t))))))
 
 (provide 'lspce-util)
