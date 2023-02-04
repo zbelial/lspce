@@ -228,7 +228,6 @@ for normal snippets, and a list for command snippets)."
                      ;; Keep region for ${0:exit text}.
                      (setq deactivate-mark nil))))
                (yas--message 4 "snippet %d expanded." (yas--snippet-id snippet))
-               t)))))
-  )
+               t))))))
 
 (provide 'lspce-util)
