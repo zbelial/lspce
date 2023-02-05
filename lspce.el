@@ -57,9 +57,9 @@
   :group 'lspce
   :type 'boolean)
 
-(defcustom lspce-auto-enable-corfu-extension nil
+(defcustom lspce-auto-enable-capf-complete-extension nil
   "If non-nil, automatically enable corfu extension.
-See `lspce-enable-corfu-extension' for more information."
+See `lspce-enable-capf-complete-extension' for more information."
   :group 'lspce
   :type 'boolean)
 
@@ -1144,14 +1144,15 @@ Doubles as an indicator of snippet support."
 ;; (advice-add #'delete-region :before #'delete-region-advice)
 ;; (advice-remove #'delete-region #'delete-region-advice)
 
-(defvar lspce-use-corfu-extension nil)
+(defvar lspce--use-capf-complete-extension nil)
+(defvar lspce--capf-framework nil)
 (defun lspce--corfu-insert-advice (status)
   (pcase-let* ((`(,beg ,end . ,_) completion-in-region--data)
                (str (buffer-substring-no-properties beg end))
-               (input-function (plist-get corfu--extra :input-function)))
-    (if input-function
+               (complete-function (plist-get corfu--extra :complete-function)))
+    (if complete-function
         (progn
-          (funcall input-function (nth corfu--index corfu--candidates)))
+          (funcall complete-function (nth corfu--index corfu--candidates)))
       (setq str (concat corfu--base (substring-no-properties
                                      (nth corfu--index corfu--candidates))))
       ;; bug#55205: completion--replace removes properties!
@@ -1159,28 +1160,47 @@ Doubles as an indicator of snippet support."
     (corfu--goto -1) ;; Reset selection, but continue completion.
     (when status (corfu--done str status))))
 
-(defun lspce-enable-corfu-extension ()
+(defun lspce-enable-capf-complete-extension ()
   (interactive)
-  (require 'corfu nil t)
-  (if (and (boundp #'corfu-mode)
-           (symbol-value 'corfu-mode))
-      (progn
-        (advice-add #'corfu--insert :override #'lspce--corfu-insert-advice)
-        (setq lspce-use-corfu-extension t))
+  (cond
+   ((and (boundp #'corfu-mode)
+         (symbol-value 'corfu-mode))
     (progn
-      (setq lspce-use-corfu-extension nil)
-      (advice-remove #'corfu--insert #'lspce--corfu-insert-advice))))
+      (advice-add #'corfu--insert :override #'lspce--corfu-insert-advice)
+      (add-hook 'corfu-mode-hook #'lspce--corfu-exit-hook)
+      (setq lspce--capf-framework 'corfu)
+      (setq lspce--use-capf-complete-extension t)))
+   ((and nil ;; does not support company yet
+         (boundp #'company-mode)
+         (symbol-value 'company-mode))
+    (progn
+      (advice-add #'company-capf :around #'lspce--company-capf-advice)
+      (advice-add #'company-complete-selection :override #'lspce--company-complete-selection)
+      (setq lspce--capf-framework 'company)
+      (setq lspce--use-capf-complete-extension t)))
+   (t
+    (progn
+      (setq lspce--use-capf-complete-extension nil)
+      (setq lspce--capf-framework nil)))))
 
-(defun lspce-disable-corfu-extension ()
+(defun lspce--corfu-exit-hook ()
+  (unless corfu-mode
+    (call-interactively #'lspce-disable-capf-complete-extension)))
+
+(defun lspce-disable-capf-complete-extension ()
   (interactive)
-  (require 'corfu nil t)
-  (when lspce-use-corfu-extension
-    (progn
-      (advice-remove #'corfu--insert #'lspce--corfu-insert-advice)
-      (setq lspce-use-corfu-extension nil))))
+  (when lspce--use-capf-complete-extension
+    (if (eq lspce--capf-framework 'corfu)
+        (progn
+          (advice-remove #'corfu--insert #'lspce--corfu-insert-advice)
+          (remove-hook 'corfu-mode-hook #'lspce--corfu-exit-hook))
+      (advice-remove #'company-capf #'lspce--company-capf-advice)
+      (advice-remove #'company-complete-selection #'lspce--company-complete-selection))
+    (setq lspce--use-capf-complete-extension nil)
+    (setq lspce--capf-framework nil)))
 
-(when lspce-auto-enable-corfu-extension
-  (call-interactively #'lspce-enable-corfu-extension))
+(when lspce-auto-enable-capf-complete-extension
+  (call-interactively #'lspce-enable-capf-complete-extension))
 
 (defun lspce-completion-at-point()
   (when-let (completion-capability (lspce--server-capable "completionProvider"))
@@ -1343,7 +1363,7 @@ Doubles as an indicator of snippet support."
             (regexp-opt
              (cl-coerce (gethash "triggerCharacters" completion-capability) 'list))
             (line-beginning-position))))
-       :input-function
+       :complete-function
        (lambda (proxy)
          (with-current-buffer (if (minibufferp)
                                   (window-buffer (minibuffer-selected-window))
@@ -1399,11 +1419,13 @@ Doubles as an indicator of snippet support."
                         (lspce--log-perf "before delete-region3 %s" (float-time))
                         (funcall snippet-fn (or insertText label))
                         (lspce--log-perf "after insert newText3(%s) %s" newText (float-time)))))))
-           (lspce--notify-textDocument/didChange)))
+           (lspce--notify-textDocument/didChange))
+         t)
        :exit-function
        (lambda (proxy status)
          (when (and (memq status '(finished exact))
-                    (not lspce-use-corfu-extension))
+                    (not lspce--use-capf-complete-extension))
+           (lspce--info "exit-function running")
            (with-current-buffer (if (minibufferp)
                                     (window-buffer (minibuffer-selected-window))
                                   (current-buffer))
