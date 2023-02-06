@@ -1187,6 +1187,13 @@ Doubles as an indicator of snippet support."
   (unless corfu-mode
     (call-interactively #'lspce-disable-capf-complete-extension)))
 
+(defun lspce--corfu-start-hook ()
+  (when (and corfu-mode
+             lspce-auto-enable-capf-complete-extension
+             (not lspce--use-capf-complete-extension))
+    (call-interactively #'lspce-enable-capf-complete-extension)))
+(add-hook 'corfu-mode-hook #'lspce--corfu-start-hook)
+
 (defun lspce-disable-capf-complete-extension ()
   (interactive)
   (when lspce--use-capf-complete-extension
