@@ -1151,8 +1151,7 @@ Doubles as an indicator of snippet support."
                (str (buffer-substring-no-properties beg end))
                (complete-function (plist-get corfu--extra :complete-function)))
     (if complete-function
-        (progn
-          (funcall complete-function (nth corfu--index corfu--candidates)))
+        (funcall complete-function (nth corfu--index corfu--candidates))
       (setq str (concat corfu--base (substring-no-properties
                                      (nth corfu--index corfu--candidates))))
       ;; bug#55205: completion--replace removes properties!
@@ -1161,7 +1160,6 @@ Doubles as an indicator of snippet support."
     (when status (corfu--done str status))))
 
 (defun lspce--company--capf-complete-function (arg)
-  ;; (message "company--capf-complete-function company-round %s, arg %s" company-round arg)
   (let* ((res company-capf--current-completion-data)
          (complete-function (plist-get (nthcdr 4 res) :complete-function))
          (table (nth 3 res)))
@@ -1171,17 +1169,13 @@ Doubles as an indicator of snippet support."
         (funcall complete-function arg))))
 
 (defun lspce--company-capf-advice (orig-func command &optional arg &rest _args)
-  ;; (message "lspce--company-capf-advice company-round %s, command %s, arg %s" company-round command arg)
   (if (eq command 'complete-function)
       (lspce--company--capf-complete-function arg)
     (apply orig-func command arg _args)))
 
 (defun lspce--company-finish (result)
-  ;; (message "lspce--company-finish company-round %s, result %s" company-round result)
-  (if (not (company-call-backend 'complete-function result))
-      (progn
-        (company--insert-candidate result))
-    )
+  (when (not (company-call-backend 'complete-function result))
+    (company--insert-candidate result))
   (company-cancel result))
 
 (defun lspce-enable-capf-complete-extension ()
@@ -1195,7 +1189,7 @@ Doubles as an indicator of snippet support."
       (setq lspce--capf-framework 'corfu)
       (setq lspce--use-capf-complete-extension t)
       (lspce--info "capf complete extension enabled for corfu.")))
-   ((and ;; nil ;; FIXME does not support company yet
+   ((and
      (boundp #'company-mode)
      (symbol-value 'company-mode))
     (progn
@@ -1245,7 +1239,8 @@ Doubles as an indicator of snippet support."
       (remove-hook 'company-mode-hook #'lspce--company-start-hook)
       (remove-hook 'company-mode-hook #'lspce--company-exit-hook))
     (setq lspce--use-capf-complete-extension nil)
-    (setq lspce--capf-framework nil)))
+    (setq lspce--capf-framework nil)
+    (lspce--info "capf complete extension enabled.")))
 
 (when lspce-auto-enable-capf-complete-extension
   (call-interactively #'lspce-enable-capf-complete-extension))
@@ -1468,6 +1463,7 @@ Doubles as an indicator of snippet support."
                         (funcall snippet-fn (or insertText label))
                         (lspce--log-perf "complete-function after insert newText3(%s) %s" newText (float-time)))))))
            (lspce--notify-textDocument/didChange))
+         ;; return t to ensure `lspce--company-finish' works properly.
          t)
        :exit-function
        (lambda (proxy status)
@@ -1917,11 +1913,12 @@ Doubles as an indicator of snippet support."
                               (run-hook-with-args 'before-change-functions
                                                   start end)
                               (replace-buffer-contents temp)
-                              (run-hook-with-args 'lspce-after-each-text-edit-hook
-                                                  start (+ start (length newText)))
                               (run-hook-with-args 'after-change-functions
                                                   start (+ start (length newText))
-                                                  length)))))))))
+                                                  length))
+                            (run-hook-with-args 'lspce-after-each-text-edit-hook
+                                                (marker-position start)
+                                                (+ (marker-position start) (length newText))))))))))
               (mapcar (lambda (edit)
                         (let* ((newText (gethash "newText" edit))
                                (range (lspce--range-region (gethash "range" edit) t)))
@@ -2026,7 +2023,6 @@ at point.  With prefix argument, prompt for ACTION-KIND."
     (if actions
         (progn
           (dolist (action actions)
-            ;; (message "action: %S" action)
             (setq kind (gethash "kind" action)
                   title (gethash "title" action)
                   preferred (gethash "isPreferred" action))
@@ -2042,7 +2038,6 @@ at point.  With prefix argument, prompt for ACTION-KIND."
                                              candidates nil t nil nil default-action)
                                             candidates)))
           (when selected-action
-            ;; (message "selected-action: %S" selected-action)
             (let* ((command (gethash "command" selected-action))
                    (edit (gethash "edit" selected-action)))
               (when edit
