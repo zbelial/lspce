@@ -1160,6 +1160,30 @@ Doubles as an indicator of snippet support."
     (corfu--goto -1) ;; Reset selection, but continue completion.
     (when status (corfu--done str status))))
 
+(defun lspce--company--capf-complete-function (arg)
+  ;; (message "company--capf-complete-function company-round %s, arg %s" company-round arg)
+  (let* ((res company-capf--current-completion-data)
+         (complete-function (plist-get (nthcdr 4 res) :complete-function))
+         (table (nth 3 res)))
+    (if complete-function
+        ;; We can more or less know when the user is done with completion,
+        ;; so we do something different than `completion--done'.
+        (funcall complete-function arg))))
+
+(defun lspce--company-capf-advice (orig-func command &optional arg &rest _args)
+  ;; (message "lspce--company-capf-advice company-round %s, command %s, arg %s" company-round command arg)
+  (if (eq command 'complete-function)
+      (lspce--company--capf-complete-function arg)
+    (apply orig-func command arg _args)))
+
+(defun lspce--company-finish (result)
+  ;; (message "lspce--company-finish company-round %s, result %s" company-round result)
+  (if (not (company-call-backend 'complete-function result))
+      (progn
+        (company--insert-candidate result))
+    )
+  (company-cancel result))
+
 (defun lspce-enable-capf-complete-extension ()
   (interactive)
   (cond
@@ -1169,15 +1193,18 @@ Doubles as an indicator of snippet support."
       (advice-add #'corfu--insert :override #'lspce--corfu-insert-advice)
       (add-hook 'corfu-mode-hook #'lspce--corfu-exit-hook)
       (setq lspce--capf-framework 'corfu)
-      (setq lspce--use-capf-complete-extension t)))
-   ((and nil ;; does not support company yet
-         (boundp #'company-mode)
-         (symbol-value 'company-mode))
+      (setq lspce--use-capf-complete-extension t)
+      (lspce--info "capf complete extension enabled for corfu.")))
+   ((and ;; nil ;; FIXME does not support company yet
+     (boundp #'company-mode)
+     (symbol-value 'company-mode))
     (progn
       (advice-add #'company-capf :around #'lspce--company-capf-advice)
-      (advice-add #'company-complete-selection :override #'lspce--company-complete-selection)
+      (advice-add #'company-finish :override #'lspce--company-finish)
+      (add-hook 'company-mode-hook #'lspce--company-exit-hook)
       (setq lspce--capf-framework 'company)
-      (setq lspce--use-capf-complete-extension t)))
+      (setq lspce--use-capf-complete-extension t)
+      (lspce--info "capf complete extension enabled for company.")))
    (t
     (progn
       (setq lspce--use-capf-complete-extension nil)
@@ -1194,15 +1221,29 @@ Doubles as an indicator of snippet support."
     (call-interactively #'lspce-enable-capf-complete-extension)))
 (add-hook 'corfu-mode-hook #'lspce--corfu-start-hook)
 
+(defun lspce--company-exit-hook ()
+  (unless company-mode
+    (call-interactively #'lspce-disable-capf-complete-extension)))
+
+(defun lspce--company-start-hook ()
+  (when (and company-mode
+             lspce-auto-enable-capf-complete-extension
+             (not lspce--use-capf-complete-extension))
+    (call-interactively #'lspce-enable-capf-complete-extension)))
+(add-hook 'company-mode-hook #'lspce--company-start-hook)
+
 (defun lspce-disable-capf-complete-extension ()
   (interactive)
   (when lspce--use-capf-complete-extension
     (if (eq lspce--capf-framework 'corfu)
         (progn
           (advice-remove #'corfu--insert #'lspce--corfu-insert-advice)
+          (remove-hook 'corfu-mode-hook #'lspce--corfu-start-hook)
           (remove-hook 'corfu-mode-hook #'lspce--corfu-exit-hook))
       (advice-remove #'company-capf #'lspce--company-capf-advice)
-      (advice-remove #'company-complete-selection #'lspce--company-complete-selection))
+      (advice-remove #'company-finish #'lspce--company-finish)
+      (remove-hook 'company-mode-hook #'lspce--company-start-hook)
+      (remove-hook 'company-mode-hook #'lspce--company-exit-hook))
     (setq lspce--use-capf-complete-extension nil)
     (setq lspce--capf-framework nil)))
 
@@ -1376,7 +1417,7 @@ Doubles as an indicator of snippet support."
                                   (window-buffer (minibuffer-selected-window))
                                 (current-buffer))
            (setq-local lspce--completion-complete? nil)
-           (lspce--log-perf "before completing %s" (float-time))
+           (lspce--log-perf "complete-function before completing %s" (float-time))
            (let* ((proxy (if (plist-member (text-properties-at 0 proxy) 'lspce--lsp-item)
                              proxy
                            (cl-find proxy (funcall proxies) :test #'equal)))
@@ -1397,16 +1438,16 @@ Doubles as an indicator of snippet support."
                           (old-text (apply #'buffer-substring-no-properties lsp-markers)))
                       (if (string-prefix-p old-text newText)
                           (progn
-                            (lspce--log-perf "before insert newText0(%s) %s" newText (float-time))
+                            (lspce--log-perf "complete-function before insert newText0(%s) %s" newText (float-time))
                             (funcall (or snippet-fn #'insert) (substring newText (length old-text)))
-                            (lspce--log-perf "after insert newText0(%s) %s" newText (float-time)))
+                            (lspce--log-perf "complete-function after insert newText0(%s) %s" newText (float-time)))
                         (progn
-                          (lspce--log-perf "before delete-region1(%s) %s" old-text (float-time))
+                          (lspce--log-perf "complete-function before delete-region1(%s) %s" old-text (float-time))
                           (apply #'delete-region lsp-markers)
-                          (lspce--log-perf "after delete-region1 %s" (float-time))
+                          (lspce--log-perf "complete-function after delete-region1 %s" (float-time))
                           (goto-char (nth 0 lsp-markers))
                           (funcall (or snippet-fn #'insert) newText)
-                          (lspce--log-perf "after insert newText1(%s) %s" newText (float-time)))))
+                          (lspce--log-perf "complete-function after insert newText1(%s) %s" newText (float-time)))))
                     (when (cl-plusp (length additionalTextEdits))
                       (lspce--apply-text-edits additionalTextEdits)))
                    (snippet-fn
@@ -1418,26 +1459,25 @@ Doubles as an indicator of snippet support."
                           (old-text (apply #'buffer-substring-no-properties (- (point) (length proxy)) (point))))
                       (if (string-prefix-p old-text newText)
                           (progn
-                            (lspce--log-perf "before insert newText2(%s) %s" newText (float-time))
+                            (lspce--log-perf "complete-function before insert newText2(%s) %s" newText (float-time))
                             (funcall snippet-fn (substring newText (length old-text)))
-                            (lspce--log-perf "before insert newText2(%s) %s" newText (float-time)))
-                        (lspce--log-perf "before delete-region3 %s" (float-time))
+                            (lspce--log-perf "complete-function before insert newText2(%s) %s" newText (float-time)))
+                        (lspce--log-perf "complete-function before delete-region3 %s" (float-time))
                         (delete-region (- (point) (length proxy)) (point))
-                        (lspce--log-perf "before delete-region3 %s" (float-time))
+                        (lspce--log-perf "complete-function before delete-region3 %s" (float-time))
                         (funcall snippet-fn (or insertText label))
-                        (lspce--log-perf "after insert newText3(%s) %s" newText (float-time)))))))
+                        (lspce--log-perf "complete-function after insert newText3(%s) %s" newText (float-time)))))))
            (lspce--notify-textDocument/didChange))
          t)
        :exit-function
        (lambda (proxy status)
          (when (and (memq status '(finished exact))
                     (not lspce--use-capf-complete-extension))
-           (lspce--info "exit-function running")
            (with-current-buffer (if (minibufferp)
                                     (window-buffer (minibuffer-selected-window))
                                   (current-buffer))
              (setq-local lspce--completion-complete? nil)
-             (lspce--log-perf "before completing %s" (float-time))
+             (lspce--log-perf "exit-function before completing %s" (float-time))
              (let* ((proxy (if (plist-member (text-properties-at 0 proxy) 'lspce--lsp-item)
                                proxy
                              (cl-find proxy (funcall proxies) :test #'equal)))
@@ -1458,16 +1498,16 @@ Doubles as an indicator of snippet support."
                             (old-text (apply #'buffer-substring-no-properties lsp-markers)))
                         (if (string-prefix-p old-text newText)
                             (progn
-                              (lspce--log-perf "before insert newText0(%s) %s" newText (float-time))
+                              (lspce--log-perf "exit-function before insert newText0(%s) %s" newText (float-time))
                               (funcall (or snippet-fn #'insert) (substring newText (length old-text)))
-                              (lspce--log-perf "after insert newText0(%s) %s" newText (float-time)))
+                              (lspce--log-perf "exit-function after insert newText0(%s) %s" newText (float-time)))
                           (progn
-                            (lspce--log-perf "before delete-region1(%s) %s" old-text (float-time))
+                            (lspce--log-perf "exit-function before delete-region1(%s) %s" old-text (float-time))
                             (apply #'delete-region lsp-markers)
-                            (lspce--log-perf "after delete-region1 %s" (float-time))
+                            (lspce--log-perf "exit-function after delete-region1 %s" (float-time))
                             (goto-char (nth 0 lsp-markers))
                             (funcall (or snippet-fn #'insert) newText)
-                            (lspce--log-perf "after insert newText1(%s) %s" newText (float-time)))))
+                            (lspce--log-perf "exit-function after insert newText1(%s) %s" newText (float-time)))))
                       (when (cl-plusp (length additionalTextEdits))
                         (lspce--apply-text-edits additionalTextEdits)))
                      (snippet-fn
@@ -1479,14 +1519,14 @@ Doubles as an indicator of snippet support."
                             (old-text (apply #'buffer-substring-no-properties (- (point) (length proxy)) (point))))
                         (if (string-prefix-p old-text newText)
                             (progn
-                              (lspce--log-perf "before insert newText2(%s) %s" newText (float-time))
+                              (lspce--log-perf "exit-function before insert newText2(%s) %s" newText (float-time))
                               (funcall snippet-fn (substring newText (length old-text)))
-                              (lspce--log-perf "before insert newText2(%s) %s" newText (float-time)))
-                          (lspce--log-perf "before delete-region3 %s" (float-time))
+                              (lspce--log-perf "exit-function before insert newText2(%s) %s" newText (float-time)))
+                          (lspce--log-perf "exit-function before delete-region3 %s" (float-time))
                           (delete-region (- (point) (length proxy)) (point))
-                          (lspce--log-perf "before delete-region3 %s" (float-time))
+                          (lspce--log-perf "exit-function before delete-region3 %s" (float-time))
                           (funcall snippet-fn (or insertText label))
-                          (lspce--log-perf "after insert newText3(%s) %s" newText (float-time)))))))
+                          (lspce--log-perf "exit-function after insert newText3(%s) %s" newText (float-time)))))))
              (lspce--notify-textDocument/didChange))))))))
 
 ;;; hover
