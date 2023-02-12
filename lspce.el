@@ -113,6 +113,11 @@ current buffer is set to the buffer being edited."
 current buffer is set to the buffer being edited."
   :type 'hook)
 
+(defcustom lspce-completion-no-annotation nil
+  "If non-nil, do not display completion item's annotation."
+  :group 'lspce
+  :type 'boolean)
+
 ;; Customizable via `completion-category-overrides'.
 ;; (when (assoc 'flex completion-styles-alist)
 ;;   (add-to-list 'completion-category-defaults '(lspce-capf (styles flex basic))))
@@ -1146,18 +1151,19 @@ Doubles as an indicator of snippet support."
 
 (defvar lspce--use-capf-complete-extension nil)
 (defvar lspce--capf-framework nil)
-(defun lspce--corfu-insert-advice (status)
-  (pcase-let* ((`(,beg ,end . ,_) completion-in-region--data)
+(defun lspce--corfu-insert-advice (orig-func status &rest _args)
+  (pcase-let* ((completion-data completion-in-region--data)
+               (`(,beg ,end . ,_) completion-data)
                (str (buffer-substring-no-properties beg end))
                (complete-function (plist-get corfu--extra :complete-function)))
     (if complete-function
-        (funcall complete-function (nth corfu--index corfu--candidates))
-      (setq str (concat corfu--base (substring-no-properties
-                                     (nth corfu--index corfu--candidates))))
-      ;; bug#55205: completion--replace removes properties!
-      (completion--replace beg end (concat str)))
-    (corfu--goto -1) ;; Reset selection, but continue completion.
-    (when status (corfu--done str status))))
+        (progn
+          (when corfu-history-mode
+            (corfu-history--insert))
+          (funcall complete-function (nth corfu--index corfu--candidates))
+          (corfu--goto -1) ;; Reset selection, but continue completion.
+          (when status (corfu--done str status)))
+      (apply orig-func status _args))))
 
 (defun lspce--company--capf-complete-function (arg)
   (let* ((res company-capf--current-completion-data)
@@ -1184,7 +1190,7 @@ Doubles as an indicator of snippet support."
    ((and (boundp #'corfu-mode)
          (symbol-value 'corfu-mode))
     (progn
-      (advice-add #'corfu--insert :override #'lspce--corfu-insert-advice)
+      (advice-add #'corfu--insert :around #'lspce--corfu-insert-advice)
       (add-hook 'corfu-mode-hook #'lspce--corfu-exit-hook)
       (setq lspce--capf-framework 'corfu)
       (setq lspce--use-capf-complete-extension t)
@@ -1240,7 +1246,7 @@ Doubles as an indicator of snippet support."
       (remove-hook 'company-mode-hook #'lspce--company-exit-hook))
     (setq lspce--use-capf-complete-extension nil)
     (setq lspce--capf-framework nil)
-    (lspce--info "capf complete extension enabled.")))
+    (lspce--info "capf complete extension disabled.")))
 
 (when lspce-auto-enable-capf-complete-extension
   (call-interactively #'lspce-enable-capf-complete-extension))
@@ -1362,19 +1368,20 @@ Doubles as an indicator of snippet support."
                         probe (or filterText proxy) lspce-completion-ignore-case)))))))))
        :annotation-function
        (lambda (proxy)
-         (let* ((item (get-text-property 0 'lspce--lsp-item proxy))
-                (detail (gethash "detail" item))
-                (kind (gethash "kind" item))
-                annotation)
-           (setq detail (and (stringp detail)
-                             (not (string-empty-p detail))
-                             detail))
-           (setq annotation (or detail
-                                (cdr (assoc kind lspce--kind-names))))
-           (when annotation
-             (concat " "
-                     (propertize annotation
-                                 'face 'font-lock-function-name-face)))))       
+         (unless lspce-completion-no-annotation
+           (let* ((item (get-text-property 0 'lspce--lsp-item proxy))
+                  (detail (gethash "detail" item))
+                  (kind (gethash "kind" item))
+                  annotation)
+             (setq detail (and (stringp detail)
+                               (not (string-empty-p detail))
+                               detail))
+             (setq annotation (or detail
+                                  (cdr (assoc kind lspce--kind-names))))
+             (when annotation
+               (concat " "
+                       (propertize annotation
+                                   'face 'font-lock-function-name-face))))))
        :company-require-match 'never
        :company-kind
        ;; Associate each lsp-item with a lsp-kind symbol.
@@ -1988,7 +1995,8 @@ Doubles as an indicator of snippet support."
                   version nil)
             (with-current-buffer (find-file-noselect filename)
               (lspce--debug "lspce--apply-text-edit filename %s" filename)
-              (lspce--apply-text-edits edits version)))
+              (lspce--apply-text-edits edits version)
+              (save-buffer)))
            ((equal kind "documentChange")
             (setq textDocument (gethash "textDocument" change)
                   edits (gethash "edits" change))
@@ -1996,7 +2004,8 @@ Doubles as an indicator of snippet support."
                   version (gethash "version" textDocument))
             (with-current-buffer (find-file-noselect filename)
               (lspce--debug "lspce--apply-text-edit filename %s" filename)
-              (lspce--apply-text-edits edits version)))
+              (lspce--apply-text-edits edits version)
+              (save-buffer)))
            (t
             (lspce--debug "lspce--apply-file-edits filename %s" filename)
             (lspce--apply-file-edits change))))))))
