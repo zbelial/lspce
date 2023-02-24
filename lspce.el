@@ -150,7 +150,9 @@ current buffer is set to the buffer being edited."
                                 ("python" "pyright-langserver" "--stdio" lspce-pyright-initializationOptions)
                                 ("C" "clangd" "")
                                 ("sh" "bash-language-server" "start")
-                                ("go"  "gopls" "" lspce-gopls-initializationOptions))
+                                ("go" "gopls" "" lspce-gopls-initializationOptions)
+                                ("typescript" "typescript-language-server" "--stdio")
+                                ("js" "typescript-language-server" "--stdio"))
   "How the command `lspce' gets the server to start.
 A list of (LSP-TYPE SERVER-COMMAND SERVER-PARAMS initializationOptions).
 
