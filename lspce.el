@@ -1187,21 +1187,19 @@ Doubles as an indicator of snippet support."
 (defun lspce-enable-capf-complete-extension ()
   (interactive)
   (cond
-   ((and (boundp #'corfu-mode)
-         (symbol-value 'corfu-mode))
+   ((and (boundp #'global-corfu-mode)
+         (symbol-value 'global-corfu-mode))
     (progn
       (advice-add #'corfu--insert :around #'lspce--corfu-insert-advice)
-      (add-hook 'corfu-mode-hook #'lspce--corfu-exit-hook)
       (setq lspce--capf-framework 'corfu)
       (setq lspce--use-capf-complete-extension t)
       (lspce--info "capf complete extension enabled for corfu.")))
    ((and
-     (boundp #'company-mode)
-     (symbol-value 'company-mode))
+     (boundp #'global-company-mode)
+     (symbol-value 'global-company-mode))
     (progn
       (advice-add #'company-capf :around #'lspce--company-capf-advice)
       (advice-add #'company-finish :override #'lspce--company-finish)
-      (add-hook 'company-mode-hook #'lspce--company-exit-hook)
       (setq lspce--capf-framework 'company)
       (setq lspce--use-capf-complete-extension t)
       (lspce--info "capf complete extension enabled for company.")))
@@ -1210,43 +1208,41 @@ Doubles as an indicator of snippet support."
       (setq lspce--use-capf-complete-extension nil)
       (setq lspce--capf-framework nil)))))
 
-(defun lspce--corfu-exit-hook ()
-  (unless corfu-mode
-    (call-interactively #'lspce-disable-capf-complete-extension)))
+(defun lspce--corfu-hook ()
+  (cond
+   ((and global-corfu-mode
+         lspce-auto-enable-capf-complete-extension
+         (not lspce--use-capf-complete-extension))
+    (call-interactively #'lspce-enable-capf-complete-extension))
+   ((unless global-corfu-mode)
+    (call-interactively #'lspce-disable-capf-complete-extension))))
 
-(defun lspce--corfu-start-hook ()
-  (when (and corfu-mode
-             lspce-auto-enable-capf-complete-extension
-             (not lspce--use-capf-complete-extension))
-    (call-interactively #'lspce-enable-capf-complete-extension)))
-(add-hook 'corfu-mode-hook #'lspce--corfu-start-hook)
-
-(defun lspce--company-exit-hook ()
-  (unless company-mode
-    (call-interactively #'lspce-disable-capf-complete-extension)))
-
-(defun lspce--company-start-hook ()
-  (when (and company-mode
-             lspce-auto-enable-capf-complete-extension
-             (not lspce--use-capf-complete-extension))
-    (call-interactively #'lspce-enable-capf-complete-extension)))
-(add-hook 'company-mode-hook #'lspce--company-start-hook)
+(defun lspce--company-hook ()
+  (cond
+   ((and global-company-mode
+         lspce-auto-enable-capf-complete-extension
+         (not lspce--use-capf-complete-extension))
+    (call-interactively #'lspce-enable-capf-complete-extension))
+   ((unless global-company-mode)
+    (call-interactively #'lspce-disable-capf-complete-extension))))
 
 (defun lspce-disable-capf-complete-extension ()
   (interactive)
   (when lspce--use-capf-complete-extension
     (if (eq lspce--capf-framework 'corfu)
         (progn
-          (advice-remove #'corfu--insert #'lspce--corfu-insert-advice)
-          (remove-hook 'corfu-mode-hook #'lspce--corfu-start-hook)
-          (remove-hook 'corfu-mode-hook #'lspce--corfu-exit-hook))
+          (advice-remove #'corfu--insert #'lspce--corfu-insert-advice))
       (advice-remove #'company-capf #'lspce--company-capf-advice)
-      (advice-remove #'company-finish #'lspce--company-finish)
-      (remove-hook 'company-mode-hook #'lspce--company-start-hook)
-      (remove-hook 'company-mode-hook #'lspce--company-exit-hook))
+      (advice-remove #'company-finish #'lspce--company-finish))
     (setq lspce--use-capf-complete-extension nil)
     (setq lspce--capf-framework nil)
     (lspce--info "capf complete extension disabled.")))
+
+(with-eval-after-load 'company
+  (add-hook 'global-company-mode-hook #'lspce--company-hook))
+
+(with-eval-after-load 'corfu
+  (add-hook 'global-corfu-mode-hook #'lspce--corfu-hook))
 
 (when lspce-auto-enable-capf-complete-extension
   (call-interactively #'lspce-enable-capf-complete-extension))
@@ -1431,8 +1427,7 @@ Doubles as an indicator of snippet support."
                   (textEdit (gethash "textEdit" lsp-item))
                   (additionalTextEdits (gethash "additionalTextEdits" lsp-item))
                   (snippet-fn (and (eql insertTextFormat 2)
-                                   (lspce--snippet-expansion-fn)))
-                  (inhibit-redisplay t))
+                                   (lspce--snippet-expansion-fn))))
              (lspce--debug "lsp-item %S" (json-encode lsp-item))
              (cond (textEdit
                     (let ((range (gethash "range" textEdit))
@@ -1492,8 +1487,7 @@ Doubles as an indicator of snippet support."
                     (textEdit (gethash "textEdit" lsp-item))
                     (additionalTextEdits (gethash "additionalTextEdits" lsp-item))
                     (snippet-fn (and (eql insertTextFormat 2)
-                                     (lspce--snippet-expansion-fn)))
-                    (inhibit-redisplay t))
+                                     (lspce--snippet-expansion-fn))))
                (lspce--debug "lsp-item %S" (json-encode lsp-item))
                (cond (textEdit
                       (let ((range (gethash "range" textEdit))
@@ -1995,8 +1989,7 @@ Doubles as an indicator of snippet support."
                   version nil)
             (with-current-buffer (find-file-noselect filename)
               (lspce--debug "lspce--apply-text-edit filename %s" filename)
-              (lspce--apply-text-edits edits version)
-              (save-buffer)))
+              (lspce--apply-text-edits edits version)))
            ((equal kind "documentChange")
             (setq textDocument (gethash "textDocument" change)
                   edits (gethash "edits" change))
@@ -2004,8 +1997,7 @@ Doubles as an indicator of snippet support."
                   version (gethash "version" textDocument))
             (with-current-buffer (find-file-noselect filename)
               (lspce--debug "lspce--apply-text-edit filename %s" filename)
-              (lspce--apply-text-edits edits version)
-              (save-buffer)))
+              (lspce--apply-text-edits edits version)))
            (t
             (lspce--debug "lspce--apply-file-edits filename %s" filename)
             (lspce--apply-file-edits change))))))))
