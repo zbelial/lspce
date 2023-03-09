@@ -1160,8 +1160,11 @@ Doubles as an indicator of snippet support."
                (complete-function (plist-get corfu--extra :complete-function)))
     (if complete-function
         (progn
-          (when corfu-history-mode
-            (corfu-history--insert))
+          (add-to-history 'corfu-history
+                          (substring-no-properties
+                           (nth corfu--index corfu--candidates))
+                          corfu-history-length)
+          (setq corfu-history--hash nil)
           (funcall complete-function (nth corfu--index corfu--candidates))
           (corfu--goto -1) ;; Reset selection, but continue completion.
           (when status (corfu--done str status)))
