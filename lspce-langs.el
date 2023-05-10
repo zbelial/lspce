@@ -1,6 +1,9 @@
 ;;; lspce.el --- LSP Client for Emacs -*- lexical-binding: t; -*-
 
 (require 'f)
+(require 'lspce-util)
+
+(declare-function lspce--request "lspce")
 
 (defun lspce--add-option (option value options)
   (when (not (hash-table-p options))
