@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
-import queue
-import threading
 
-
-class LspServer:
+class Channel:
     def __init__(self, args):
         pass
 
 
-class Project:
+class StdioChannel:
+    def __init__(self, args):
+        pass
+
+
+class SocketChannel:
     def __init__(self, args):
         pass

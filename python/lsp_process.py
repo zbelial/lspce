@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
-import queue
-import threading
 
-
-class LspServer:
+class LspProcess:
     def __init__(self, args):
         pass
 
 
-class Project:
+class StdioProcess:
+    def __init__(self, args):
+        pass
+
+
+class SocketProcess:
     def __init__(self, args):
         pass
