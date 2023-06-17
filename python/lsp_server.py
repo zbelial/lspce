@@ -41,10 +41,8 @@ class LspServer:
         self.port = port
         self.lsp_process = None
         self.lsp_process_type = PROCESS_TYPE.UNKNOWN
-        self.lsp_process_status = PROCESS_STATUS.INVALID
-        self.established = False
-        self.send_queue = queue.Queue() # 保存待向lsp server写的数据
-        self.receive_queue = queue.Queue() # 保存从lsp server读的数据
+        self.send_queue = queue.Queue() # 保存要写到lsp server的数据
+        self.receive_queue = queue.Queue() # 保存从lsp server读到的数据
         self.sender_thread = threading.Thread(target=self._write_to_server)
         self.receiver_thread = threading.Thread(target=self._read_from_server)
 
@@ -70,13 +68,19 @@ class LspServer:
         if self.lsp_process is None:
             raise RuntimeError("Failed to establish lsp server.")
 
-        self.established = True
-        self.lsp_process_status = PROCESS_STATUS.RUNNING
-        
         self.sender_thread.start()
         self.receiver_thread.start()
 
         logger.info("established")
+
+    def terminate(self):
+        # TODO terminate
+        pass
+
+    def pid(self):
+        if self.lsp_process is not None:
+            return self.lsp_process.pid
+        return -1
         
     def send(self, msg):
         self.send_queue.put(msg)
@@ -98,6 +102,8 @@ class LspServer:
 
     def _write_to_server(self):
         try:
+            if self.lsp_process is None:
+                raise RuntimeError("lsp process is None")
             if self.lsp_process_type is PROCESS_TYPE.STDIO:
                 while self.lsp_process.poll() is None:
                     msg = self.pop_send_queue()
@@ -113,6 +119,8 @@ class LspServer:
 
     def _read_from_server(self):
         try:
+            if self.lsp_process is None:
+                raise RuntimeError("lsp process is None")
             if self.lsp_process_type is PROCESS_TYPE.STDIO:
                 content_length = None
                 buffer = bytearray()
