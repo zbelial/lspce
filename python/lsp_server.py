@@ -9,7 +9,7 @@ import sys
 import re
 import traceback
 from sys import stderr
-from enum import Enum, auto
+from enum import Enum
 from subprocess import PIPE
 
 import utils
@@ -19,16 +19,31 @@ from message import Message, MESSAGE_TYPE
 BUFFER_SIZE = 1024 * 1024
 
 class PROCESS_TYPE(Enum):
-    UNKNOWN = auto()
-    STDIO = auto()
-    SOCKET = auto()
+    UNKNOWN = 0
+    STDIO = 1
+    SOCKET = 2
 
 class PROCESS_STATUS(Enum):
-    INVALID = auto()
-    RUNNING = auto()
-    QUITING = auto()
-    FINISHED = auto()
+    INVALID = -1
+    RUNNING = 1
+    QUITING = 2
+    FINISHED = 3
     
+
+class ProjectId:
+    def __init__(self, project_root, language_id, server_name):
+        self.project_root = project_root
+        self.language_id = language_id
+        self.server_name = server_name
+
+    def project_root(self):
+        return self.project_root
+
+    def language_id(self):
+        return self.language_id
+
+    def server_name(self):
+        return self.server_name
 
 # 代表一个lsp server实例
 class LspServer:
@@ -73,25 +88,33 @@ class LspServer:
 
         logger.info("established")
 
+
+    def connect_ws(self):
+        # TODO connect_ws
+        pass
+    
     def terminate(self):
         # TODO terminate
         pass
 
-    def pid(self):
+    def terminated(self) -> bool:
+        return self.lsp_process is None
+
+    def pid(self) -> int:
         if self.lsp_process is not None:
             return self.lsp_process.pid
         return -1
         
-    def send(self, msg):
+    def send(self, msg) -> None:
         self.send_queue.put(msg)
 
-    def receive(self, timeout = 0.005):
+    def receive(self, timeout = 0.005) -> Message:
         try:
             msg = self.receive_queue.get(block=True, timeout=timeout)
             return msg
         except:
             logger.error(traceback.format_exc())
-            return None
+            return Message()
 
     def pop_send_queue(self, timeout=0.005):
         try:
@@ -168,7 +191,7 @@ class LspServer:
             return
         try:
             m = Message(msg)
-            if m.type is not MESSAGE_TYPE.INVALID:
+            if m.msg_type is not MESSAGE_TYPE.INVALID:
                 self.receive_queue.put(m)
         except:
             logger.error(traceback.format_exc())

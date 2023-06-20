@@ -9,7 +9,7 @@ except:
     import json as json_parser
 
 logger = logging.getLogger("lspce")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler())
 
 
