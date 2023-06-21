@@ -2,6 +2,7 @@
 
 
 ;;; Require
+(require 'websocket)
 (require 'json)
 (eval-when-compile
   (require 'cl-lib))
@@ -215,6 +216,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (unless (file-exists-p dirname)
       (f-mkdir-full-path dirname))
     (lspce-module-set-log-file filename)))
+
 
 ;;; Create LSP params
 (defun lspce--make-didOpenTextDocumentParams ()
@@ -2103,7 +2105,43 @@ at point.  With prefix argument, prompt for ACTION-KIND."
     (lspce--warn "Server does not support call hierarchy.")
     nil))
 
-;;; workspace server
+;;; LSP server
+(defvar lspce--ws-clients (make-hash-table :test 'lspce--server-key-equal))
+;; (setq lspce--ws-clients (make-hash-table :test 'lspce--server-key-equal))
+(defvar lspce--python-bridges (make-hash-table :test 'lspce--server-key-equal))
+(defvar lspce--ws-servers (make-hash-table :test 'lspce--server-key-equal))
+
+(defun lspce--ws-on-message (ws msg)
+  ;; TODO
+  )
+
+(defun lspce--ws-on-open (ws)
+  ;; TODO
+  )
+
+(defun lspce--ws-on-close (ws)
+  ;; TODO
+  )
+
+(defun lspce--ws-on-error (ws symbol err)
+  ;; TODO
+  )
+
+(defun lspce--start-python-bridge (project-root language-id server-name cmd)
+  (let ((ws-server (websocket-server t))
+        (event (lspce--event-start-server project-root language-id server-name cmd))
+        (server-key (make-lspce--server-key :project-root project-root
+                                            :language-id language-id
+                                            :server-name server-name))
+        lspce-server
+        ws-port)
+    (when ws-server
+      (setq ws-port (process-contact ws-server :service))
+      )
+    )
+  )
+
+
 (defun lspce-server-info ()
   (interactive)
   lspce--server-info)
