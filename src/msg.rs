@@ -230,6 +230,7 @@ impl Request {
             method,
             params: serde_json::to_value(params).unwrap(),
             content: "".to_string(),
+            request_tick: "".to_string(),
         }
     }
     pub fn extract<P: DeserializeOwned>(
@@ -379,6 +380,7 @@ mod tests {
             method: "shutdown".into(),
             params: serde_json::Value::Null,
             content: "".to_string(),
+            request_tick: "".to_string(),
         });
         let serialized = serde_json::to_string(&msg).unwrap();
 

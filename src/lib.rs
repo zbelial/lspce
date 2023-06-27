@@ -683,7 +683,7 @@ fn server(env: &Env, root_uri: String, file_type: String) -> Result<Option<Strin
 fn _request_async(server: &mut LspServer, req: Request) -> bool {
     let method = req.method.clone();
     let id = req.id.clone();
-    let request_tick = req.request_tick.clone()
+    let request_tick = req.request_tick.clone();
 
     // 更新最新的请求id
     server.update_latest_request_id(id.clone());
