@@ -110,7 +110,9 @@ struct LspServer {
     pub server_info: LspServerInfo,
     pub status: u8, // 是否已经启动完 0：待启动，1：启动中，2：启动完成，3：退出中
     latest_request_id: Mutex<RequestId>,
+    latest_request_tick: Mutex<String>,
     latest_response_id: Arc<Mutex<RequestId>>,
+    request_ticks: Arc<Mutex<HashMap<RequestId, String>>>,
     transport: Arc<Mutex<Option<Connection>>>,
     transport_threads: Option<IoThreads>,
     dispatcher: Option<thread::JoinHandle<()>>,
@@ -147,7 +149,9 @@ impl LspServer {
                 ),
                 status: SERVER_STATUS_NEW,
                 latest_request_id: Mutex::new(RequestId::from(-1)),
+                latest_request_tick: Mutex::new(String::new()),
                 latest_response_id: Arc::new(Mutex::new(RequestId::from(-1))),
+                request_ticks: Arc::new(Mutex::new(HashMap::new())),
                 transport: Arc::new(Mutex::new(None)),
                 transport_threads: None,
                 dispatcher: None,
@@ -176,6 +180,7 @@ impl LspServer {
                 Arc::clone(&server.notifications),
                 Arc::clone(&server.file_infos),
                 Arc::clone(&server.latest_response_id),
+                Arc::clone(&server.request_ticks),
             ));
             server.status = SERVER_STATUS_STARTING;
 
@@ -197,6 +202,7 @@ impl LspServer {
         notifications2: Arc<Mutex<VecDeque<Notification>>>,
         file_infos2: Arc<Mutex<HashMap<String, FileInfo>>>,
         latest_response_id2: Arc<Mutex<RequestId>>,
+        request_ticks2: Arc<Mutex<HashMap<RequestId, String>>>,
     ) -> thread::JoinHandle<()> {
         let handle = thread::spawn(move || loop {
             {
@@ -215,7 +221,11 @@ impl LspServer {
             if let Some(m) = message {
                 match m {
                     Message::Request(r) => {
-                        // TODO save request into the queue
+                        // save request into the queue FIXME
+                        // {
+                        //     let mut requests = requests2.lock().unwrap();
+                        //     requests.push_back(r);
+                        // }
                     }
                     Message::Response(r) => {
                         let id = r.id.clone();
@@ -273,6 +283,16 @@ impl LspServer {
         if *latest_request_id < id {
             *latest_request_id = id;
         }
+    }
+
+    pub fn update_latest_request_tick(&self, tick: String) {
+        let mut latest_request_tick = self.latest_request_tick.lock().unwrap();
+        *latest_request_tick = tick;
+    }
+
+    pub fn update_request_ticks(&self, id: RequestId, tick:String) {
+        let mut request_ticks = self.request_ticks.lock().unwrap();
+        request_ticks.insert(id, tick);
     }
 
     pub fn get_latest_response_id(&self) -> RequestId {
@@ -663,9 +683,12 @@ fn server(env: &Env, root_uri: String, file_type: String) -> Result<Option<Strin
 fn _request_async(server: &mut LspServer, req: Request) -> bool {
     let method = req.method.clone();
     let id = req.id.clone();
+    let request_tick = req.request_tick.clone()
 
     // 更新最新的请求id
     server.update_latest_request_id(id.clone());
+    server.update_latest_request_tick(request_tick.clone());
+    server.update_request_ticks(id.clone(), request_tick.clone());
 
     if method == "textDocument/didChange" || method == "textDocument/didClose"{
         let param = serde_json::from_value::<DidChangeTextDocumentParams>(req.params.clone());

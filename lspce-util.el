@@ -230,4 +230,10 @@ for normal snippets, and a list for command snippets)."
                (yas--message 4 "snippet %d expanded." (yas--snippet-id snippet))
                t))))))
 
+(defun lspce--json-deserialize (str)
+  "Parse the JSON STRING into a Lisp object."
+  (json-parse-string str :array-type 'list :null-object nil :false-object nil))
+
+(defalias 'lspce--json-serialize #'json-encode)
+
 (provide 'lspce-util)

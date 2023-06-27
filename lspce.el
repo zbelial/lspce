@@ -343,12 +343,19 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defvar lspce--throw-on-input nil
   "Make `lspce-*-while-no-input' throws `input' on interrupted.")
 
+(defvar lspce--request-ticks (make-hash-table :test #'equal)) ;; key: request id
+(defvar lspce--latest-tick nil)
+
+(defun lspce--current-tick ()
+  (format "%d_%d_%s" (buffer-chars-modified-tick) (point) (buffer-file-name)))
+
 (cl-defun lspce--request-async (method &optional params root-uri lsp-type)
   (unless (and buffer-file-name
                (file-exists-p buffer-file-name))
     (lspce--warn "lspce--request-async: current buffer has no disk file.")
     (cl-return-from lspce--request-async nil))
-  (let* ((request (lspce--make-request method params))
+  (setq lspce--latest-tick (lspce--current-tick))
+  (let* ((request (lspce--make-request method params lspce--latest-tick))
          (root-uri (or root-uri lspce--root-uri))
          (lsp-type (or lsp-type lspce--lsp-type))
          (request-id (gethash :id request)))
@@ -359,8 +366,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (lspce--notify-textDocument/didChange)
 
     (when (lspce-module-request-async root-uri lsp-type (json-encode request))
+      (puthash request-id lspce--latest-tick lspce--request-ticks)
       request-id)))
-
 
 (defvar lspce--default-sit-for-interval 0.02)
 (defvar lspce-sit-for-interval-alist
@@ -375,6 +382,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (lspce--root-uri (or root-uri lspce--root-uri))
         (lspce--lsp-type (or lsp-type lspce--lsp-type))
         (start-time (float-time))
+        (request-tick (gethash request-id lspce--request-ticks))
         lrid
         response code msg response-error response-data)
     (lspce--debug "lspce--get-response for request-id %d" request-id)
@@ -382,6 +390,9 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (while (and trying
                 (or (null timeout)
                     (> (+ start-time timeout) (float-time))))
+      (unless (string-equal request-tick lspce--latest-tick)
+        (lspce--debug "lspce--get-response request outdated")
+        (cl-return-from lspce--get-response nil))
       (if (sit-for (lspce--sit-for-interval lspce--lsp-type) t)
           (progn
             (setq lrid (lspce-module-read-latest-response-id lspce--root-uri lspce--lsp-type))
@@ -400,7 +411,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
               (unless response
                 (cl-return-from lspce--get-response nil))
 
-              (setq msg (json-parse-string response :array-type 'list :null-object nil :false-object nil))
+              (setq msg (lspce--json-deserialize response))
               (setq response-error (gethash "error" msg))
               (if response-error
                   (lspce--warn "LSP error %s" (gethash "message" response-error))
@@ -529,7 +540,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
     (lspce--debug "lspce--connect initialize-params: %s" (json-encode initialize-params))
 
-    (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params)) lspce-connect-server-timeout))
+    (setq lspce--latest-tick (lspce--current-tick))
+    (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params lspce--latest-tick)) lspce-connect-server-timeout))
     (lspce--debug "lspce--connect response: %s" response-str)
 
     response-str))
@@ -544,10 +556,11 @@ be set to `lspce-move-to-lsp-abiding-column', and
       (cl-return-from lspce--shutdown nil))
 
     (setq lspce--shutdown-status 1)
+    (setq lspce--latest-tick (lspce--current-tick))
     (make-thread (lambda ()
                    (ignore-errors
                      (lspce--info "shutdown server %s %s" root-uri lsp-type)
-                     (lspce-module-shutdown root-uri lsp-type (json-encode (lspce--make-request "shutdown"))))
+                     (lspce-module-shutdown root-uri lsp-type (json-encode (lspce--make-request "shutdown" nil lspce--latest-tick))))
                    (setq lspce--shutdown-status 0)))))
 
 ;;; Minor modes
@@ -606,10 +619,10 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (lspce--debug "server-info: %s" server-info)
 
     (when (lspce--notify-textDocument/didOpen)
-      (setq-local lspce--server-info (json-parse-string server-info :array-type 'list :null-object nil :false-object nil))
+      (setq-local lspce--server-info (lspce--json-deserialize server-info))
       (if-let (capabilities (gethash "capabilities" lspce--server-info))
           (progn
-            (setq lspce--server-capabilities (json-parse-string capabilities :array-type 'list :null-object nil :false-object nil)))
+            (setq lspce--server-capabilities (lspce--json-deserialize capabilities)))
         (setq lspce--server-capabilities (make-hash-table :test #'equal)))
       (setq server-key (make-lspce--hash-key :root-uri root-uri :lsp-type lsp-type))
       (setq server-managed-buffers (gethash server-key lspce--managed-buffers))
@@ -1737,7 +1750,7 @@ Doubles as an indicator of snippet support."
         (lspce--debug "diagnostics: %S" diagnostics)
         (when diagnostics
           ;; FIXME 根据diag-type和位置排序。
-          (dolist (d (json-parse-string diagnostics :array-type 'list :null-object nil :false-object nil))
+          (dolist (d (lspce--json-deserialize diagnostics))
             (lspce--debug "d %S" d)
             (setq range (gethash "range" d)
                   severity (gethash "severity" d)

@@ -79,7 +79,9 @@ pub struct Request {
     #[serde(skip_serializing_if = "serde_json::Value::is_null")]
     pub params: serde_json::Value,
     #[serde(skip)]
-    pub str: String,
+    pub content: String,
+    #[serde(skip)]
+    pub request_tick: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -166,7 +168,7 @@ impl Message {
         let msg = serde_json::from_str(&text)?;
         match msg {
             Message::Request(mut r) => {
-                r.str = text.clone();
+                r.content = text.clone();
                 return Ok(Some(Message::Request(r)));
             }
             Message::Response(mut r) => {
@@ -227,7 +229,7 @@ impl Request {
             id,
             method,
             params: serde_json::to_value(params).unwrap(),
-            str: "".to_string(),
+            content: "".to_string(),
         }
     }
     pub fn extract<P: DeserializeOwned>(
@@ -376,7 +378,7 @@ mod tests {
             id: RequestId::from(3),
             method: "shutdown".into(),
             params: serde_json::Value::Null,
-            str: "".to_string(),
+            content: "".to_string(),
         });
         let serialized = serde_json::to_string(&msg).unwrap();
 
