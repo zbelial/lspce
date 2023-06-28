@@ -660,6 +660,54 @@ The value is also a hash table, with uri as the key and the value is just t.")
 (defvar-local lspce--eldoc-already-enabled nil
   "Whether eldoc is enabled before lspce starting.")
 
+(defvar lspce--notification-idle-timer nil)
+
+;;;###autoload
+(defun lspce-enable-notification-handler ()
+  (interactive)
+  (when lspce--notification-idle-timer
+    (cancel-timer lspce--notification-idle-timer))
+  (setq lspce--notification-idle-timer
+        (run-with-idle-timer 1 t #'lspce--notification-handler)))
+
+;;;###autoload
+(defun lspce-disable-notification-handler ()
+  (interactive)
+  (when lspce--notification-idle-timer
+    (cancel-timer lspce--notification-idle-timer)))
+
+(defun lspce--notification-handler ()
+  (let (notification
+        method params
+        message-type
+        message)
+    (with-current-buffer (current-buffer)
+      (when (and lspce-mode
+                 lspce--root-uri
+                 lspce--lsp-type)
+        (setq notification (lspce-module-read-notification lspce--root-uri lspce--lsp-type))
+        (lspce--debug "notification: %s" notification)
+        (when notification
+          (setq notification (lspce--json-deserialize notification))
+          (setq method (gethash "method" notification)
+                params (gethash "params" notification))
+          (cond
+           ((or (string-equal method "window/showMessage")
+                (string-equal method "window/logMessage"))
+            (setq message-type (gethash "type" params)
+                  message (gethash "message" params))
+            (cond
+             ((eq message-type 1)
+              (lspce--error "Server message: %s" message))
+             ((eq message-type 2)
+              (lspce--warn "Server message: %s" message))
+             ((eq message-type 3)
+              (lspce--info "Server message: %s" message))
+             ((eq message-type 4)
+              (lspce--debug "Server message: %s" message))))
+           (t
+            )))))))
+
 ;; TODO add kill-emacs-hook to kill all lsp servers.
 (define-minor-mode lspce-mode
   "Mode for source buffers managed by some LSPCE project."
