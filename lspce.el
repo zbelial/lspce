@@ -400,8 +400,6 @@ be set to `lspce-move-to-lsp-abiding-column', and
               (lspce--debug "start to read response %d" request-id)
               (setq response (lspce-module-read-response-exact lspce--root-uri lspce--lsp-type request-id method))
               (lspce--debug "response %s" response)
-              ;; (unless response
-              ;;   (cl-return-from lspce--get-response nil))
 
               (when response
                 (setq trying nil)

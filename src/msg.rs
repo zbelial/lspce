@@ -169,7 +169,7 @@ impl Message {
         let msg = serde_json::from_str(&text)?;
         match msg {
             Message::Request(mut r) => {
-                r.content = text.clone();
+                r.content = text;
                 return Ok(Some(Message::Request(r)));
             }
             Message::Response(mut r) => {

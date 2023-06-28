@@ -268,7 +268,12 @@ impl LspServer {
                             let mut server_data = server_data2.lock().unwrap();
                             server_data.file_infos.insert(uri.clone(), file_info);
                         } else {
-                            // other notifications FIXME
+                            // other notifications
+                            let mut server_data = server_data2.lock().unwrap();
+                            if server_data.notifications.len() > 10 {
+                                server_data.notifications.pop_front();
+                            }
+                            server_data.notifications.push_back(r);
                         }
                     }
                 }
@@ -831,6 +836,35 @@ fn read_response_exact(
 
     Ok(None)
 }
+
+#[defun]
+fn read_notification(
+    env: &Env,
+    root_uri: String,
+    file_type: String,
+) -> Result<Option<String>> {
+    let projects = projects().lock().unwrap();
+    if let Some(p) = projects.get(&root_uri) {
+        if let Some(server) = p.servers.get(&file_type) {
+            let notification = server.read_notification();
+            match notification {
+                Some(r) => {
+                    return Ok(Some(r.content));
+                }
+                None => {
+                    return Ok(None);
+                }
+            }
+        } else {
+            env.message(&format!("No server for {}", &file_type));
+        }
+    } else {
+        env.message(&format!("No project for {} {}", &root_uri, &file_type));
+    }
+
+    Ok(None)
+}
+
 
 #[defun]
 fn read_file_diagnostics(
