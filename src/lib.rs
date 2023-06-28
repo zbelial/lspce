@@ -109,6 +109,7 @@ struct LspServerData {
     latest_request_id: RequestId,
     latest_request_tick: String,
     latest_response_id: RequestId,
+    latest_response_tick: String,
     request_ticks: HashMap<RequestId, String>,
     file_infos: HashMap<String, FileInfo>,
     requests: VecDeque<Request>,
@@ -122,6 +123,7 @@ impl LspServerData {
             latest_request_id: RequestId::from(-1),
             latest_request_tick: String::new(),
             latest_response_id: RequestId::from(-1),
+            latest_response_tick: String::new(),
             request_ticks: HashMap::new(),
             file_infos: HashMap::new(),
             requests: VecDeque::new(),
@@ -138,13 +140,6 @@ struct LspServer {
     transport_threads: Option<IoThreads>,
     dispatcher: Option<thread::JoinHandle<()>>,
     server_data: Arc<Mutex<LspServerData>>,
-    // latest_request_tick: Mutex<String>,
-    // latest_response_id: Arc<Mutex<RequestId>>,
-    // request_ticks: Arc<Mutex<HashMap<RequestId, String>>>,
-    // file_infos: Arc<Mutex<HashMap<String, FileInfo>>>, // key: uri
-    // requests: Arc<Mutex<VecDeque<Request>>>,           // server发送的最新请求，只存最新的
-    // responses: Arc<Mutex<VecDeque<Response>>>,         // server发送的最新响应，只存最新的
-    // notifications: Arc<Mutex<VecDeque<Notification>>>, // server发送的最新通知（非诊断），只存最新的
     exit: Arc<Mutex<bool>>,
 }
 
@@ -177,14 +172,6 @@ impl LspServer {
                 transport_threads: None,
                 dispatcher: None,
                 server_data: Arc::new(Mutex::new(LspServerData::new())),
-                // latest_request_id: Mutex::new(RequestId::from(-1)),
-                // latest_request_tick: Mutex::new(String::new()),
-                // latest_response_id: Arc::new(Mutex::new(RequestId::from(-1))),
-                // request_ticks: Arc::new(Mutex::new(HashMap::new())),
-                // file_infos: Arc::new(Mutex::new(HashMap::new())),
-                // requests: Arc::new(Mutex::new(VecDeque::new())),
-                // responses: Arc::new(Mutex::new(VecDeque::new())),
-                // notifications: Arc::new(Mutex::new(VecDeque::new())),
                 exit: Arc::new(Mutex::new(false)),
             };
 
@@ -202,12 +189,6 @@ impl LspServer {
                 Arc::clone(&server.transport),
                 Arc::clone(&server.exit),
                 Arc::clone(&server.server_data),
-                // Arc::clone(&server.requests),
-                // Arc::clone(&server.responses),
-                // Arc::clone(&server.notifications),
-                // Arc::clone(&server.file_infos),
-                // Arc::clone(&server.latest_response_id),
-                // Arc::clone(&server.request_ticks),
             ));
             server.status = SERVER_STATUS_STARTING;
 
@@ -225,12 +206,6 @@ impl LspServer {
         transport2: Arc<Mutex<Option<Connection>>>,
         exit2: Arc<Mutex<bool>>,
         server_data2: Arc<Mutex<LspServerData>>,
-        // requests2: Arc<Mutex<VecDeque<Request>>>,
-        // responses2: Arc<Mutex<VecDeque<Response>>>,
-        // notifications2: Arc<Mutex<VecDeque<Notification>>>,
-        // file_infos2: Arc<Mutex<HashMap<String, FileInfo>>>,
-        // latest_response_id2: Arc<Mutex<RequestId>>,
-        // request_ticks2: Arc<Mutex<HashMap<RequestId, String>>>,
     ) -> thread::JoinHandle<()> {
         let handle = thread::spawn(move || loop {
             {
@@ -255,34 +230,30 @@ impl LspServer {
                         //     requests.push_back(r);
                         // }
                     }
-                    Message::Response(r) => {
+                    Message::Response(mut r) => {
                         let id = r.id.clone();
-                        {
-                            let mut server_data = server_data2.lock().unwrap();
+
+                        let mut server_data = server_data2.lock().unwrap();
+                        let request_tick = server_data.request_ticks.get(&id);
+                        if (request_tick.is_some()) {
+                            let request_tick = request_tick.unwrap().clone();
+                            if (request_tick.eq(&server_data.latest_request_tick)) {
+                                r.request_tick = request_tick.clone();
+                                server_data.responses.push_back(r);
+                            }
+                            if server_data.latest_response_id.lt(&id) {
+                                server_data.latest_response_id = id.clone();
+                                server_data.latest_response_tick = request_tick.clone();
+                                Logger::log(&format!("Latest response tick for id {} is {}", &id, &request_tick));
+                            }
+
+                            server_data.request_ticks.remove(&id);
+                        } else {
                             if server_data.latest_response_id.lt(&id) {
                                 server_data.latest_response_id = id.clone();
                             }
-                            let request_tick = server_data.request_ticks.get(&id);
-                            if (request_tick.is_some()) {
-                                let request_tick = request_tick.unwrap();
-                                if (request_tick.eq(&server_data.latest_request_tick)) {
-                                    server_data.responses.push_back(r);
-                                }
-                            } else {
-                                Logger::log(&format!("No request tick for id {}", id));
-                            }
+                            Logger::log(&format!("No request tick for id {}", id));
                         }
-                        // {
-                        //     let mut lrid = latest_response_id2.lock().unwrap();
-                        //     if lrid.lt(&id) {
-                        //         *lrid = id;
-                        //     }
-                        //     Logger::log(&format!("update latest_response_id to {}", *lrid));
-                        // }
-                        // {
-                        //     let mut responses = responses2.lock().unwrap();
-                        //     responses.push_back(r);
-                        // }
                     }
                     Message::Notification(r) => {
                         if r.method.eq("textDocument/publishDiagnostics") {
@@ -296,11 +267,8 @@ impl LspServer {
 
                             let mut server_data = server_data2.lock().unwrap();
                             server_data.file_infos.insert(uri.clone(), file_info);
-
-                            // let mut file_infos = file_infos2.lock().unwrap();
-                            // file_infos.insert(uri.clone(), file_info);
                         } else {
-                            // other notifications NOTE
+                            // other notifications FIXME
                         }
                     }
                 }
@@ -324,37 +292,23 @@ impl LspServer {
         }
     }
 
-    // pub fn update_latest_request_id(&self, id: RequestId) {
-    //     let mut latest_request_id = self.latest_request_id.lock().unwrap();
-    //     if *latest_request_id < id {
-    //         *latest_request_id = id;
-    //     }
-    // }
-
-    // pub fn update_latest_request_tick(&self, tick: String) {
-    //     let mut latest_request_tick = self.latest_request_tick.lock().unwrap();
-    //     *latest_request_tick = tick;
-    // }
-
-    pub fn update_request_info(&self, id: RequestId, tick:String) {
+    pub fn update_request_info(&self, id: RequestId, tick: String) {
         let mut server_data = self.server_data.lock().unwrap();
         if server_data.latest_request_id < id {
             server_data.latest_request_id = id.clone();
         }
         server_data.latest_request_tick = tick.clone();
         server_data.request_ticks.insert(id, tick);
-
-        // let mut request_ticks = self.request_ticks.lock().unwrap();
-        // request_ticks.insert(id, tick);
     }
 
     pub fn get_latest_response_id(&self) -> RequestId {
         let server_data = self.server_data.lock().unwrap();
         server_data.latest_response_id.clone()
+    }
 
-        // let lrid = self.latest_response_id.lock().unwrap();
-
-        // lrid.clone()
+    pub fn get_latest_response_tick(&self) -> String {
+        let server_data = self.server_data.lock().unwrap();
+        server_data.latest_response_tick.clone()
     }
 
     pub fn exit_transport(&self) {
@@ -380,65 +334,48 @@ impl LspServer {
     pub fn read_response(&self) -> Option<Response> {
         let mut server_data = self.server_data.lock().unwrap();
         server_data.responses.pop_front()
-            
-        // let mut responses = self.responses.lock().unwrap();
-
-        // responses.pop_front()
     }
 
     //
     pub fn read_response_exact(&self, id: RequestId, method: String) -> Option<Response> {
-        let mut result: Option<Response>;
+        let mut result: Option<Response> = None;
         let mut server_data = self.server_data.lock().unwrap();
-        // let mut responses = self.responses.lock().unwrap();
-        loop {
-            let resp = server_data.responses.pop_front();
-            if resp.is_some() {
-                let resp = resp.unwrap();
 
-                Logger::log(&format!(
-                    "read_response_exact request_id {}, method {}, get {}",
-                    id,
-                    method,
-                    serde_json::to_string_pretty(&resp).unwrap_or("invalid json".to_string())
-                ));
+        let latest_request_tick = server_data.latest_request_tick.clone();
+        let mut reserved: VecDeque<Response> = VecDeque::new();
+        for iter in server_data.responses.iter() {
+            // Logger::log(&format!("read_response_exact response {:#?}", &iter));
+            if iter.id.eq(&id) {
+                result = Some(iter.clone());
+            }
 
-                if id.eq(&resp.id) {
-                    result = Some(resp);
-                    break;
-                } else if id.lt(&resp.id) {
-                    server_data.responses.push_front(resp);
-                    result = None;
-                    break;
-                }
-            } else {
-                Logger::log(&format!(
-                    "read_response_exact get null for request_id {}, method {}",
-                    id, method
-                ));
-                result = None;
-                break;
+            let request_tick = iter.request_tick.clone();
+            if request_tick.eq(&latest_request_tick) && iter.id.ne(&id) {
+                reserved.push_back(iter.clone());
             }
         }
+
+        server_data.responses.clear();
+        server_data.responses.append(&mut reserved);
+
+        if result.is_none() {
+            Logger::log(&format!(
+                "read_response_exact get null for request_id {}, method {}",
+                id, method
+            ));
+        }
+
         result
     }
 
     pub fn read_notification(&self) -> Option<Notification> {
         let mut server_data = self.server_data.lock().unwrap();
         server_data.notifications.pop_front()
-            
-        // let mut notifications = self.notifications.lock().unwrap();
-
-        // notifications.pop_front()
     }
 
     pub fn read_request(&self) -> Option<Request> {
         let mut server_data = self.server_data.lock().unwrap();
         server_data.requests.pop_front()
-            
-        // let mut requests = self.requests.lock().unwrap();
-
-        // requests.pop_front()
     }
 
     pub fn clear_diagnostics(&self, uri: &str) {
@@ -448,12 +385,6 @@ impl LspServer {
             let result = serde_json::to_string(&file_info.diagnostics);
             file_info.diagnostics = Vec::new();
         }
-
-        // let mut file_infos = self.file_infos.lock().unwrap();
-        // if let Some(mut file_info) = file_infos.get_mut(uri) {
-        //     let result = serde_json::to_string(&file_info.diagnostics);
-        //     file_info.diagnostics = Vec::new();
-        // }
     }
 }
 
@@ -758,9 +689,8 @@ fn _request_async(server: &mut LspServer, req: Request) -> bool {
     let id = req.id.clone();
     let request_tick = req.request_tick.clone();
 
-    // 更新最新的请求id
-    // server.update_latest_request_id(id.clone());
-    // server.update_latest_request_tick(request_tick.clone());
+    Logger::log(&format!("request {:#?}", &req));
+
     server.update_request_info(id.clone(), request_tick.clone());
 
     if method == "textDocument/didChange" || method == "textDocument/didClose"{
@@ -883,22 +813,10 @@ fn read_response_exact(
     let projects = projects().lock().unwrap();
     if let Some(p) = projects.get(&root_uri) {
         if let Some(server) = p.servers.get(&file_type) {
-            // {
-            //     let lrid = server.latest_response_id.lock().unwrap();
-            //     if lrid.lt(&req_id) {
-            //         return Ok(None);
-            //     }
-            // }
-
-            let lrid = server.get_latest_response_id();
-            if lrid.lt(&req_id) {
-                return Ok(None);
-            }
-
             let response = server.read_response_exact(req_id, method);
             match response {
                 Some(r) => {
-                    return Ok(Some(r.str));
+                    return Ok(Some(r.content));
                 }
                 None => {
                     return Ok(None);
@@ -925,7 +843,6 @@ fn read_file_diagnostics(
     if let Some(p) = projects.get(&root_uri) {
         if let Some(server) = p.servers.get(&file_type) {
             let mut server_data = server.server_data.lock().unwrap();
-            // let mut file_infos = server.file_infos.lock().unwrap();
             if let Some(file_info) = server_data.file_infos.get_mut(&uri) {
                 let result = serde_json::to_string(&file_info.diagnostics);
 
@@ -964,3 +881,26 @@ fn read_latest_response_id(
 
     Ok(None)
 }
+
+#[defun]
+fn read_latest_response_tick(
+    env: &Env,
+    root_uri: String,
+    file_type: String,
+) -> Result<Option<String>> {
+    let projects = projects().lock().unwrap();
+    if let Some(p) = projects.get(&root_uri) {
+        if let Some(server) = p.servers.get(&file_type) {
+            let tick = server.get_latest_response_tick();
+
+            return Ok(Some(tick));
+        } else {
+            env.message(&format!("No server for {}", &file_type));
+        }
+    } else {
+        env.message(&format!("No project for {} {}", &root_uri, &file_type));
+    }
+
+    Ok(None)
+}
+

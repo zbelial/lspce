@@ -80,7 +80,6 @@ pub struct Request {
     pub params: serde_json::Value,
     #[serde(skip)]
     pub content: String,
-    #[serde(skip)]
     pub request_tick: String,
 }
 
@@ -95,7 +94,9 @@ pub struct Response {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<ResponseError>,
     #[serde(skip)]
-    pub str: String,
+    pub content: String,
+    #[serde(skip)]
+    pub request_tick: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -153,7 +154,7 @@ pub struct Notification {
     #[serde(skip_serializing_if = "serde_json::Value::is_null")]
     pub params: serde_json::Value,
     #[serde(skip)]
-    pub str: String,
+    pub content: String,
 }
 
 impl Message {
@@ -172,11 +173,11 @@ impl Message {
                 return Ok(Some(Message::Request(r)));
             }
             Message::Response(mut r) => {
-                r.str = text;
+                r.content = text;
                 return Ok(Some(Message::Response(r)));
             }
             Message::Notification(mut r) => {
-                r.str = text;
+                r.content = text;
                 return Ok(Some(Message::Notification(r)));
             }
         }
@@ -205,7 +206,8 @@ impl Response {
             id,
             result: Some(serde_json::to_value(result).unwrap()),
             error: None,
-            str: "".to_string(),
+            content: "".to_string(),
+            request_tick: "".to_string(),
         }
     }
     pub fn new_err(id: RequestId, code: i32, message: String) -> Response {
@@ -218,7 +220,8 @@ impl Response {
             id,
             result: None,
             error: Some(error),
-            str: "".to_string(),
+            content: "".to_string(),
+            request_tick: "".to_string(),
         }
     }
 }
@@ -262,7 +265,7 @@ impl Notification {
         Notification {
             method,
             params: serde_json::to_value(params).unwrap(),
-            str: "".to_string(),
+            content: "".to_string(),
         }
     }
     pub fn extract<P: DeserializeOwned>(
@@ -392,7 +395,7 @@ mod tests {
         let msg = Message::Notification(Notification {
             method: "exit".into(),
             params: serde_json::Value::Null,
-            str: "".to_string(),
+            content: "".to_string(),
         });
         let serialized = serde_json::to_string(&msg).unwrap();
 

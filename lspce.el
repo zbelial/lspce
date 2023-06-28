@@ -340,9 +340,6 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defvar lspce-lsp-type-function #'lspce--lsp-type-default
   "Function to figure out the lsp type of current buffer.")
 
-(defvar lspce--throw-on-input nil
-  "Make `lspce-*-while-no-input' throws `input' on interrupted.")
-
 (defvar lspce--request-ticks (make-hash-table :test #'equal)) ;; key: request id
 (defvar lspce--latest-tick nil)
 
@@ -365,6 +362,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
     (lspce--notify-textDocument/didChange)
 
+    (lspce--debug "lspce--request-async request: %s" (json-encode request))
     (when (lspce-module-request-async root-uri lsp-type (json-encode request))
       (puthash request-id lspce--latest-tick lspce--request-ticks)
       request-id)))
@@ -383,7 +381,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (lspce--lsp-type (or lsp-type lspce--lsp-type))
         (start-time (float-time))
         (request-tick (gethash request-id lspce--request-ticks))
-        lrid
+        response-tick
         response code msg response-error response-data)
     (lspce--debug "lspce--get-response for request-id %d" request-id)
     (lspce--log-perf "request-id %s, method %s, start-time %s" request-id method start-time)
@@ -395,28 +393,23 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (cl-return-from lspce--get-response nil))
       (if (sit-for (lspce--sit-for-interval lspce--lsp-type) t)
           (progn
-            (setq lrid (lspce-module-read-latest-response-id lspce--root-uri lspce--lsp-type))
-            (lspce--debug "lrid %S" lrid)
-            (unless lrid
-              (cl-return-from lspce--get-response nil))
+            (setq response-tick (lspce-module-read-latest-response-tick lspce--root-uri lspce--lsp-type))
+            (lspce--debug "response-tick %S" response-tick)
 
-            (setq lrid (string-to-number lrid))
-            (when (> lrid request-id)
-              (lspce--debug "lrid is bigger than request-id")
-              (setq trying nil))
-            (when (= lrid request-id)
+            (when (string-equal response-tick request-tick)
               (lspce--debug "start to read response %d" request-id)
               (setq response (lspce-module-read-response-exact lspce--root-uri lspce--lsp-type request-id method))
               (lspce--debug "response %s" response)
-              (unless response
-                (cl-return-from lspce--get-response nil))
+              ;; (unless response
+              ;;   (cl-return-from lspce--get-response nil))
 
-              (setq msg (lspce--json-deserialize response))
-              (setq response-error (gethash "error" msg))
-              (if response-error
-                  (lspce--warn "LSP error %s" (gethash "message" response-error))
-                (setq response-data (gethash "result" msg)))
-              (setq trying nil)))
+              (when response
+                (setq trying nil)
+                (setq msg (lspce--json-deserialize response))
+                (setq response-error (gethash "error" msg))
+                (if response-error
+                    (lspce--warn "LSP error %s" (gethash "message" response-error))
+                  (setq response-data (gethash "result" msg))))))
         (lspce--debug "sit-for is interrupted.")
         (setq trying nil)))
     (lspce--log-perf "request-id %s, method %s, end-time %s" request-id method (float-time))
