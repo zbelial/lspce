@@ -58,7 +58,7 @@
   :type 'boolean)
 
 (defcustom lspce-auto-enable-capf-complete-extension nil
-  "If non-nil, automatically enable corfu extension.
+  "If non-nil, automatically enable capf extension.
 See `lspce-enable-capf-complete-extension' for more information."
   :group 'lspce
   :type 'boolean)
@@ -1204,23 +1204,6 @@ Doubles as an indicator of snippet support."
 ;; (advice-remove #'delete-region #'delete-region-advice)
 
 (defvar lspce--use-capf-complete-extension nil)
-(defvar lspce--capf-framework nil)
-(defun lspce--corfu-insert-advice (orig-func status &rest _args)
-  (pcase-let* ((completion-data completion-in-region--data)
-               (`(,beg ,end . ,_) completion-data)
-               (str (buffer-substring-no-properties beg end))
-               (complete-function (plist-get corfu--extra :complete-function)))
-    (if complete-function
-        (progn
-          (add-to-history 'corfu-history
-                          (substring-no-properties
-                           (nth corfu--index corfu--candidates))
-                          corfu-history-length)
-          (setq corfu-history--hash nil)
-          (funcall complete-function (nth corfu--index corfu--candidates))
-          (corfu--goto -1) ;; Reset selection, but continue completion.
-          (when status (corfu--done str status)))
-      (apply orig-func status _args))))
 
 (defun lspce--company--capf-complete-function (arg)
   (let* ((res company-capf--current-completion-data)
@@ -1244,35 +1227,17 @@ Doubles as an indicator of snippet support."
 (defun lspce-enable-capf-complete-extension ()
   (interactive)
   (cond
-   ((and (boundp #'global-corfu-mode)
-         (symbol-value 'global-corfu-mode))
-    (progn
-      (advice-add #'corfu--insert :around #'lspce--corfu-insert-advice)
-      (setq lspce--capf-framework 'corfu)
-      (setq lspce--use-capf-complete-extension t)
-      (lspce--info "capf complete extension enabled for corfu.")))
    ((and
      (boundp #'global-company-mode)
      (symbol-value 'global-company-mode))
     (progn
       (advice-add #'company-capf :around #'lspce--company-capf-advice)
       (advice-add #'company-finish :override #'lspce--company-finish)
-      (setq lspce--capf-framework 'company)
       (setq lspce--use-capf-complete-extension t)
       (lspce--info "capf complete extension enabled for company.")))
    (t
     (progn
-      (setq lspce--use-capf-complete-extension nil)
-      (setq lspce--capf-framework nil)))))
-
-(defun lspce--corfu-hook ()
-  (cond
-   ((and global-corfu-mode
-         lspce-auto-enable-capf-complete-extension
-         (not lspce--use-capf-complete-extension))
-    (call-interactively #'lspce-enable-capf-complete-extension))
-   ((unless global-corfu-mode)
-    (call-interactively #'lspce-disable-capf-complete-extension))))
+      (setq lspce--use-capf-complete-extension nil)))))
 
 (defun lspce--company-hook ()
   (cond
@@ -1286,20 +1251,13 @@ Doubles as an indicator of snippet support."
 (defun lspce-disable-capf-complete-extension ()
   (interactive)
   (when lspce--use-capf-complete-extension
-    (if (eq lspce--capf-framework 'corfu)
-        (progn
-          (advice-remove #'corfu--insert #'lspce--corfu-insert-advice))
-      (advice-remove #'company-capf #'lspce--company-capf-advice)
-      (advice-remove #'company-finish #'lspce--company-finish))
+    (advice-remove #'company-capf #'lspce--company-capf-advice)
+    (advice-remove #'company-finish #'lspce--company-finish)
     (setq lspce--use-capf-complete-extension nil)
-    (setq lspce--capf-framework nil)
     (lspce--info "capf complete extension disabled.")))
 
 (with-eval-after-load 'company
   (add-hook 'global-company-mode-hook #'lspce--company-hook))
-
-(with-eval-after-load 'corfu
-  (add-hook 'global-corfu-mode-hook #'lspce--corfu-hook))
 
 (when lspce-auto-enable-capf-complete-extension
   (call-interactively #'lspce-enable-capf-complete-extension))
