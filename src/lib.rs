@@ -231,28 +231,31 @@ impl LspServer {
                         // }
                     }
                     Message::Response(mut r) => {
+                        Logger::log(&format!("Response {}", &r.content));
                         let id = r.id.clone();
 
                         let mut server_data = server_data2.lock().unwrap();
                         let request_tick = server_data.request_ticks.get(&id);
                         if (request_tick.is_some()) {
                             let request_tick = request_tick.unwrap().clone();
+                            Logger::log(&format!("Request tick for id {} is {}", &id, &request_tick));
                             if (request_tick.eq(&server_data.latest_request_tick)) {
                                 r.request_tick = request_tick.clone();
                                 server_data.responses.push_back(r);
                             }
+                            Logger::log(&format!("Latest response id is {}", server_data.latest_response_id));
                             if server_data.latest_response_id.lt(&id) {
                                 server_data.latest_response_id = id.clone();
                                 server_data.latest_response_tick = request_tick.clone();
-                                Logger::log(&format!("Latest response tick for id {} is {}", &id, &request_tick));
+                                Logger::log(&format!("Latest response tick for id {} is {}", &server_data.latest_response_id, &request_tick));
                             }
 
                             server_data.request_ticks.remove(&id);
                         } else {
+                            Logger::log(&format!("No request tick for id {}", id));
                             if server_data.latest_response_id.lt(&id) {
                                 server_data.latest_response_id = id.clone();
                             }
-                            Logger::log(&format!("No request tick for id {}", id));
                         }
                     }
                     Message::Notification(r) => {
@@ -694,8 +697,6 @@ fn _request_async(server: &mut LspServer, req: Request) -> bool {
     let id = req.id.clone();
     let request_tick = req.request_tick.clone();
 
-    Logger::log(&format!("request {:#?}", &req));
-
     server.update_request_info(id.clone(), request_tick.clone());
 
     if method == "textDocument/didChange" || method == "textDocument/didClose"{
@@ -731,6 +732,7 @@ fn request_async(
             if server.status != SERVER_STATUS_RUNNING {
                 return Ok(None);
             }
+            Logger::log(&format!("request {}", &req));
 
             let msg = serde_json::from_str::<Request>(&req);
             if msg.is_err() {
@@ -810,7 +812,7 @@ fn read_response_exact(
     env: &Env,
     root_uri: String,
     file_type: String,
-    id: i32,
+    id: String,
     method: String,
 ) -> Result<Option<String>> {
     let req_id = RequestId::from(id);

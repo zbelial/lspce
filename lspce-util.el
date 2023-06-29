@@ -95,12 +95,10 @@
         (substring retval 1)
       retval)))
 
-(defvar lspce--jsonrpc-id 0)
+(defvar lspce--jsonrpc-id 1000000000)
 (defsubst lspce--next-jsonrpc-id ()
   (setq lspce--jsonrpc-id (1+ lspce--jsonrpc-id))
-  lspce--jsonrpc-id)
-(defsubst lspce--current-jsonrpc-id ()
-  lspce--jsonrpc-id)
+  (format "%d" lspce--jsonrpc-id))
 
 (defun lspce--ensure-dir (path)
   "Ensure that directory PATH exists."

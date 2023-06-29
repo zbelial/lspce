@@ -383,7 +383,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (request-tick (gethash request-id lspce--request-ticks))
         response-tick
         response code msg response-error response-data)
-    (lspce--debug "lspce--get-response for request-id %d" request-id)
+    (lspce--debug "lspce--get-response for request-id %s" request-id)
     (lspce--log-perf "request-id %s, method %s, start-time %s" request-id method start-time)
     (while (and trying
                 (or (null timeout)
@@ -397,7 +397,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
             (lspce--debug "response-tick %S" response-tick)
 
             (when (string-equal response-tick request-tick)
-              (lspce--debug "start to read response %d" request-id)
+              (lspce--debug "start to read response %s" request-id)
               (setq response (lspce-module-read-response-exact lspce--root-uri lspce--lsp-type request-id method))
               (lspce--debug "response %s" response)
 
