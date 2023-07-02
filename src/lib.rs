@@ -243,7 +243,7 @@ impl LspServer {
                                 r.request_tick = request_tick.clone();
                                 server_data.responses.push_back(r);
                             }
-                            Logger::log(&format!("Latest response id is {}", server_data.latest_response_id));
+                            Logger::log(&format!("Latest response id is {}, current response id {}", &server_data.latest_response_id, &id));
                             if server_data.latest_response_id.lt(&id) {
                                 server_data.latest_response_id = id.clone();
                                 server_data.latest_response_tick = request_tick.clone();
@@ -253,9 +253,9 @@ impl LspServer {
                             server_data.request_ticks.remove(&id);
                         } else {
                             Logger::log(&format!("No request tick for id {}", id));
-                            if server_data.latest_response_id.lt(&id) {
-                                server_data.latest_response_id = id.clone();
-                            }
+                            // if server_data.latest_response_id.lt(&id) {
+                            //     server_data.latest_response_id = id.clone();
+                            // }
                         }
                     }
                     Message::Notification(r) => {
@@ -695,9 +695,9 @@ fn server(env: &Env, root_uri: String, file_type: String) -> Result<Option<Strin
 fn _request_async(server: &mut LspServer, req: Request) -> bool {
     let method = req.method.clone();
     let id = req.id.clone();
-    let request_tick = req.request_tick.clone();
+    let request_tick = req.request_tick.clone().unwrap();
 
-    server.update_request_info(id.clone(), request_tick.clone());
+    server.update_request_info(id.clone(), request_tick);
 
     if method == "textDocument/didChange" || method == "textDocument/didClose"{
         let param = serde_json::from_value::<DidChangeTextDocumentParams>(req.params.clone());
@@ -740,6 +740,11 @@ fn request_async(
                 return Ok(None);
             }
             let msg = msg.unwrap();
+
+            if msg.request_tick.is_none() {
+                Logger::log(&format!("no request_tick is req {}", &req));
+                return Ok(None);
+            }
 
             if _request_async(server, msg) {
                 return Ok(Some(true));

@@ -11,11 +11,11 @@ use std::{
 use bytes::BytesMut;
 use crossbeam_channel::{bounded, Receiver, Sender};
 
-use crate::msg::{Response, RequestId, ErrorCode};
+use crate::logger::log_enabled;
+use crate::msg::{Message, Response, RequestId, ErrorCode};
 use crate::{
     connection::{NOTIFICATION_MAX, REQUEST_MAX},
     logger::Logger,
-    msg::Message,
 };
 
 /// Creates an LSP connection via stdio.
@@ -82,7 +82,20 @@ pub(crate) fn stdio_transport(
             match Message::read(&mut reader) {
                 Ok(m) => {
                     if let Some(msg) = m {
-                        Logger::log(&format!("stdio read {}", serde_json::to_string_pretty(&msg).unwrap_or("invalid json".to_string())));
+                        if log_enabled() {
+                            let msg_log = msg.clone();
+                            match msg_log {
+                                Message::Request(r) => {
+                                    Logger::log(&format!("stdio read request {}", &r.content))
+                                }
+                                Message::Response(r) => {
+                                    Logger::log(&format!("stdio read response {}", &r.content))
+                                }
+                                Message::Notification(r) => {
+                                    Logger::log(&format!("stdio read notification {}", &r.content))
+                                }
+                            }
+                        }
                         let r = sender_to_client.send(msg);
                         if r.is_err() {
                             Logger::log(&format!("stdio read error {}", r.err().unwrap()));

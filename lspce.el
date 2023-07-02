@@ -12,6 +12,7 @@
 (ignore-errors
   (require 'posframe-plus))
 (require 'markdown-mode)
+(require 'yasnippet)
 (require 'flymake)
 
 (require 'lspce-module)
@@ -1193,12 +1194,12 @@ Doubles as an indicator of snippet support."
                              start))))
     bounds-start))
 
-(defun delete-region-advice (start end)
-  (message "delete-region start %d - %S, end %d - %S"
-           start
-           (lspce--pos-to-lsp-position start)
-           (if (markerp end) (marker-position end) end)
-           (lspce--pos-to-lsp-position end)))
+;; (defun delete-region-advice (start end)
+;;   (message "delete-region start %d - %S, end %d - %S"
+;;            start
+;;            (lspce--pos-to-lsp-position start)
+;;            (if (markerp end) (marker-position end) end)
+;;            (lspce--pos-to-lsp-position end)))
 
 ;; (advice-add #'delete-region :before #'delete-region-advice)
 ;; (advice-remove #'delete-region #'delete-region-advice)
@@ -1953,8 +1954,8 @@ Doubles as an indicator of snippet support."
           (dolist (dc documentChanges)
             (setq kind (gethash "kind" dc))
             (if kind
-                (cl-pushnew (make-documentChange :kind kind :change dc) all-edits)
-              (cl-pushnew (make-documentChange :kind "documentChange" :change dc) all-edits))))
+                (cl-pushnew (make-lspce-documentChange :kind kind :change dc) all-edits)
+              (cl-pushnew (make-lspce-documentChange :kind "documentChange" :change dc) all-edits))))
       (when changes
         (let (change)
           (dolist (filename (hash-table-keys changes))
@@ -1962,7 +1963,7 @@ Doubles as an indicator of snippet support."
             (setq change (make-hash-table :test #'equal))
             (puthash "uri" filename change)
             (puthash "edits" edits change)
-            (cl-pushnew (make-documentChange :kind "change" :change change) all-edits)))))
+            (cl-pushnew (make-lspce-documentChange :kind "change" :change change) all-edits)))))
     (setq all-edits (reverse all-edits))
     (when confirm
       (if (length> all-edits 0)

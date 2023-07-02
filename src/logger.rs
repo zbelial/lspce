@@ -13,17 +13,17 @@ use std::{
 use chrono::Local;
 use lazy_static::lazy_static;
 
-pub static LOG_ENABLE: AtomicU8 = AtomicU8::new(1);
+pub static LOG_ENABLE: AtomicU8 = AtomicU8::new(0);
 
 lazy_static! {
     pub static ref LOG_FILE_NAME: Mutex<String> = Mutex::new(String::new());
 }
 
-fn log_enabled() -> bool {
+pub fn log_enabled() -> bool {
     LOG_ENABLE.load(Ordering::Relaxed) == 1
 }
 
-fn log_file_name() -> String {
+pub fn log_file_name() -> String {
     LOG_FILE_NAME.lock().unwrap().clone()
 }
 

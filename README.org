@@ -7,8 +7,6 @@
 * Introduction
   LSPCE - LSP Client for Emacs, is a simple lsp client that is implemented as an Emacs module.
 
-  CAUTION: This package is still in *beta* stage, and I've just tested it with Emacs 28 running in Linux.
-
   It does not want to be a full-featured lsp client. The features it supports are:
   - find definitions/references/implementatoins (as a xref backend)
   - completion (as a capf function)
@@ -37,44 +35,57 @@
   Display signature and hover at the same time.
   [[file:images/eldoc.png]]
   
+* CAUTION
+  I think that lspce is a good shape now, but bugs are expected.
+
+  I develop, test and run lspce with Emacs 28.2 on Linux (manjaro), and since I don't have any Windows and MacOS computer, lspce may not work as expected. But @fast-90 tested it with pylsp on MacOS and found that it worked almost (except could not recognize virual env).
+  
+* Dependencies
+  Lspce depends on [[https://github.com/rejeep/f.el][f.el]], [[https://github.com/joaotavora/yasnippet][yasnippet]] and [[https://github.com/jrblevin/markdown-mode][markdown-mode]]. You should install them first. 
 
 * Installation
   At the moment, you can only install LSPCE by cloning this repo and compile rust code manually.
 ** Installing from the Git Repository
-   Before installing LSPCE, you should install rust and cargo.
+   Before installing LSPCE, you should install rust and cargo first.
    #+BEGIN_SRC bash
      $ git clone https://github.com/zbelial/lspce.git ~/.emacs.d/site-lisp/lspce
      $ cd ~/.emacs.d/site-lisp/lspce
      $ cargo build
      # or, to build a release version
      $ cargo build --release
-     # then you can rename the .so file (and copy it to another directory )
+     # then you should rename the .so file (and copy it to another directory )
      $ mv target/debug/liblspce_module.so lspce-module.so 
+     # or alternatively, if .d and .dylib files are created for you: (thanks @fast-90 for this)
+     $ mv target/debug/liblspce_module.d lspce-module.d
+     $ mv target/debug/liblspce_module.dylib lspce-module.dylib
    #+END_SRC
 
-   Or (if you use Linux) you can download a .so file I compiled on a Manjaro with rust 1.61.0.
-
 * Get started
-  You need to install [[https://github.com/rejeep/f.el][f.el]] and [[https://github.com/joaotavora/yasnippet][yasnippet]] .
   #+BEGIN_SRC elisp
     (use-package lspce
-      :load-path "/path/to/lspce/lisp"
+      :load-path "/path/to/lspce"
       :config (progn
                 (setq lspce-send-changes-idle-time 1)
 
-                ;; log file
+                ;; You should call this first if you want lspce to write logs
                 (lspce-set-log-file "/tmp/lspce.log")
 
-                ;; By default, lspce will write log to what `lspce-set-log-file' sets.
-                ;; To disable logging, use 
-                ;; (lspce-disable-logging)
-                ;; You can enable logging on the fly by calling `lspce-enable-logging'
+                ;; By default, lspce will not write log out to anywhere. 
+                ;; To enable logging, you can add the following line
+                ;; (lspce-enable-logging)
+                ;; You can enable/disable logging on the fly by calling `lspce-enable-logging' or `lspce-disable-logging'.
 
                 ;; enable lspce in particular buffers
                 ;; (add-hook 'rust-mode-hook 'lspce-mode)
 
                 ;; modify `lspce-server-programs' to add or change a lsp server, see document
                 ;; of `lspce-lsp-type-function' to understand how to get buffer's lsp type.
+                ;; Bellow is what I use
+                (setq lspce-server-programs `(("rust"  "rust-analyzer" "" lspce-ra-initializationOptions)
+                                              ("python" "pylsp" "" )
+                                              ("C" "clangd" "--all-scopes-completion --clang-tidy --enable-config --header-insertion-decorators=0")
+                                              ("java" "java" lspce-jdtls-cmd-args lspce-jdtls-initializationOptions)
+                                              ))
                 )
       )
   #+END_SRC
@@ -101,6 +112,53 @@
   - after editing pom.xml, jdt.ls cannot automatically update configuration(e.g. cannot find class from the new added jar)
   - ...
 
+* Lspce vs Eglot/lsp-mode/lsp-bridge
+
+** lspce vs eglot
+*** pros
+    - lspce has less chance to block user input or freeze Emacs
+    - lspce supports multiple servers in a single project
+      For projects containing, for example python files and rust files, lspce can start a pylsp server and a rust-analyzer server respectively.
+      IIRC, eglot does not support this. Corret me if I'm wrong.
+    - lspce's code is easier to understand for elisp newbies like me.
+      Lspce does use cl-loop, pcase-xxx etc, which I think is not easy to understand.
+
+*** cons
+    - lspce supports a smaller set of LSP features
+    - lspce has only been tested with several lsp servers
+      Eglot supports much more lsp servers than lspce
+    - lower code quality
+      I've heard several times that eglot has high code quality.
+    - lspce does not support tramp
+
+** lspce vs lsp-mode
+*** pros
+    - lspce has less chance to block user input or freeze Emacs
+    - lspce's code is easier to understand for elisp newbies like me.
+      I tried to understand lsp-mode's code but I failed. I really think lsp-mode's code is hard to understand, but I'm absolutely not an elisp export at all.
+
+*** cons
+    - lspce supports a much smaller set of LSP features
+    - lspce has only been tested with several lsp servers
+      lsp-mode supports much more lsp servers than lspce
+    - lspce does not support running multiple servers in a single buffer
+    - lspce does not support dap
+
+** lspce vs lsp-bridge
+*** pros
+    - lspce is compatible with xre/capf/imenu etc.
+
+*** cons
+    - lspce support a smaller set of LSP features
+    - In theory, lspce is slower than lsp-bridge
+    - lspce does not support running multiple servers in a single buffer
+    - lsp-bridge has built-in remote editing support
+    - lsp-bridge provides other completing backends
+
+
+* License
+  GPLv3
+  
 * Acknowledgements
   Thanks to [[https://github.com/ubolonton/emacs-module-rs][emacs-module-rs]], which makes implementing LSPCE possible.
 

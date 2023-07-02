@@ -80,7 +80,7 @@ pub struct Request {
     pub params: serde_json::Value,
     #[serde(skip)]
     pub content: String,
-    pub request_tick: String,
+    pub request_tick: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -166,7 +166,8 @@ impl Message {
             None => return Ok(None),
             Some(text) => text,
         };
-        let msg = serde_json::from_str(&text)?;
+        Logger::log(&format!("Message::_read {}", &text));
+        let msg = serde_json::from_str::<Message>(&text)?;
         match msg {
             Message::Request(mut r) => {
                 r.content = text;
@@ -196,6 +197,7 @@ impl Message {
             jsonrpc: "2.0",
             msg: self,
         })?;
+        Logger::log(&format!("Message::_write {}", &text));
         write_msg_text(w, &text)
     }
 }
@@ -233,7 +235,7 @@ impl Request {
             method,
             params: serde_json::to_value(params).unwrap(),
             content: "".to_string(),
-            request_tick: "".to_string(),
+            request_tick: None,
         }
     }
     pub fn extract<P: DeserializeOwned>(
