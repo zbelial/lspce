@@ -121,7 +121,7 @@
       For projects containing, for example python files and rust files, lspce can start a pylsp server and a rust-analyzer server respectively.
       IIRC, eglot does not support this. Corret me if I'm wrong.
     - lspce's code is easier to understand for elisp newbies like me.
-      Lspce does use cl-loop, pcase-xxx etc, which I think is not easy to understand.
+      Lspce does not use cl-loop, pcase-xxx etc, which I think is not easy to understand.
 
 *** cons
     - lspce supports a smaller set of LSP features
