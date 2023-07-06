@@ -1970,8 +1970,8 @@ Doubles as an indicator of snippet support."
           (unless (y-or-n-p
                    (format "[lspce] Server wants to:\n %s\n Proceed? "
                            (mapconcat #'identity (mapcar (lambda (edit)
-                                                           (let ((kind (documentChange-kind edit))
-                                                                 (change (documentChange-change edit))
+                                                           (let ((kind (lspce-documentChange-kind edit))
+                                                                 (change (lspce-documentChange-change edit))
                                                                  uri new-uri)
                                                              (cond
                                                               ((equal kind "change")
@@ -1996,8 +1996,8 @@ Doubles as an indicator of snippet support."
             kind
             textDocument filename edits version)
         (dolist (aedits all-edits)
-          (setq change (documentChange-change aedits))
-          (setq kind (documentChange-kind aedits))
+          (setq change (lspce-documentChange-change aedits))
+          (setq kind (lspce-documentChange-kind aedits))
           (cond
            ((equal kind "change")
             (setq filename (lspce--uri-to-path (gethash "uri" change))
