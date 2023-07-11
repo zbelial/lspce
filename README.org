@@ -1,6 +1,6 @@
 #+TITLE: LSPCE
 #+AUTHOR: zbelial
-#+EMAIL: zjyzhaojiyang1@gmail.com
+#+EMAIL: zjyzhaojiyang@gmail.com
 #+DATE: 2022
 #+LANGUAGE: en
 
