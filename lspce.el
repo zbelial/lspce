@@ -21,6 +21,7 @@
 (require 'lspce-types)
 (require 'lspce-langs)
 (require 'lspce-structs)
+(require 'lspce-snippet)
 
 ;;; User tweakable stuff
 (defgroup lspce nil
@@ -1146,7 +1147,7 @@ When the completion is incomplete, `items' contains value of :incomplete.")
 Doubles as an indicator of snippet support."
   (and (boundp 'yas-minor-mode)
        (symbol-value 'yas-minor-mode)
-       'lspce--yas-expand-snippet))
+       'lspce--expand-snippet))
 
 (defun lspce--completion-resolve (item)
   (when (and (lspce--server-capable-chain "completionProvider" "resolveProvider")
