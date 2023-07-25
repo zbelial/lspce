@@ -231,7 +231,7 @@ impl LspServer {
                         // }
                     }
                     Message::Response(mut r) => {
-                        Logger::log(&format!("Response {}", &r.content));
+                        // Logger::log(&format!("Response {}", &r.content));
                         let id = r.id.clone();
 
                         let mut server_data = server_data2.lock().unwrap();
@@ -247,7 +247,7 @@ impl LspServer {
                             if server_data.latest_response_id.lt(&id) {
                                 server_data.latest_response_id = id.clone();
                                 server_data.latest_response_tick = request_tick.clone();
-                                Logger::log(&format!("Latest response tick for id {} is {}", &server_data.latest_response_id, &request_tick));
+                                Logger::log(&format!("Change Latest response tick for id {} to {}", &server_data.latest_response_id, &request_tick));
                             }
 
                             server_data.request_ticks.remove(&id);
@@ -281,7 +281,7 @@ impl LspServer {
                     }
                 }
             } else {
-                thread::sleep(std::time::Duration::from_millis(10));
+                thread::sleep(std::time::Duration::from_millis(1));
             }
         });
 
@@ -581,7 +581,7 @@ fn initialize(
                 }
             }
             None => {
-                thread::sleep(std::time::Duration::from_millis(100));
+                thread::sleep(std::time::Duration::from_millis(10));
             }
         }
         if timeout > 0
@@ -646,7 +646,7 @@ fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Resu
                         }
                     }
                     None => {
-                        thread::sleep(std::time::Duration::from_millis(100));
+                        thread::sleep(std::time::Duration::from_millis(10));
                     }
                 }
 

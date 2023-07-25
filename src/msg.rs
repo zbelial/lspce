@@ -166,7 +166,7 @@ impl Message {
             None => return Ok(None),
             Some(text) => text,
         };
-        Logger::log(&format!("Message::_read {}", &text));
+        // Logger::log(&format!("Message::_read {}", &text));
         let msg = serde_json::from_str::<Message>(&text)?;
         match msg {
             Message::Request(mut r) => {
@@ -197,7 +197,7 @@ impl Message {
             jsonrpc: "2.0",
             msg: self,
         })?;
-        Logger::log(&format!("Message::_write {}", &text));
+        // Logger::log(&format!("Message::_write {}", &text));
         write_msg_text(w, &text)
     }
 }
@@ -385,7 +385,7 @@ mod tests {
             method: "shutdown".into(),
             params: serde_json::Value::Null,
             content: "".to_string(),
-            request_tick: "".to_string(),
+            request_tick: Some("".to_string()),
         });
         let serialized = serde_json::to_string(&msg).unwrap();
 

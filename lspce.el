@@ -148,11 +148,11 @@ current buffer is set to the buffer being edited."
 
 
 ;;; Variables and custom
-(defvar lspce-server-programs `(("rust"  "rust-analyzer" "" lspce-ra-initializationOptions)
-                                ("python" "pyright-langserver" "--stdio" lspce-pyright-initializationOptions)
+(defvar lspce-server-programs `(("rust"  "rust-analyzer" "")
+                                ("python" "pyright-langserver" "--stdio")
                                 ("C" "clangd" "")
                                 ("sh" "bash-language-server" "start")
-                                ("go" "gopls" "" lspce-gopls-initializationOptions)
+                                ("go" "gopls" "")
                                 ("typescript" "typescript-language-server" "--stdio")
                                 ("js" "typescript-language-server" "--stdio"))
   "How the command `lspce' gets the server to start.
@@ -1205,65 +1205,6 @@ Doubles as an indicator of snippet support."
 ;; (advice-add #'delete-region :before #'delete-region-advice)
 ;; (advice-remove #'delete-region #'delete-region-advice)
 
-(defvar lspce--use-capf-complete-extension nil)
-
-(defun lspce--company--capf-complete-function (arg)
-  (let* ((res company-capf--current-completion-data)
-         (complete-function (plist-get (nthcdr 4 res) :complete-function))
-         (table (nth 3 res)))
-    (if complete-function
-        ;; We can more or less know when the user is done with completion,
-        ;; so we do something different than `completion--done'.
-        (funcall complete-function arg))))
-
-(defun lspce--company-capf-advice (orig-func command &optional arg &rest _args)
-  (if (eq command 'complete-function)
-      (lspce--company--capf-complete-function arg)
-    (apply orig-func command arg _args)))
-
-(defun lspce--company-finish (result)
-  (when (not (company-call-backend 'complete-function result))
-    (company--insert-candidate result))
-  (company-cancel result))
-
-(defun lspce-enable-capf-complete-extension ()
-  (interactive)
-  (cond
-   ((and
-     (boundp #'global-company-mode)
-     (symbol-value 'global-company-mode))
-    (progn
-      (advice-add #'company-capf :around #'lspce--company-capf-advice)
-      (advice-add #'company-finish :override #'lspce--company-finish)
-      (setq lspce--use-capf-complete-extension t)
-      (lspce--info "capf complete extension enabled for company.")))
-   (t
-    (progn
-      (setq lspce--use-capf-complete-extension nil)))))
-
-(defun lspce--company-hook ()
-  (cond
-   ((and global-company-mode
-         lspce-auto-enable-capf-complete-extension
-         (not lspce--use-capf-complete-extension))
-    (call-interactively #'lspce-enable-capf-complete-extension))
-   ((unless global-company-mode)
-    (call-interactively #'lspce-disable-capf-complete-extension))))
-
-(defun lspce-disable-capf-complete-extension ()
-  (interactive)
-  (when lspce--use-capf-complete-extension
-    (advice-remove #'company-capf #'lspce--company-capf-advice)
-    (advice-remove #'company-finish #'lspce--company-finish)
-    (setq lspce--use-capf-complete-extension nil)
-    (lspce--info "capf complete extension disabled.")))
-
-(with-eval-after-load 'company
-  (add-hook 'global-company-mode-hook #'lspce--company-hook))
-
-(when lspce-auto-enable-capf-complete-extension
-  (call-interactively #'lspce-enable-capf-complete-extension))
-
 (defun lspce-completion-at-point()
   (when-let (completion-capability (lspce--server-capable "completionProvider"))
     (let* ((trigger-chars (lspce--server-capable-chain "completionProvider"
@@ -1365,11 +1306,9 @@ Doubles as an indicator of snippet support."
              nil)
             ((null action)                                 ; try-completion
              (setq collection (funcall proxies))
-             (lspce--log-perf "after proxies in try-completion %s" (float-time))
              (try-completion probe collection))
             ((eq action t)                                 ; all-completions
              (setq collection (funcall proxies))
-             (lspce--log-perf "after proxies in all-completions %s" (float-time))
              (all-completions
               probe
               collection
@@ -1426,73 +1365,13 @@ Doubles as an indicator of snippet support."
             (regexp-opt
              (cl-coerce (gethash "triggerCharacters" completion-capability) 'list))
             (line-beginning-position))))
-       :complete-function
-       (lambda (proxy)
-         (with-current-buffer (if (minibufferp)
-                                  (window-buffer (minibuffer-selected-window))
-                                (current-buffer))
-           (setq-local lspce--completion-complete? nil)
-           (lspce--log-perf "complete-function before completing %s" (float-time))
-           (let* ((proxy (if (plist-member (text-properties-at 0 proxy) 'lspce--lsp-item)
-                             proxy
-                           (cl-find proxy (funcall proxies) :test #'equal)))
-                  (lsp-item (funcall resolve-maybe (get-text-property 0 'lspce--lsp-item proxy)))
-                  (lsp-markers (get-text-property 0 'lspce--lsp-markers proxy))
-                  (lsp-prefix (get-text-property 0 'lspce--lsp-prefix proxy))
-                  (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
-                  (insertText (gethash "insertText" lsp-item))
-                  (textEdit (gethash "textEdit" lsp-item))
-                  (additionalTextEdits (gethash "additionalTextEdits" lsp-item))
-                  (snippet-fn (and (eql insertTextFormat 2)
-                                   (lspce--snippet-expansion-fn))))
-             (lspce--debug "lsp-item %S" (json-encode lsp-item))
-             (cond (textEdit
-                    (let ((range (gethash "range" textEdit))
-                          (newText (gethash "newText" textEdit))
-                          (old-text (apply #'buffer-substring-no-properties lsp-markers)))
-                      (if (string-prefix-p old-text newText)
-                          (progn
-                            (lspce--log-perf "complete-function before insert newText0(%s) %s" newText (float-time))
-                            (funcall (or snippet-fn #'insert) (substring newText (length old-text)))
-                            (lspce--log-perf "complete-function after insert newText0(%s) %s" newText (float-time)))
-                        (progn
-                          (lspce--log-perf "complete-function before delete-region1(%s) %s" old-text (float-time))
-                          (apply #'delete-region lsp-markers)
-                          (lspce--log-perf "complete-function after delete-region1 %s" (float-time))
-                          (goto-char (nth 0 lsp-markers))
-                          (funcall (or snippet-fn #'insert) newText)
-                          (lspce--log-perf "complete-function after insert newText1(%s) %s" newText (float-time)))))
-                    (when (cl-plusp (length additionalTextEdits))
-                      (lspce--apply-text-edits additionalTextEdits)))
-                   (snippet-fn
-                    ;; A snippet should be inserted, but using plain
-                    ;; `insertText'.  This requires us to delete the
-                    ;; whole completion, since `insertText' is the full
-                    ;; completion's text.
-                    (let ((newText (or insertText label))
-                          (old-text (apply #'buffer-substring-no-properties (- (point) (length proxy)) (point))))
-                      (if (string-prefix-p old-text newText)
-                          (progn
-                            (lspce--log-perf "complete-function before insert newText2(%s) %s" newText (float-time))
-                            (funcall snippet-fn (substring newText (length old-text)))
-                            (lspce--log-perf "complete-function before insert newText2(%s) %s" newText (float-time)))
-                        (lspce--log-perf "complete-function before delete-region3 %s" (float-time))
-                        (delete-region (- (point) (length proxy)) (point))
-                        (lspce--log-perf "complete-function before delete-region3 %s" (float-time))
-                        (funcall snippet-fn (or insertText label))
-                        (lspce--log-perf "complete-function after insert newText3(%s) %s" newText (float-time)))))))
-           (lspce--notify-textDocument/didChange))
-         ;; return t to ensure `lspce--company-finish' works properly.
-         t)
        :exit-function
        (lambda (proxy status)
-         (when (and (memq status '(finished exact))
-                    (not lspce--use-capf-complete-extension))
+         (when (memq status '(finished exact))
            (with-current-buffer (if (minibufferp)
                                     (window-buffer (minibuffer-selected-window))
                                   (current-buffer))
              (setq-local lspce--completion-complete? nil)
-             (lspce--log-perf "exit-function before completing %s" (float-time))
              (let* ((proxy (if (plist-member (text-properties-at 0 proxy) 'lspce--lsp-item)
                                proxy
                              (cl-find proxy (funcall proxies) :test #'equal)))
@@ -1512,16 +1391,11 @@ Doubles as an indicator of snippet support."
                             (old-text (apply #'buffer-substring-no-properties lsp-markers)))
                         (if (string-prefix-p old-text newText)
                             (progn
-                              (lspce--log-perf "exit-function before insert newText0(%s) %s" newText (float-time))
-                              (funcall (or snippet-fn #'insert) (substring newText (length old-text)))
-                              (lspce--log-perf "exit-function after insert newText0(%s) %s" newText (float-time)))
+                              (funcall (or snippet-fn #'insert) (substring newText (length old-text))))
                           (progn
-                            (lspce--log-perf "exit-function before delete-region1(%s) %s" old-text (float-time))
                             (apply #'delete-region lsp-markers)
-                            (lspce--log-perf "exit-function after delete-region1 %s" (float-time))
                             (goto-char (nth 0 lsp-markers))
-                            (funcall (or snippet-fn #'insert) newText)
-                            (lspce--log-perf "exit-function after insert newText1(%s) %s" newText (float-time)))))
+                            (funcall (or snippet-fn #'insert) newText))))
                       (when (cl-plusp (length additionalTextEdits))
                         (lspce--apply-text-edits additionalTextEdits)))
                      (snippet-fn
@@ -1533,14 +1407,9 @@ Doubles as an indicator of snippet support."
                             (old-text (apply #'buffer-substring-no-properties (- (point) (length proxy)) (point))))
                         (if (string-prefix-p old-text newText)
                             (progn
-                              (lspce--log-perf "exit-function before insert newText2(%s) %s" newText (float-time))
-                              (funcall snippet-fn (substring newText (length old-text)))
-                              (lspce--log-perf "exit-function before insert newText2(%s) %s" newText (float-time)))
-                          (lspce--log-perf "exit-function before delete-region3 %s" (float-time))
+                              (funcall snippet-fn (substring newText (length old-text))))
                           (delete-region (- (point) (length proxy)) (point))
-                          (lspce--log-perf "exit-function before delete-region3 %s" (float-time))
-                          (funcall snippet-fn (or insertText label))
-                          (lspce--log-perf "exit-function after insert newText3(%s) %s" newText (float-time)))))))
+                          (funcall snippet-fn (or insertText label)))))))
              (lspce--notify-textDocument/didChange))))))))
 
 ;;; hover

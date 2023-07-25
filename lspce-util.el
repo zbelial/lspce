@@ -4,7 +4,7 @@
   (require 'cl-macs))
 (require 'yasnippet)
 
-(defconst LSPCE-VERSION "0.3")
+(defconst LSPCE-VERSION "1.1.0")
 (defconst LSPCE-NAME "lspce")
 
 (defconst LSPCE-LOG-ERROR 4)
