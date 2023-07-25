@@ -1380,6 +1380,7 @@ Doubles as an indicator of snippet support."
                     (lsp-prefix (get-text-property 0 'lspce--lsp-prefix proxy))
                     (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
                     (insertText (gethash "insertText" lsp-item))
+                    (label (gethash "label" lsp-item))
                     (textEdit (gethash "textEdit" lsp-item))
                     (additionalTextEdits (gethash "additionalTextEdits" lsp-item))
                     (snippet-fn (and (eql insertTextFormat 2)
@@ -1403,12 +1404,13 @@ Doubles as an indicator of snippet support."
                       ;; `insertText'.  This requires us to delete the
                       ;; whole completion, since `insertText' is the full
                       ;; completion's text.
-                      (let ((newText (or insertText label))
-                            (old-text (apply #'buffer-substring-no-properties (- (point) (length proxy)) (point))))
+                      (let* ((newText (or insertText label))
+                             (start-pos (1+ (- (point) (length proxy))))
+                             (old-text (buffer-substring-no-properties start-pos (point))))
                         (if (string-prefix-p old-text newText)
                             (progn
                               (funcall snippet-fn (substring newText (length old-text))))
-                          (delete-region (- (point) (length proxy)) (point))
+                          (delete-region start-pos (point))
                           (funcall snippet-fn (or insertText label)))))))
              (lspce--notify-textDocument/didChange))))))))
 

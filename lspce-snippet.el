@@ -30,16 +30,16 @@ for normal snippets)."
           (setq snippet
                 (yas--snippet-create content expand-env start (point))))
 
-        ;; ;; Stacked-expansion: This checks for stacked expansion, save the
-        ;; ;; `yas--previous-active-field' and advance its boundary.
-        ;; (let ((existing-field (and yas--active-field-overlay
-        ;;                            (overlay-buffer yas--active-field-overlay)
-        ;;                            (overlay-get yas--active-field-overlay 'yas--field))))
-        ;;   (when existing-field
-        ;;     (setf (yas--snippet-previous-active-field snippet) existing-field)
-        ;;     (yas--advance-end-maybe-previous-fields
-        ;;      existing-field (overlay-end yas--active-field-overlay)
-        ;;      (cdr yas--active-snippets))))
+        ;; Stacked-expansion: This checks for stacked expansion, save the
+        ;; `yas--previous-active-field' and advance its boundary.
+        (let ((existing-field (and yas--active-field-overlay
+                                   (overlay-buffer yas--active-field-overlay)
+                                   (overlay-get yas--active-field-overlay 'yas--field))))
+          (when existing-field
+            (setf (yas--snippet-previous-active-field snippet) existing-field)
+            (yas--advance-end-maybe-previous-fields
+             existing-field (overlay-end yas--active-field-overlay)
+             (cdr yas--active-snippets))))
 
         ;; Exit the snippet immediately if no fields.
         (unless (yas--snippet-fields snippet)
