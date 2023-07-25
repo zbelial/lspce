@@ -151,6 +151,7 @@ current buffer is set to the buffer being edited."
 (defvar lspce-server-programs `(("rust"  "rust-analyzer" "")
                                 ("python" "pyright-langserver" "--stdio")
                                 ("C" "clangd" "")
+                                ("java" ,lspce-java-path lspce-jdtls-cmd-args)
                                 ("sh" "bash-language-server" "start")
                                 ("go" "gopls" "")
                                 ("typescript" "typescript-language-server" "--stdio")
@@ -1205,6 +1206,7 @@ Doubles as an indicator of snippet support."
 ;; (advice-add #'delete-region :before #'delete-region-advice)
 ;; (advice-remove #'delete-region #'delete-region-advice)
 
+(defvar lspce--enable-capf-extension nil)
 (defun lspce-completion-at-point()
   (when-let (completion-capability (lspce--server-capable "completionProvider"))
     (let* ((trigger-chars (lspce--server-capable-chain "completionProvider"
@@ -1365,6 +1367,9 @@ Doubles as an indicator of snippet support."
             (regexp-opt
              (cl-coerce (gethash "triggerCharacters" completion-capability) 'list))
             (line-beginning-position))))
+       :complete-function
+       (lambda (proxy)
+         lspce--enable-capf-extension)
        :exit-function
        (lambda (proxy status)
          (when (memq status '(finished exact))
@@ -1401,17 +1406,28 @@ Doubles as an indicator of snippet support."
                         (lspce--apply-text-edits additionalTextEdits)))
                      (snippet-fn
                       ;; A snippet should be inserted, but using plain
-                      ;; `insertText'.  This requires us to delete the
-                      ;; whole completion, since `insertText' is the full
+                      ;; `insertText' or `label'.  This requires us to delete the
+                      ;; whole completion, since `insertText' or `label' is the full
                       ;; completion's text.
                       (let* ((newText (or insertText label))
-                             (start-pos (1+ (- (point) (length proxy))))
-                             (old-text (buffer-substring-no-properties start-pos (point))))
+                             (old-text (apply #'buffer-substring-no-properties lsp-markers)))
                         (if (string-prefix-p old-text newText)
                             (progn
                               (funcall snippet-fn (substring newText (length old-text))))
-                          (delete-region start-pos (point))
-                          (funcall snippet-fn (or insertText label)))))))
+                          (apply #'delete-region lsp-markers)
+                          (funcall snippet-fn (or insertText label)))))
+                     ((or insertText label)
+                      ;; Insert `label' or `insertText'.  This requires us to delete the
+                      ;; whole completion, since `label' or `insertText' is the full
+                      ;; completion's text.
+                      (let* ((newText (or insertText label))
+                             (old-text (apply #'buffer-substring-no-properties lsp-markers)))
+                        (message "old-text %s, newText %s" old-text newText)
+                        (if (string-prefix-p old-text newText)
+                            (progn
+                              (insert (substring newText (length old-text))))
+                          (apply #'delete-region lsp-markers)
+                          (insert (or insertText label)))))))
              (lspce--notify-textDocument/didChange))))))))
 
 ;;; hover
