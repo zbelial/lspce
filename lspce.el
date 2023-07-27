@@ -321,6 +321,13 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defun lspce--lsp-type ()
   (funcall lspce-lsp-type-function))
 
+(defun lspce--project-root ()
+  (let ((proj (project-current))
+        proj-root)
+    (setq proj-root (when proj
+                      (project-root proj)))
+    (expand-file-name proj-root)))
+
 (defun lspce--uri ()
   (lspce--path-to-uri (buffer-file-name)))
 
@@ -489,6 +496,36 @@ be set to `lspce-move-to-lsp-abiding-column', and
 ;;                                          (member lsp-type types)))))
 ;;                             lspce-server-programs)))))
 
+(defvar-local lspce-workspace-configuration ()
+  "Configure LSP servers specifically for a given project.
+
+This variable's value should be a plist (SECTION VALUE ...).
+SECTION is a keyword naming a parameter section relevant to a
+particular server.  VALUE is a plist or a primitive type
+converted to JSON also understood by that server.
+
+Here's an example value that establishes two sections relevant to
+the Pylsp and Gopls LSP servers:
+
+  (:pylsp (:plugins (:jedi_completion (:include_params t
+                                       :fuzzy t)
+                     :pylint (:enabled :json-false)))
+   :gopls (:usePlaceholders t))
+
+")
+
+;;;###autoload
+(put 'lspce-workspace-configuration 'safe-local-variable 'listp)
+
+(defun lspce--workspace-configuration-plist (&optional current-buffer)
+  "Returns workspace configuration of current server as a plist."
+  (with-current-buffer (or current-buffer (current-buffer))
+    lspce-workspace-configuration))
+
+(defun lspce--notify-workspace/didChangeConfiguration (configuration)
+  (lspce--notify
+   "workspace/didChangeConfiguration" (list :settings (or configuration lspce--{}))))
+
 ;; 返回server info.
 (cl-defun lspce--connect ()
   (let ((root-uri lspce--root-uri)
@@ -537,6 +574,10 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (setq lspce--latest-tick (lspce--current-tick))
     (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params lspce--latest-tick)) lspce-connect-server-timeout))
     (lspce--debug "lspce--connect response: %s" response-str)
+
+    (when response-str
+      (let ((configuration (lspce--workspace-configuration-plist (current-buffer))))
+        (lspce--notify-workspace/didChangeConfiguration configuration)))
 
     response-str))
 
@@ -590,6 +631,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
 (defvar-local lspce--lsp-type nil)
 (defvar-local lspce--server-info nil)
 (defvar-local lspce--server-capabilities nil)
+(defvar-local lspce--project-root nil)
 
 (defvar lspce-mode-map (make-sparse-keymap))
 
@@ -1422,7 +1464,6 @@ Doubles as an indicator of snippet support."
                       ;; completion's text.
                       (let* ((newText (or insertText label))
                              (old-text (apply #'buffer-substring-no-properties lsp-markers)))
-                        (message "old-text %s, newText %s" old-text newText)
                         (if (string-prefix-p old-text newText)
                             (progn
                               (insert (substring newText (length old-text))))

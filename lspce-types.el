@@ -42,6 +42,8 @@
                :workspaceEdit (list
                                :documentChanges t
                                :resourceOperations (vector "create" "rename" "delete"))
+               :didChangeConfiguration (list
+                                        :dynamicRegistration :json-false)
                :symbol (list
                         :dynamicRegistration :json-false)
                :configuration :json-false
