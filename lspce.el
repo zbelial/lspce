@@ -267,6 +267,11 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defun lspce--make-range (start end)
   (list :start (lspce--make-position start) :end (lspce--make-position end)))
 
+(defun lspce--make-declarationParams ()
+  (lspce--declarationParams
+   (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
+   (lspce--make-position)))
+
 (defun lspce--make-definitionParams (&optional context)
   (lspce--definitionParams
    (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
@@ -1043,6 +1048,7 @@ If optional MARKERS, make markers."
   (propertize (or (thing-at-point 'symbol) "")
               'identifier-at-point t))
 
+;; FIXME check server capability: definitionProvider
 (cl-defmethod xref-backend-definitions ((_backend (eql xref-lspce)) identifier)
   (save-excursion
     (let* ((method "textDocument/definition")
@@ -1053,6 +1059,7 @@ If optional MARKERS, make markers."
 ;; NOTE if you use `ivy-xref-show-xrefs' as the `xref-show-xrefs-function',
 ;; you will find `xref-backend-references' is called twice.
 ;; See https://github.com/alexmurray/ivy-xref/issues/2
+;; FIXME check server capability: referencesProvider
 (cl-defmethod xref-backend-references ((_backend (eql xref-lspce)) identifier)
   (save-excursion
     (let* ((method "textDocument/references")
@@ -1080,6 +1087,7 @@ To create an xref object, call `xref-make'.")
 
   )
 
+;; FIXME check server capability: implementationProvider
 (cl-defmethod xref-backend-implementations ((_backend (eql xref-lspce)) identifier)
   (save-excursion
     (let* ((method "textDocument/implementation")
@@ -1098,6 +1106,7 @@ is nil, prompt only if there's no usable symbol at point."
   (interactive (list (xref--read-identifier "Find implementations of: ")))
   (xref--find-xrefs identifier 'implementations identifier nil))
 
+;; type definition
 (when (not (fboundp 'xref-backend-type-definition))
   (cl-defgeneric xref-backend-type-definition (backend identifier)
     "Find type definition of IDENTIFIER.
@@ -1113,6 +1122,7 @@ IDENTIFIER can be any string returned by
 To create an xref object, call `xref-make'.")
   )
 
+;; FIXME check server capability: typeDefinitionProvider
 (cl-defmethod xref-backend-type-definition ((_backend (eql xref-lspce)) identifier)
   (save-excursion
     (let* ((method "textDocument/typeDefinition")
@@ -1131,6 +1141,43 @@ is nil, prompt only if there's no usable symbol at point."
   (interactive (list (xref--read-identifier "Find Type Definition of: ")))
   (xref--show-defs
    (xref--create-fetcher identifier 'type-definition identifier)
+   nil))
+
+;; declaration
+(when (not (fboundp 'xref-backend-declaration))
+  (cl-defgeneric xref-backend-declaration (backend identifier)
+    "Find declaration of IDENTIFIER.
+
+The result must be a list of xref objects. If there are multiple possible
+implementations, return all of them.  If no implementations can be found,
+return nil.
+
+IDENTIFIER can be any string returned by
+`xref-backend-identifier-at-point', or from the table returned by
+`xref-backend-identifier-completion-table'.
+
+To create an xref object, call `xref-make'.")
+  )
+
+;; FIXME check server capability: typeDefinitionProvider
+(cl-defmethod xref-backend-declaration ((_backend (eql xref-lspce)) identifier)
+  (save-excursion
+    (let* ((method "textDocument/declaration")
+           (response (lspce--request method (lspce--make-declarationParams))))
+      (when response
+        (lspce--locations-to-xref response)))))
+
+;;;###autoload
+(defun xref-find-declaration (identifier)
+  "Find declaration to the IDENTIFIER at point.
+This command might prompt for the identifier as needed, perhaps
+offering the symbol at point as the default.
+With prefix argument, or if `xref-prompt-for-identifier' is t,
+always prompt for the identifier.  If `xref-prompt-for-identifier'
+is nil, prompt only if there's no usable symbol at point."
+  (interactive (list (xref--read-identifier "Find Type Definition of: ")))
+  (xref--show-defs
+   (xref--create-fetcher identifier 'declaration identifier)
    nil))
 
 ;;; capf
