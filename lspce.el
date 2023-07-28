@@ -149,6 +149,7 @@ current buffer is set to the buffer being edited."
 
 ;;; Variables and custom
 (defvar lspce-server-programs `(("rust"  "rust-analyzer" "")
+                                ("python" "pylsp" "" )
                                 ("python" "pyright-langserver" "--stdio")
                                 ("C" "clangd" "")
                                 ("java" ,lspce-java-path lspce-jdtls-cmd-args)
@@ -156,7 +157,9 @@ current buffer is set to the buffer being edited."
                                 ("go" "gopls" "")
                                 ("typescript" "typescript-language-server" "--stdio")
                                 ("js" "typescript-language-server" "--stdio"))
-  "How the command `lspce' gets the server to start.
+  "How the command `lspce' gets the server to start. For a given buffer,
+if there are multiple servers available, you can choose one interactively.
+
 A list of (LSP-TYPE SERVER-COMMAND SERVER-PARAMS initializationOptions).
 
 LSP-TYPE identifies the buffers that are to be managed by a specific
@@ -476,18 +479,28 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (lspce--notify
          "textDocument/didSave" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))))))))
 
-(defun lspce--server-program (lsp-type)
-  (assoc-default lsp-type lspce-server-programs))
-
 ;; (defun lspce--server-program (lsp-type)
-;;   (let (server types servers)
-;;     (cdr (nth 0 (seq-filter (lambda (prog)
-;;                               (let ((types (nth 0 prog)))
-;;                                 (or (and (stringp types)
-;;                                          (string-equal types lsp-type))
-;;                                     (and (listp types)
-;;                                          (member lsp-type types)))))
-;;                             lspce-server-programs)))))
+;;   (assoc-default lsp-type lspce-server-programs))
+
+(defun lspce--server-program (lsp-type)
+  (let ((programs nil))
+    (cl-dolist (p lspce-server-programs)
+      (when (string-equal (car p) lsp-type)
+        (cl-pushnew (cdr p) programs)))
+    programs))
+
+(defun lspce--choose-server (servers)
+  (let (server chosen)
+    (setq chosen (completing-read "Choose one server: "
+                                  (mapcar (lambda (p)
+                                            (let ((key (format "%s" p)))
+                                              (put-text-property 0 1 'server-info p key)
+                                              key))
+                                          servers)
+                                  ))
+    (when chosen
+      (setq server (get-text-property 0 'server-info chosen)))
+    server))
 
 ;; 返回server info.
 (cl-defun lspce--connect ()
@@ -495,7 +508,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (lsp-type lspce--lsp-type)
         (initialize-params nil)
         lsp-server
-        server server-cmd server-args initialize-options
+        servers server server-cmd server-args initialize-options
         response-str response response-error response-result)
     (unless (and root-uri lsp-type)
       (lspce--warn "lspce--connect: Can not get root-uri or lsp-type of current buffer.")
@@ -506,9 +519,22 @@ be set to `lspce-move-to-lsp-abiding-column', and
       (lspce--info "lspce--connect: Server for (%s %s) is running." root-uri lsp-type)
       (cl-return-from lspce--connect lsp-server))
 
-    (setq server (lspce--server-program lsp-type))
+    ;; (setq server (lspce--server-program lsp-type))
+    ;; (unless server
+    ;;   (user-error "lspce--connect: Do not support current buffer.")
+    ;;   (cl-return-from lspce--connect nil))
+
+    (setq servers (lspce--server-program lsp-type))
+    (message "servers: %s" servers)
+    (unless servers
+      (user-error "lspce--connect: Server not found for type %s." lsp-type)
+      (cl-return-from lspce--connect nil))
+
+    (if (length= servers 1)
+        (setq server (nth 0 servers))
+      (setq server (lspce--choose-server servers)))
     (unless server
-      (user-error "lspce--connect: Do not support current buffer.")
+      (user-error "lspce--connect: No valid server.")
       (cl-return-from lspce--connect nil))
 
     (lspce--debug "server %S" server)
@@ -608,6 +634,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
                 lspce--uri (lspce--path-to-uri buffer-file-name))
 
     (setq server-info (lspce--connect))
+    (message "server-info: %s" server-info)
     (unless server-info
       (cl-return-from lspce--buffer-enable-lsp nil))
     (lspce--debug "server-info: %s" server-info)
@@ -743,11 +770,15 @@ The value is also a hash table, with uri as the key and the value is just t.")
           (setq-local lspce--flymake-already-enabled t))
         (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
         (flymake-mode 1))
-      (lspce--buffer-enable-lsp)
-      (if lspce--server-info
-          (lspce--info "Connected to lsp server.")
-        (lspce--warn "Failed to connect to lsp server.")
-        (setq lspce-mode nil)))))
+      (condition-case nil
+          (progn
+            (lspce--buffer-enable-lsp)
+            (if lspce--server-info
+                (lspce--info "Connected to lsp server.")
+              (lspce--warn "Failed to connect to lsp server.")
+              (setq lspce-mode nil)))
+        ((error user-error quit)
+         (setq lspce-mode nil))))))
    (t
     (remove-hook 'after-change-functions 'lspce--after-change t)
     (remove-hook 'before-change-functions 'lspce--before-change t)
