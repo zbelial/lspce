@@ -283,6 +283,11 @@ be set to `lspce-move-to-lsp-abiding-column', and
    (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
    (lspce--make-position)))
 
+(defun lspce--make-typeDefinitionParams ()
+  (lspce--typeDefinitionParams
+   (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
+   (lspce--make-position)))
+
 (defun lspce--make-hoverParams (&optional context)
   (lspce--hoverParams
    (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
@@ -1092,6 +1097,41 @@ always prompt for the identifier.  If `xref-prompt-for-identifier'
 is nil, prompt only if there's no usable symbol at point."
   (interactive (list (xref--read-identifier "Find implementations of: ")))
   (xref--find-xrefs identifier 'implementations identifier nil))
+
+(when (not (fboundp 'xref-backend-type-definition))
+  (cl-defgeneric xref-backend-type-definition (backend identifier)
+    "Find type definition of IDENTIFIER.
+
+The result must be a list of xref objects. If there are multiple possible
+implementations, return all of them.  If no implementations can be found,
+return nil.
+
+IDENTIFIER can be any string returned by
+`xref-backend-identifier-at-point', or from the table returned by
+`xref-backend-identifier-completion-table'.
+
+To create an xref object, call `xref-make'.")
+  )
+
+(cl-defmethod xref-backend-type-definition ((_backend (eql xref-lspce)) identifier)
+  (save-excursion
+    (let* ((method "textDocument/typeDefinition")
+           (response (lspce--request method (lspce--make-typeDefinitionParams))))
+      (when response
+        (lspce--locations-to-xref response)))))
+
+;;;###autoload
+(defun xref-find-type-definition (identifier)
+  "Find type definition to the IDENTIFIER at point.
+This command might prompt for the identifier as needed, perhaps
+offering the symbol at point as the default.
+With prefix argument, or if `xref-prompt-for-identifier' is t,
+always prompt for the identifier.  If `xref-prompt-for-identifier'
+is nil, prompt only if there's no usable symbol at point."
+  (interactive (list (xref--read-identifier "Find Type Definition of: ")))
+  (xref--show-defs
+   (xref--create-fetcher identifier 'type-definition identifier)
+   nil))
 
 ;;; capf
 (defvar-local lspce--completion-complete? nil) ;; 1 incomplete 2 complete

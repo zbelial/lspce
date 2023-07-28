@@ -214,6 +214,7 @@
 (defalias 'lspce--declarationParams 'lspce--textDocumentPositionParams "lspce--definitionParams")
 (defalias 'lspce--definitionParams 'lspce--textDocumentPositionParams "lspce--definitionParams")
 (defalias 'lspce--referencesParams 'lspce--textDocumentPositionParams "lspce--referencesParams")
+(defalias 'lspce--typeDefinitionParams 'lspce--textDocumentPositionParams "lspce--typeDefinitionParams")
 (defalias 'lspce--implementationParams 'lspce--textDocumentPositionParams "lspce--implementationParams")
 (defalias 'lspce--hoverParams 'lspce--textDocumentPositionParams "lspce--hoverParams")
 (defalias 'lspce--signatureHelpParams 'lspce--textDocumentPositionParams "lspce--signatureHelpParams")
