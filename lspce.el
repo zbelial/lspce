@@ -535,7 +535,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
     ;;   (cl-return-from lspce--connect nil))
 
     (setq servers (lspce--server-program lsp-type))
-    (message "servers: %s" servers)
+    (lspce--debug "servers: %s" servers)
     (unless servers
       (user-error "lspce--connect: Server not found for type %s." lsp-type)
       (cl-return-from lspce--connect nil))
@@ -644,7 +644,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
                 lspce--uri (lspce--path-to-uri buffer-file-name))
 
     (setq server-info (lspce--connect))
-    (message "server-info: %s" server-info)
+    (lspce--debug "server-info: %s" server-info)
     (unless server-info
       (cl-return-from lspce--buffer-enable-lsp nil))
     (lspce--debug "server-info: %s" server-info)
@@ -1510,15 +1510,18 @@ Doubles as an indicator of snippet support."
                                      (lspce--snippet-expansion-fn))))
                (lspce--debug "lsp-item %S" (json-encode lsp-item))
                (cond (textEdit
-                      (let ((range (gethash "range" textEdit))
-                            (newText (gethash "newText" textEdit))
-                            (old-text (apply #'buffer-substring-no-properties lsp-markers)))
-                        (if (string-prefix-p old-text newText)
+                      (let* ((range (gethash "range" textEdit))
+                             (newText (gethash "newText" textEdit))
+                             (old-text (apply #'buffer-substring-no-properties lsp-markers))
+                             (region (lspce--range-region range)))
+                        (if (and (length> old-text 0)
+                                 (string-prefix-p old-text newText))
                             (progn
                               (funcall (or snippet-fn #'insert) (substring newText (length old-text))))
                           (progn
                             (apply #'delete-region lsp-markers)
-                            (goto-char (nth 0 lsp-markers))
+                            (delete-region (car region) (cdr region))
+                            (goto-char (car region))
                             (funcall (or snippet-fn #'insert) newText))))
                       (when (cl-plusp (length additionalTextEdits))
                         (lspce--apply-text-edits additionalTextEdits)))
@@ -1540,7 +1543,6 @@ Doubles as an indicator of snippet support."
                       ;; completion's text.
                       (let* ((newText (or insertText label))
                              (old-text (apply #'buffer-substring-no-properties lsp-markers)))
-                        (message "old-text %s, newText %s" old-text newText)
                         (if (string-prefix-p old-text newText)
                             (progn
                               (insert (substring newText (length old-text))))
