@@ -999,8 +999,10 @@ If optional MARKERS, make markers."
     (condition-case err
         (progn
           (dolist (item items)
-            (setq uri (gethash "uri" item))
-            (setq range (gethash "range" item))
+            (setq uri (or (gethash "uri" item)
+                          (gethash "targetUri" item)))
+            (setq range (or (gethash "range" item)
+                            (gethash "targetSelectionRange" item)))
             (setq start (gethash "start" range))
             (setq end (gethash "end" range))
             (setq start-line (gethash "line" start))
