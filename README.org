@@ -36,7 +36,7 @@
   [[file:images/eldoc.png]]
   
 * CAUTION
-  I think that lspce is a good shape now, but bugs are expected.
+  I think that lspce is in good shape now, but bugs are expected.
 
   I develop, test and run lspce with Emacs 28.2 on Linux (manjaro), and since I don't have any Windows and MacOS computer, lspce may not work as expected. But @fast-90 tested it with pylsp on MacOS and found that it worked almost (except could not recognize virual env).
   

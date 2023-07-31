@@ -149,6 +149,7 @@ current buffer is set to the buffer being edited."
 
 ;;; Variables and custom
 (defvar lspce-server-programs `(("rust"  "rust-analyzer" "")
+                                ("python" "pylsp" "" )
                                 ("python" "pyright-langserver" "--stdio")
                                 ("C" "clangd" "")
                                 ("java" ,lspce-java-path lspce-jdtls-cmd-args)
@@ -156,7 +157,9 @@ current buffer is set to the buffer being edited."
                                 ("go" "gopls" "")
                                 ("typescript" "typescript-language-server" "--stdio")
                                 ("js" "typescript-language-server" "--stdio"))
-  "How the command `lspce' gets the server to start.
+  "How the command `lspce' gets the server to start. For a given buffer,
+if there are multiple servers available, you can choose one interactively.
+
 A list of (LSP-TYPE SERVER-COMMAND SERVER-PARAMS initializationOptions).
 
 LSP-TYPE identifies the buffers that are to be managed by a specific
@@ -264,6 +267,11 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defun lspce--make-range (start end)
   (list :start (lspce--make-position start) :end (lspce--make-position end)))
 
+(defun lspce--make-declarationParams ()
+  (lspce--declarationParams
+   (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
+   (lspce--make-position)))
+
 (defun lspce--make-definitionParams (&optional context)
   (lspce--definitionParams
    (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
@@ -277,6 +285,11 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
 (defun lspce--make-implementationParams ()
   (lspce--implementationParams
+   (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
+   (lspce--make-position)))
+
+(defun lspce--make-typeDefinitionParams ()
+  (lspce--typeDefinitionParams
    (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
    (lspce--make-position)))
 
@@ -483,18 +496,28 @@ be set to `lspce-move-to-lsp-abiding-column', and
         (lspce--notify
          "textDocument/didSave" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))))))))
 
-(defun lspce--server-program (lsp-type)
-  (assoc-default lsp-type lspce-server-programs))
-
 ;; (defun lspce--server-program (lsp-type)
-;;   (let (server types servers)
-;;     (cdr (nth 0 (seq-filter (lambda (prog)
-;;                               (let ((types (nth 0 prog)))
-;;                                 (or (and (stringp types)
-;;                                          (string-equal types lsp-type))
-;;                                     (and (listp types)
-;;                                          (member lsp-type types)))))
-;;                             lspce-server-programs)))))
+;;   (assoc-default lsp-type lspce-server-programs))
+
+(defun lspce--server-program (lsp-type)
+  (let ((programs nil))
+    (cl-dolist (p lspce-server-programs)
+      (when (string-equal (car p) lsp-type)
+        (cl-pushnew (cdr p) programs)))
+    programs))
+
+(defun lspce--choose-server (servers)
+  (let (server chosen)
+    (setq chosen (completing-read "Choose one server: "
+                                  (mapcar (lambda (p)
+                                            (let ((key (format "%s" p)))
+                                              (put-text-property 0 1 'server-info p key)
+                                              key))
+                                          servers)
+                                  ))
+    (when chosen
+      (setq server (get-text-property 0 'server-info chosen)))
+    server))
 
 (defvar-local lspce-workspace-configuration ()
   "Configure LSP servers specifically for a given project.
@@ -532,7 +555,7 @@ the Pylsp and Gopls LSP servers:
         (lsp-type lspce--lsp-type)
         (initialize-params nil)
         lsp-server
-        server server-cmd server-args initialize-options
+        servers server server-cmd server-args initialize-options
         response-str response response-error response-result)
     (unless (and root-uri lsp-type)
       (lspce--warn "lspce--connect: Can not get root-uri or lsp-type of current buffer.")
@@ -543,9 +566,22 @@ the Pylsp and Gopls LSP servers:
       (lspce--info "lspce--connect: Server for (%s %s) is running." root-uri lsp-type)
       (cl-return-from lspce--connect lsp-server))
 
-    (setq server (lspce--server-program lsp-type))
+    ;; (setq server (lspce--server-program lsp-type))
+    ;; (unless server
+    ;;   (user-error "lspce--connect: Do not support current buffer.")
+    ;;   (cl-return-from lspce--connect nil))
+
+    (setq servers (lspce--server-program lsp-type))
+    (lspce--debug "servers: %s" servers)
+    (unless servers
+      (user-error "lspce--connect: Server not found for type %s." lsp-type)
+      (cl-return-from lspce--connect nil))
+
+    (if (length= servers 1)
+        (setq server (nth 0 servers))
+      (setq server (lspce--choose-server servers)))
     (unless server
-      (user-error "lspce--connect: Do not support current buffer.")
+      (user-error "lspce--connect: No valid server.")
       (cl-return-from lspce--connect nil))
 
     (lspce--debug "server %S" server)
@@ -650,6 +686,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
                 lspce--uri (lspce--path-to-uri buffer-file-name))
 
     (setq server-info (lspce--connect))
+    (lspce--debug "server-info: %s" server-info)
     (unless server-info
       (cl-return-from lspce--buffer-enable-lsp nil))
     (lspce--debug "server-info: %s" server-info)
@@ -785,11 +822,15 @@ The value is also a hash table, with uri as the key and the value is just t.")
           (setq-local lspce--flymake-already-enabled t))
         (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
         (flymake-mode 1))
-      (lspce--buffer-enable-lsp)
-      (if lspce--server-info
-          (lspce--info "Connected to lsp server.")
-        (lspce--warn "Failed to connect to lsp server.")
-        (setq lspce-mode nil)))))
+      (condition-case nil
+          (progn
+            (lspce--buffer-enable-lsp)
+            (if lspce--server-info
+                (lspce--info "Connected to lsp server.")
+              (lspce--warn "Failed to connect to lsp server.")
+              (setq lspce-mode nil)))
+        ((error user-error quit)
+         (setq lspce-mode nil))))))
    (t
     (remove-hook 'after-change-functions 'lspce--after-change t)
     (remove-hook 'before-change-functions 'lspce--before-change t)
@@ -1000,8 +1041,10 @@ If optional MARKERS, make markers."
     (condition-case err
         (progn
           (dolist (item items)
-            (setq uri (gethash "uri" item))
-            (setq range (gethash "range" item))
+            (setq uri (or (gethash "uri" item)
+                          (gethash "targetUri" item)))
+            (setq range (or (gethash "range" item)
+                            (gethash "targetSelectionRange" item)))
             (setq start (gethash "start" range))
             (setq end (gethash "end" range))
             (setq start-line (gethash "line" start))
@@ -1049,6 +1092,7 @@ If optional MARKERS, make markers."
   (propertize (or (thing-at-point 'symbol) "")
               'identifier-at-point t))
 
+;; FIXME check server capability: definitionProvider
 (cl-defmethod xref-backend-definitions ((_backend (eql xref-lspce)) identifier)
   (save-excursion
     (let* ((method "textDocument/definition")
@@ -1059,6 +1103,7 @@ If optional MARKERS, make markers."
 ;; NOTE if you use `ivy-xref-show-xrefs' as the `xref-show-xrefs-function',
 ;; you will find `xref-backend-references' is called twice.
 ;; See https://github.com/alexmurray/ivy-xref/issues/2
+;; FIXME check server capability: referencesProvider
 (cl-defmethod xref-backend-references ((_backend (eql xref-lspce)) identifier)
   (save-excursion
     (let* ((method "textDocument/references")
@@ -1086,6 +1131,7 @@ To create an xref object, call `xref-make'.")
 
   )
 
+;; FIXME check server capability: implementationProvider
 (cl-defmethod xref-backend-implementations ((_backend (eql xref-lspce)) identifier)
   (save-excursion
     (let* ((method "textDocument/implementation")
@@ -1103,6 +1149,80 @@ always prompt for the identifier.  If `xref-prompt-for-identifier'
 is nil, prompt only if there's no usable symbol at point."
   (interactive (list (xref--read-identifier "Find implementations of: ")))
   (xref--find-xrefs identifier 'implementations identifier nil))
+
+;; type definition
+(when (not (fboundp 'xref-backend-type-definition))
+  (cl-defgeneric xref-backend-type-definition (backend identifier)
+    "Find type definition of IDENTIFIER.
+
+The result must be a list of xref objects. If there are multiple possible
+implementations, return all of them.  If no implementations can be found,
+return nil.
+
+IDENTIFIER can be any string returned by
+`xref-backend-identifier-at-point', or from the table returned by
+`xref-backend-identifier-completion-table'.
+
+To create an xref object, call `xref-make'.")
+  )
+
+;; FIXME check server capability: typeDefinitionProvider
+(cl-defmethod xref-backend-type-definition ((_backend (eql xref-lspce)) identifier)
+  (save-excursion
+    (let* ((method "textDocument/typeDefinition")
+           (response (lspce--request method (lspce--make-typeDefinitionParams))))
+      (when response
+        (lspce--locations-to-xref response)))))
+
+;;;###autoload
+(defun xref-find-type-definition (identifier)
+  "Find type definition to the IDENTIFIER at point.
+This command might prompt for the identifier as needed, perhaps
+offering the symbol at point as the default.
+With prefix argument, or if `xref-prompt-for-identifier' is t,
+always prompt for the identifier.  If `xref-prompt-for-identifier'
+is nil, prompt only if there's no usable symbol at point."
+  (interactive (list (xref--read-identifier "Find Type Definition of: ")))
+  (xref--show-defs
+   (xref--create-fetcher identifier 'type-definition identifier)
+   nil))
+
+;; declaration
+(when (not (fboundp 'xref-backend-declaration))
+  (cl-defgeneric xref-backend-declaration (backend identifier)
+    "Find declaration of IDENTIFIER.
+
+The result must be a list of xref objects. If there are multiple possible
+implementations, return all of them.  If no implementations can be found,
+return nil.
+
+IDENTIFIER can be any string returned by
+`xref-backend-identifier-at-point', or from the table returned by
+`xref-backend-identifier-completion-table'.
+
+To create an xref object, call `xref-make'.")
+  )
+
+;; FIXME check server capability: typeDefinitionProvider
+(cl-defmethod xref-backend-declaration ((_backend (eql xref-lspce)) identifier)
+  (save-excursion
+    (let* ((method "textDocument/declaration")
+           (response (lspce--request method (lspce--make-declarationParams))))
+      (when response
+        (lspce--locations-to-xref response)))))
+
+;;;###autoload
+(defun xref-find-declaration (identifier)
+  "Find declaration to the IDENTIFIER at point.
+This command might prompt for the identifier as needed, perhaps
+offering the symbol at point as the default.
+With prefix argument, or if `xref-prompt-for-identifier' is t,
+always prompt for the identifier.  If `xref-prompt-for-identifier'
+is nil, prompt only if there's no usable symbol at point."
+  (interactive (list (xref--read-identifier "Find Type Definition of: ")))
+  (xref--show-defs
+   (xref--create-fetcher identifier 'declaration identifier)
+   nil))
 
 ;;; capf
 (defvar-local lspce--completion-complete? nil) ;; 1 incomplete 2 complete
@@ -1434,15 +1554,18 @@ Doubles as an indicator of snippet support."
                                      (lspce--snippet-expansion-fn))))
                (lspce--debug "lsp-item %S" (json-encode lsp-item))
                (cond (textEdit
-                      (let ((range (gethash "range" textEdit))
-                            (newText (gethash "newText" textEdit))
-                            (old-text (apply #'buffer-substring-no-properties lsp-markers)))
-                        (if (string-prefix-p old-text newText)
+                      (let* ((range (gethash "range" textEdit))
+                             (newText (gethash "newText" textEdit))
+                             (old-text (apply #'buffer-substring-no-properties lsp-markers))
+                             (region (lspce--range-region range)))
+                        (if (and (length> old-text 0)
+                                 (string-prefix-p old-text newText))
                             (progn
                               (funcall (or snippet-fn #'insert) (substring newText (length old-text))))
                           (progn
                             (apply #'delete-region lsp-markers)
-                            (goto-char (nth 0 lsp-markers))
+                            (delete-region (car region) (cdr region))
+                            (goto-char (car region))
                             (funcall (or snippet-fn #'insert) newText))))
                       (when (cl-plusp (length additionalTextEdits))
                         (lspce--apply-text-edits additionalTextEdits)))
