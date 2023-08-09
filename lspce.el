@@ -59,12 +59,6 @@
   :group 'lspce
   :type 'boolean)
 
-(defcustom lspce-auto-enable-capf-complete-extension nil
-  "If non-nil, automatically enable capf extension.
-See `lspce-enable-capf-complete-extension' for more information."
-  :group 'lspce
-  :type 'boolean)
-
 (defcustom lspce-enable-eldoc t
   "If non-nil, enable eldoc."
   :group 'lspce
@@ -404,13 +398,15 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (while (and trying
                 (or (null timeout)
                     (> (+ start-time timeout) (float-time))))
+      ;; (message "request-tick: %s, lspce--latest-tick: %s" request-tick lspce--latest-tick)
       (unless (string-equal request-tick lspce--latest-tick)
-        (lspce--debug "lspce--get-response request outdated")
+        (lspce--debug "lspce--get-response request outdated, request-tick: %s, lspce--latest-tick: %s" request-tick lspce--latest-tick)
         (cl-return-from lspce--get-response nil))
       (if (sit-for (lspce--sit-for-interval lspce--lsp-type) t)
           (progn
             (setq response-tick (lspce-module-read-latest-response-tick lspce--root-uri lspce--lsp-type))
             (lspce--debug "response-tick %S" response-tick)
+            ;; (message "response-tick %S" response-tick)
 
             (when (string-equal response-tick request-tick)
               (lspce--debug "start to read response %s" request-id)
@@ -1326,7 +1322,6 @@ Doubles as an indicator of snippet support."
 ;; (advice-add #'delete-region :before #'delete-region-advice)
 ;; (advice-remove #'delete-region #'delete-region-advice)
 
-(defvar lspce--enable-capf-extension nil)
 (defun lspce-completion-at-point()
   (when-let (completion-capability (lspce--server-capable "completionProvider"))
     (let* ((trigger-chars (lspce--server-capable-chain "completionProvider"
@@ -1345,68 +1340,43 @@ Doubles as an indicator of snippet support."
            (cached-proxies :none)
            (proxies
             (lambda ()
-              (let ((same-session? (and lspce--completion-cache
-                                        ;; Special case for empty prefix and empty result
-                                        (or (cl-second lspce--completion-cache)
-                                            (not (string-empty-p
-                                                  (plist-get (cddr lspce--completion-cache) :prefix))))
-                                        (equal (cl-first lspce--completion-cache) bounds-start)
-                                        (string-prefix-p
-                                         (plist-get (cddr lspce--completion-cache) :prefix)
-                                         (buffer-substring-no-properties bounds-start (point))))))
-                (cond
-                 ((or done? (listp cached-proxies))
-                  cached-proxies)
-                 ((and same-session?
-                       (listp (cl-second lspce--completion-cache)))
-                  (setq cached-proxies (cl-second lspce--completion-cache)))
-                 (t
-                  (let* ((completions (lspce--request-completion))
-                         (complete? (nth 0 completions))
-                         (items (nth 1 completions))
-                         (markers (list bounds-start (copy-marker (point) t)))
-                         (prefix (buffer-substring-no-properties bounds-start (point))))
-                    (if completions
-                        (progn
-                          (if complete?
-                              (setq-local lspce--completion-complete? 2)
-                            (setq-local lspce--completion-complete? 1))
-                          (lspce--completion-clear-cache same-session?)
-                          (setq cached-proxies
-                                (mapcar
-                                 (lambda (item)
-                                   (let* ((label (gethash "label" item))
-                                          (insertTextFormat (or (gethash "insertTextFormat" item) 1))
-                                          (insertText (gethash "insertText" item))
-                                          (proxy
-                                           (cond 
-                                            ((and (eql insertTextFormat 2)
-                                                  (lspce--snippet-expansion-fn))
-                                             (string-trim-left label))
-                                            ((and insertText
-                                                  (not (string-empty-p insertText)))
-                                             insertText)
-                                            (t
-                                             (string-trim-left label)))))
-                                     (unless (zerop (length proxy))
-                                       (put-text-property 0 1 'lspce--lsp-item item proxy)
-                                       (put-text-property 0 1 'lspce--lsp-markers markers proxy)
-                                       (put-text-property 0 1 'lspce--lsp-prefix prefix proxy))
-                                     proxy))
-                                 items))
-                          (setf done? complete?
-                                lspce--completion-cache (list bounds-start
-                                                              (cond
-                                                               ((and done?
-                                                                     (not (seq-empty-p cached-proxies)))
-                                                                cached-proxies)
-                                                               ((not done?)
-                                                                :incomplete))
-                                                              :lsp-items nil
-                                                              :markers markers
-                                                              :prefix prefix))
-                          (setq lspce--completion-last-result cached-proxies))
-                      (when same-session? lspce--completion-last-result))))))))
+              (cond
+               ((or done? (listp cached-proxies))
+                cached-proxies)
+               (t
+                (let* ((completions (lspce--request-completion))
+                       (complete? (nth 0 completions))
+                       (items (nth 1 completions))
+                       (markers (list bounds-start (copy-marker (point) t)))
+                       (prefix (buffer-substring-no-properties bounds-start (point))))
+                  (if completions
+                      (progn
+                        (if complete?
+                            (setq-local lspce--completion-complete? 2)
+                          (setq-local lspce--completion-complete? 1))
+                        (setq done? complete?)
+                        (setq cached-proxies
+                              (mapcar
+                               (lambda (item)
+                                 (let* ((label (gethash "label" item))
+                                        (insertTextFormat (or (gethash "insertTextFormat" item) 1))
+                                        (insertText (gethash "insertText" item))
+                                        (proxy
+                                         (cond 
+                                          ((and (eql insertTextFormat 2)
+                                                (lspce--snippet-expansion-fn))
+                                           (string-trim-left label))
+                                          ((and insertText
+                                                (not (string-empty-p insertText)))
+                                           insertText)
+                                          (t
+                                           (string-trim-left label)))))
+                                   (unless (zerop (length proxy))
+                                     (put-text-property 0 1 'lspce--lsp-item item proxy)
+                                     (put-text-property 0 1 'lspce--lsp-markers markers proxy)
+                                     (put-text-property 0 1 'lspce--lsp-prefix prefix proxy))
+                                   proxy))
+                               items)))))))))
            (resolved (make-hash-table))
            (resolve-maybe (lambda (lsp-item)
                             (or (gethash lsp-item resolved)
@@ -1487,9 +1457,6 @@ Doubles as an indicator of snippet support."
             (regexp-opt
              (cl-coerce (gethash "triggerCharacters" completion-capability) 'list))
             (line-beginning-position))))
-       :complete-function
-       (lambda (proxy)
-         lspce--enable-capf-extension)
        :exit-function
        (lambda (proxy status)
          (when (memq status '(finished exact))
@@ -1515,13 +1482,18 @@ Doubles as an indicator of snippet support."
                       (let* ((range (gethash "range" textEdit))
                              (newText (gethash "newText" textEdit))
                              (old-text (apply #'buffer-substring-no-properties lsp-markers))
-                             (region (lspce--range-region range)))
+                             (region (lspce--range-region range))
+                             (delete-start (+ (- (point) (length proxy))
+                                              (if bounds
+                                                  (- (cdr bounds) (car bounds))
+                                                0)))
+                             (delete-end (point)))
                         (if (and (length> old-text 0)
                                  (string-prefix-p old-text newText))
                             (progn
                               (funcall (or snippet-fn #'insert) (substring newText (length old-text))))
                           (progn
-                            (apply #'delete-region lsp-markers)
+                            (delete-region delete-start delete-end)
                             (delete-region (car region) (cdr region))
                             (goto-char (car region))
                             (funcall (or snippet-fn #'insert) newText))))
@@ -1534,10 +1506,10 @@ Doubles as an indicator of snippet support."
                       ;; completion's text.
                       (let* ((newText (or insertText label))
                              (old-text (apply #'buffer-substring-no-properties lsp-markers)))
-                        (if (string-prefix-p old-text newText)
+                        (if (and (string-prefix-p old-text newText))
                             (progn
                               (funcall snippet-fn (substring newText (length old-text))))
-                          (apply #'delete-region lsp-markers)
+                          (delete-region (- (point) (length proxy)) (point))
                           (funcall snippet-fn (or insertText label)))))
                      ((or insertText label)
                       ;; Insert `label' or `insertText'.  This requires us to delete the
@@ -1548,7 +1520,7 @@ Doubles as an indicator of snippet support."
                         (if (string-prefix-p old-text newText)
                             (progn
                               (insert (substring newText (length old-text))))
-                          (apply #'delete-region lsp-markers)
+                          (delete-region (- (point) (length proxy)) (point))
                           (insert (or insertText label)))))))
              (lspce--notify-textDocument/didChange))))))))
 
