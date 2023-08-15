@@ -198,6 +198,21 @@ For buffers managed by fully LSP-compliant servers, this should
 be set to `lspce-move-to-lsp-abiding-column', and
 `lspce-move-to-column' (the default) for all others.")
 
+;;; Macros
+(defmacro lspce--while-no-input (&rest body)
+  "Wrap BODY in `while-no-input' and respecting `non-essential'.
+Return value of `body', or nil if interrupted."
+  (declare (debug t) (indent 0))
+  `(if non-essential
+       (let ((res (while-no-input ,@body)))
+         (cond
+          ;; interrupted or input arriving
+          ((booleanp res)
+           nil)
+          ;; execute normally
+          (t
+           res)))
+     ,@body))
 
 ;;; Logging
 (defun lspce-disable-logging ()
@@ -372,6 +387,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
     (lspce--notify-textDocument/didChange)
 
+    (when (string-equal method "textDocument/completion")
+      (lspce--log-perf "request ===== request_id: %s, method: %s" request-id method))
     (lspce--debug "lspce--request-async request: %s" (json-encode request))
     (when (lspce-module-request-async root-uri lsp-type (json-encode request))
       (puthash request-id lspce--latest-tick lspce--request-ticks)
@@ -394,7 +411,9 @@ be set to `lspce-move-to-lsp-abiding-column', and
         response-tick
         response code msg response-error response-data)
     (lspce--debug "lspce--get-response for request-id %s" request-id)
-    (lspce--log-perf "request-id %s, method %s, start-time %s" request-id method start-time)
+    (when (member method '("textDocument/completion"))
+      (lspce--log-perf "before getting response ===== request-id %s, method %s, start-time %s" request-id method start-time)
+      )
     (while (and trying
                 (or (null timeout)
                     (> (+ start-time timeout) (float-time))))
@@ -422,12 +441,19 @@ be set to `lspce-move-to-lsp-abiding-column', and
                   (setq response-data (gethash "result" msg))))))
         (lspce--debug "sit-for is interrupted.")
         (setq trying nil)))
-    (lspce--log-perf "request-id %s, method %s, end-time %s" request-id method (float-time))
+    (when (member method '("textDocument/completion"))
+      (lspce--log-perf "after getting response ===== request-id %s, method %s, end-time %s" request-id method (float-time))
+      )
     response-data))
 
 (defun lspce--request (method &optional params timeout root-uri lsp-type)
-  (when-let (request-id (lspce--request-async method params root-uri lsp-type))
-    (lspce--get-response request-id method timeout root-uri lsp-type)))
+  (lspce--while-no-input
+    (let (response)
+      (when-let (request-id (lspce--request-async method params root-uri lsp-type))
+        (setq response (lspce--get-response request-id method timeout root-uri lsp-type))
+        (when (string-equal method "textDocument/completion")
+          (lspce--log-perf "response ===== request_id: %s, method: %s" request-id method)))
+      response)))
 
 (cl-defun lspce--notify (method &optional params root-uri lsp-type)
   (let ((notification (lspce--make-notification method params))
