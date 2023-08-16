@@ -1434,6 +1434,14 @@ Doubles as an indicator of snippet support."
                      (kind (alist-get (gethash "kind" lsp-item)
                                       lspce--kind-names)))
            (intern (downcase kind))))
+       :company-deprecated
+       (lambda (proxy)
+         (let ((lsp-item (get-text-property 0 'lspce--lsp-item proxy))
+               tags deprecated)
+           (setq tags (gethash "tags" lsp-item)
+                 deprecated (gethash "deprecated" lsp-item))
+           (or (seq-contains-p tags 1)
+               (eq t deprecated))))
        :company-doc-buffer
        (lambda (proxy)
          (let* ((documentation
