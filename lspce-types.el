@@ -61,7 +61,8 @@
                                                      :documentationFormat (if (fboundp 'gfm-view-mode)
                                                                               ["markdown" "plaintext"]
                                                                             ["plaintext"])
-                                                     :deprecatedSupport :json-false
+                                                     :deprecatedSupport t
+                                                     :tagSupport (:valueSet [1])
                                                      :preselectSupoort :json-false
                                                      :insertReplaceSupport :json-false
                                                      :resolveSupport (list :properties (vector "documentation" "details" "additionalTextEdits"))
