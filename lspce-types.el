@@ -222,6 +222,7 @@
 (defconst LSPCE-Invoked 1 "Completion was triggered by typing an identifier or via API")
 (defconst LSPCE-TriggerCharacter 2 "Completion was triggered by a trigger character")
 (defconst LSPCE-TriggerForIncompleteCompletions 3 "Completion was re-triggered as the current completion list is incomplete")
+
 (defun lspce--completionContext (trigger-kind trigger-character)
   (let ((params (make-hash-table)))
     (when trigger-kind

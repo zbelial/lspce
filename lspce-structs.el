@@ -8,4 +8,11 @@
   (change) ;; 
   )
 
+(cl-defstruct lspce-completionCache
+  (prefix-start)
+  (candidates)
+  (lsp-items)
+  (markers)
+  (prefix))
+
 (provide 'lspce-structs)
