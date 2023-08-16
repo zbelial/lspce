@@ -62,7 +62,7 @@
                                                                               ["markdown" "plaintext"]
                                                                             ["plaintext"])
                                                      :deprecatedSupport t
-                                                     :tagSupport (:valueSet [1])
+                                                     :tagSupport (list :valueSet [1])
                                                      :preselectSupoort :json-false
                                                      :insertReplaceSupport :json-false
                                                      :resolveSupport (list :properties (vector "documentation" "details" "additionalTextEdits"))

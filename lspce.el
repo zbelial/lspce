@@ -802,7 +802,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
           (setq-local lspce--flymake-already-enabled t))
         (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
         (flymake-mode 1))
-      (condition-case nil
+      (condition-case err
           (progn
             (lspce--buffer-enable-lsp)
             (if lspce--server-info
@@ -810,6 +810,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
               (lspce--warn "Failed to connect to lsp server.")
               (setq lspce-mode nil)))
         ((error user-error quit)
+         (lspce--error "lspce-mode enable: error [%s]" err)
          (setq lspce-mode nil))))))
    (t
     (remove-hook 'after-change-functions 'lspce--after-change t)
@@ -1259,7 +1260,7 @@ When the completion is incomplete, `items' contains value of :incomplete.")
 (defvar lspce--in-completion-p nil)
 (cl-defun lspce--request-completion ()
   (setq lspce--in-completion-p t)
-  (condition-case nil
+  (condition-case err
       (let* ((method "textDocument/completion")
              (params (lspce--make-completionParams))
              (response (lspce--request method params))
@@ -1283,6 +1284,7 @@ When the completion is incomplete, `items' contains value of :incomplete.")
           (cl-return-from lspce--request-completion nil)))
         (list complete? items))
     ((error quit)
+     (lspce--error "lspce--request-completion error: [%s]" err)
      (setq lspce--in-completion-p nil)
      nil)))
 
