@@ -113,27 +113,26 @@
   "Message out with FORMAT with ARGS."
   (message "[lspce] [%s] %s %s" level (format-time-string "%Y-%m-%d %H:%M:%S.%3N") (apply #'format format args)))
 
-(defun lspce--error (format &rest args)
-  (when (<= lspce-log-level LSPCE-LOG-ERROR)
-    (apply #'lspce--log "ERROR" format args)
-    (display-warning 'lspce-mode (apply #'format-message format args) :error)))
+(defmacro lspce--error (format &rest args)
+  `(when (<= lspce-log-level LSPCE-LOG-ERROR)
+     (apply #'lspce--log "ERROR" ,format (list ,@args))))
 
-(defun lspce--warn (format &rest args)
-  (when (<= lspce-log-level LSPCE-LOG-WARN)
-    (apply #'lspce--log "WARN" format args)))
+(defmacro lspce--info (format &rest args)
+  `(when (<= lspce-log-level LSPCE-LOG-INFO)
+     (apply #'lspce--log "INFO" ,format (list ,@args))))
 
-(defun lspce--info (format &rest args)
-  (when (<= lspce-log-level LSPCE-LOG-INFO)
-    (apply #'lspce--log "INFO" format args)))
+(defmacro lspce--warn (format &rest args)
+  `(when (<= lspce-log-level LSPCE-LOG-WARN)
+     (apply #'lspce--log "WARN" ,format (list ,@args))))
 
-(defun lspce--debug (format &rest args)
-  (when (<= lspce-log-level LSPCE-LOG-DEBUG)
-    (apply #'lspce--log "DEBUG" format args)))
+(defmacro lspce--debug (format &rest args)
+  `(when (<= lspce-log-level LSPCE-LOG-DEBUG)
+     (apply #'lspce--log "DEBUG" ,format (list ,@args))))
 
 (defvar lspce--log-perf-enabled nil)
-(defun lspce--log-perf (format &rest args)
-  (when lspce--log-perf-enabled
-    (apply #'lspce--log "PERF" format args)))
+(defmacro lspce--log-perf (format &rest args)
+  `(when lspce--log-perf-enabled
+     (apply #'lspce--log "PERF" ,format (list ,@args))))
 
 (defun lspce--download-file (source-url dest-location)
   "Download a file from a URL at SOURCE-URL and save it to file at DEST-LOCATION."
