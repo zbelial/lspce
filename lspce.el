@@ -417,7 +417,7 @@ Return value of `body', or nil if interrupted."
     (while (and trying
                 (or (null timeout)
                     (> (+ start-time timeout) (float-time))))
-      ;; (message "request-tick: %s, lspce--latest-tick: %s" request-tick lspce--latest-tick)
+      (lspce--debug "request-tick: %s, lspce--latest-tick: %s" request-tick lspce--latest-tick)
       (unless (string-equal request-tick lspce--latest-tick)
         (lspce--debug "lspce--get-response request outdated, request-tick: %s, lspce--latest-tick: %s" request-tick lspce--latest-tick)
         (cl-return-from lspce--get-response nil))
@@ -425,7 +425,7 @@ Return value of `body', or nil if interrupted."
           (progn
             (setq response-tick (lspce-module-read-latest-response-tick lspce--root-uri lspce--lsp-type))
             (lspce--debug "response-tick %S" response-tick)
-            ;; (message "response-tick %S" response-tick)
+            (lspce--debug "response-tick %S" response-tick)
 
             (when (string-equal response-tick request-tick)
               (lspce--debug "start to read response %s" request-id)
@@ -1339,16 +1339,6 @@ Doubles as an indicator of snippet support."
                              start))))
     bounds-start))
 
-;; (defun delete-region-advice (start end)
-;;   (message "delete-region start %d - %S, end %d - %S"
-;;            start
-;;            (lspce--pos-to-lsp-position start)
-;;            (if (markerp end) (marker-position end) end)
-;;            (lspce--pos-to-lsp-position end)))
-
-;; (advice-add #'delete-region :before #'delete-region-advice)
-;; (advice-remove #'delete-region #'delete-region-advice)
-
 (defun lspce-completion-at-point()
   (when-let (completion-capability (lspce--server-capable "completionProvider"))
     (let* ((trigger-chars (lspce--server-capable-chain "completionProvider"
@@ -1546,12 +1536,7 @@ Doubles as an indicator of snippet support."
                       (let* ((range (gethash "range" textEdit))
                              (newText (gethash "newText" textEdit))
                              (old-text (apply #'buffer-substring-no-properties lsp-markers))
-                             (region (lspce--range-region range))
-                             (delete-start (+ (- (point) (length proxy))
-                                              (if bounds
-                                                  (- (cdr bounds) (car bounds))
-                                                0)))
-                             (delete-end (point)))
+                             (region (lspce--range-region range)))
                         (if (and (length> old-text 0)
                                  (string-prefix-p old-text newText))
                             (progn
@@ -1563,11 +1548,8 @@ Doubles as an indicator of snippet support."
                             (apply #'delete-region lsp-markers)
                             (insert lsp-prefix)
                             (delete-region (car region) (cdr region))
-                            ;; (delete-region delete-start delete-end)
-                            ;; (delete-region (car region) (cdr region))
                             (goto-char (car region))
-                            (funcall (or snippet-fn #'insert) newText)))
-                        )
+                            (funcall (or snippet-fn #'insert) newText))))
                       (when (cl-plusp (length additionalTextEdits))
                         (lspce--apply-text-edits additionalTextEdits)))
                      (snippet-fn
@@ -1583,22 +1565,7 @@ Doubles as an indicator of snippet support."
                           (apply #'delete-region lsp-markers)
                           (insert lsp-prefix)
                           (delete-region lsp-start (point))
-                          ;; (delete-region (- (point) (length proxy)) (point))
-                          (funcall snippet-fn (or insertText label)))))
-                     ((or insertText label)
-                      ;; Insert `label' or `insertText'.  This requires us to delete the
-                      ;; whole completion, since `label' or `insertText' is the full
-                      ;; completion's text.
-                      (let* ((newText (or insertText label))
-                             (old-text (apply #'buffer-substring-no-properties lsp-markers)))
-                        (if (string-prefix-p old-text newText)
-                            (progn
-                              (insert (substring newText (length old-text))))
-                          (apply #'delete-region lsp-markers)
-                          (insert lsp-prefix)
-                          (delete-region lsp-start (point))
-                          ;; (delete-region (- (point) (length proxy)) (point))
-                          (insert (or insertText label)))))))
+                          (funcall snippet-fn (or insertText label)))))))
              (lspce--completion-clear-cache)
              (lspce--notify-textDocument/didChange))))))))
 

@@ -134,6 +134,11 @@
   `(when lspce--log-perf-enabled
      (apply #'lspce--log "PERF" ,format (list ,@args))))
 
+(defvar lspce--log-temp-enabled nil)
+(defmacro lspce--log-temp (format &rest args)
+  `(when lspce--log-temp-enabled
+     (apply #'lspce--log "TEMP" ,format (list ,@args))))
+
 (defun lspce--download-file (source-url dest-location)
   "Download a file from a URL at SOURCE-URL and save it to file at DEST-LOCATION."
   (let* ((dest-dir     (file-name-directory dest-location))
