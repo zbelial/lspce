@@ -1341,6 +1341,7 @@ Doubles as an indicator of snippet support."
                              start))))
     bounds-start))
 
+(defvar lspce--enable-capf-extension nil)
 (defun lspce-completion-at-point()
   (when-let (completion-capability (lspce--server-capable "completionProvider"))
     (let* ((trigger-chars (lspce--server-capable-chain "completionProvider"
@@ -1520,6 +1521,9 @@ Doubles as an indicator of snippet support."
             (regexp-opt
              (cl-coerce (gethash "triggerCharacters" completion-capability) 'list))
             (line-beginning-position))))
+       :complete-function
+       (lambda (proxy)
+         lspce--enable-capf-extension)
        :exit-function
        (lambda (proxy status)
          (when (memq status '(finished exact))
@@ -1575,7 +1579,22 @@ Doubles as an indicator of snippet support."
                           (apply #'delete-region lsp-markers)
                           (insert lsp-prefix)
                           (delete-region lsp-start (point))
-                          (funcall snippet-fn (or insertText label)))))))
+                          (funcall snippet-fn (or insertText label)))))
+                     ((and lspce--enable-capf-extension
+                           (or insertText label))
+                      ;; Insert `label' or `insertText'.  This requires us to delete the
+                      ;; whole completion, since `label' or `insertText' is the full
+                      ;; completion's text.
+                      (let* ((newText (or insertText label))
+                             (old-text (apply #'buffer-substring-no-properties lsp-markers)))
+                        (if (string-prefix-p old-text newText)
+                            (progn
+                              (insert (substring newText (length old-text))))
+                          (apply #'delete-region lsp-markers)
+                          (insert lsp-prefix)
+                          (delete-region lsp-start (point))
+                          ;; (delete-region (- (point) (length proxy)) (point))
+                          (insert (or insertText label)))))))
              (lspce--completion-clear-cache)
              (lspce--notify-textDocument/didChange))))))))
 
