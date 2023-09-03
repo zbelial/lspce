@@ -771,6 +771,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
             )))))))
 
 ;; TODO add kill-emacs-hook to kill all lsp servers.
+;;;###autoload
 (define-minor-mode lspce-mode
   "Mode for source buffers managed by some LSPCE project."
   :init-value nil :lighter nil :keymap lspce-mode-map
@@ -2300,13 +2301,6 @@ at point.  With prefix argument, prompt for ACTION-KIND."
                       (delete-file f t))))            
                 (call-interactively #'lspce-restart-server))
             (lspce--warn "lspce-jdtls-reset-project - No server running in current server.")))))))
-
-;;; helpers
-
-;;;###autoload
-(defun lspce-trigger ()
-  "Just to trigger loading lspce in order to use xref to navigate lspce's source code."
-  (interactive))
 
 ;;; Mode-line
 ;;;
