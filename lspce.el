@@ -1342,7 +1342,6 @@ Doubles as an indicator of snippet support."
                              start))))
     bounds-start))
 
-(defvar lspce--enable-capf-extension nil)
 (defun lspce-completion-at-point()
   (when-let (completion-capability (lspce--server-capable "completionProvider"))
     (let* ((trigger-chars (lspce--server-capable-chain "completionProvider"
@@ -1522,82 +1521,65 @@ Doubles as an indicator of snippet support."
             (regexp-opt
              (cl-coerce (gethash "triggerCharacters" completion-capability) 'list))
             (line-beginning-position))))
-       :complete-function
-       (lambda (proxy)
-         lspce--enable-capf-extension)
        :exit-function
        (lambda (proxy status)
          (when (memq status '(finished exact))
-           (with-current-buffer (if (minibufferp)
-                                    (window-buffer (minibuffer-selected-window))
-                                  (current-buffer))
-             (setq-local lspce--completion-complete? nil)
-             (let* ((proxy (if (plist-member (text-properties-at 0 proxy) 'lspce--lsp-item)
-                               proxy
-                             (cl-find proxy (funcall proxies) :test #'equal)))
-                    (lsp-item (funcall resolve-maybe (get-text-property 0 'lspce--lsp-item proxy)))
-                    (lsp-markers (get-text-property 0 'lspce--lsp-markers proxy))
-                    (lsp-prefix (get-text-property 0 'lspce--lsp-prefix proxy))
-                    (lsp-start (get-text-property 0 'lspce--lsp-start proxy))
-                    (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
-                    (insertText (gethash "insertText" lsp-item))
-                    (label (gethash "label" lsp-item))
-                    (textEdit (gethash "textEdit" lsp-item))
-                    (additionalTextEdits (gethash "additionalTextEdits" lsp-item))
-                    (snippet-fn (and (eql insertTextFormat 2)
-                                     (lspce--snippet-expansion-fn))))
-               (lspce--debug "lsp-item %S" (json-encode lsp-item))
-               (cond (textEdit
-                      (let* ((range (gethash "range" textEdit))
-                             (newText (gethash "newText" textEdit))
-                             (old-text (apply #'buffer-substring-no-properties lsp-markers))
-                             (region (lspce--range-region range)))
-                        (if (and (length> old-text 0)
-                                 (string-prefix-p old-text newText))
+           (let ((inhibit-redisplay t))
+             (with-current-buffer (if (minibufferp)
+                                      (window-buffer (minibuffer-selected-window))
+                                    (current-buffer))
+               (setq-local lspce--completion-complete? nil)
+               (let* ((proxy (if (plist-member (text-properties-at 0 proxy) 'lspce--lsp-item)
+                                 proxy
+                               (cl-find proxy (funcall proxies) :test #'equal)))
+                      (lsp-item (funcall resolve-maybe (get-text-property 0 'lspce--lsp-item proxy)))
+                      (lsp-markers (get-text-property 0 'lspce--lsp-markers proxy))
+                      (lsp-prefix (get-text-property 0 'lspce--lsp-prefix proxy))
+                      (lsp-start (get-text-property 0 'lspce--lsp-start proxy))
+                      (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
+                      (insertText (gethash "insertText" lsp-item))
+                      (label (gethash "label" lsp-item))
+                      (textEdit (gethash "textEdit" lsp-item))
+                      (additionalTextEdits (gethash "additionalTextEdits" lsp-item))
+                      (snippet-fn (and (eql insertTextFormat 2)
+                                       (lspce--snippet-expansion-fn))))
+                 (lspce--debug "lsp-item %S" (json-encode lsp-item))
+                 (cond (textEdit
+                        (let* ((range (gethash "range" textEdit))
+                               (newText (gethash "newText" textEdit))
+                               (old-text (apply #'buffer-substring-no-properties lsp-markers))
+                               (region (lspce--range-region range)))
+                          (if (and (length> old-text 0)
+                                   (string-prefix-p old-text newText))
+                              (progn
+                                (funcall (or snippet-fn #'insert) (substring newText (length old-text))))
                             (progn
-                              (funcall (or snippet-fn #'insert) (substring newText (length old-text))))
-                          (progn
-                            (lspce--debug "lsp-markers: %s, markers: %s" lsp-markers (apply #'buffer-substring-no-properties lsp-markers))
-                            (lspce--debug "lsp-prefix: %s" lsp-prefix)
-                            (lspce--debug "region: %s, region: %s" region (buffer-substring-no-properties (car region) (cdr region)))
+                              (lspce--debug "lsp-markers: %s, markers: %s" lsp-markers (apply #'buffer-substring-no-properties lsp-markers))
+                              (lspce--debug "lsp-prefix: %s" lsp-prefix)
+                              (lspce--debug "region: %s, region: %s" region (buffer-substring-no-properties (car region) (cdr region)))
+                              (apply #'delete-region lsp-markers)
+                              (insert lsp-prefix)
+                              (delete-region (car region) (cdr region))
+                              (goto-char (car region))
+                              (funcall (or snippet-fn #'insert) newText))))
+                        (when (cl-plusp (length additionalTextEdits))
+                          (lspce--apply-text-edits additionalTextEdits)))
+                       (snippet-fn
+                        ;; A snippet should be inserted, but using plain
+                        ;; `insertText' or `label'.  This requires us to delete the
+                        ;; whole completion, since `insertText' or `label' is the full
+                        ;; completion's text.
+                        (let* ((newText (or insertText label))
+                               (old-text (apply #'buffer-substring-no-properties lsp-markers)))
+                          (if (and (string-prefix-p old-text newText))
+                              (progn
+                                (funcall snippet-fn (substring newText (length old-text))))
                             (apply #'delete-region lsp-markers)
                             (insert lsp-prefix)
-                            (delete-region (car region) (cdr region))
-                            (goto-char (car region))
-                            (funcall (or snippet-fn #'insert) newText))))
-                      (when (cl-plusp (length additionalTextEdits))
-                        (lspce--apply-text-edits additionalTextEdits)))
-                     (snippet-fn
-                      ;; A snippet should be inserted, but using plain
-                      ;; `insertText' or `label'.  This requires us to delete the
-                      ;; whole completion, since `insertText' or `label' is the full
-                      ;; completion's text.
-                      (let* ((newText (or insertText label))
-                             (old-text (apply #'buffer-substring-no-properties lsp-markers)))
-                        (if (and (string-prefix-p old-text newText))
-                            (progn
-                              (funcall snippet-fn (substring newText (length old-text))))
-                          (apply #'delete-region lsp-markers)
-                          (insert lsp-prefix)
-                          (delete-region lsp-start (point))
-                          (funcall snippet-fn (or insertText label)))))
-                     ((and lspce--enable-capf-extension
-                           (or insertText label))
-                      ;; Insert `label' or `insertText'.  This requires us to delete the
-                      ;; whole completion, since `label' or `insertText' is the full
-                      ;; completion's text.
-                      (let* ((newText (or insertText label))
-                             (old-text (apply #'buffer-substring-no-properties lsp-markers)))
-                        (if (string-prefix-p old-text newText)
-                            (progn
-                              (insert (substring newText (length old-text))))
-                          (apply #'delete-region lsp-markers)
-                          (insert lsp-prefix)
-                          (delete-region lsp-start (point))
-                          ;; (delete-region (- (point) (length proxy)) (point))
-                          (insert (or insertText label)))))))
-             (lspce--completion-clear-cache)
-             (lspce--notify-textDocument/didChange))))))))
+                            (delete-region lsp-start (point))
+                            (funcall snippet-fn (or insertText label)))))))
+               (lspce--completion-clear-cache)
+               (lspce--notify-textDocument/didChange)))))))))
 
 ;;; hover
 (defvar lspce--doc-buffer-name "*lspce-hover*")
