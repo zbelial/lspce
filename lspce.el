@@ -353,6 +353,12 @@ Return value of `body', or nil if interrupted."
     (when buffer-file-name
       (setq suffix (file-name-extension buffer-file-name)))
     (cond
+     ((member suffix '("js"))
+      "javascript")
+     ((member suffix '("ts"))
+      "typescript")
+     ((member suffix '("tsx"))
+      "typescriptreact")
      ((member suffix '("c" "c++" "cpp" "h" "hpp" "cxx" "cc"))
       "C")
      ((string-suffix-p "-ts-mode" mm)
