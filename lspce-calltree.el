@@ -1,5 +1,6 @@
 ;;; lspce.el --- LSP Client for Emacs -*- lexical-binding: t; -*-
 
+(require 'cl-lib)
 (require 'compile) ;; for compile face
 
 (declare-function lspce--query-call-hierarchy "lspce")
