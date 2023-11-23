@@ -584,6 +584,9 @@ Return value of `body', or nil if interrupted."
     (unless server-cmd
       (user-error "lspce--connect: Can not find lsp server progrom.")
       (cl-return-from lspce--connect nil))
+    (setq server-cmd (or (executable-find server-cmd)
+                         (user-error "Cannot find `%s' using `executable-find'"
+                                     server-cmd)))
     (when (functionp server-args)
       (setq server-args (funcall server-args)))
     (unless server-args
@@ -591,6 +594,7 @@ Return value of `body', or nil if interrupted."
     (when (functionp initialize-options)
       (setq initialize-options (funcall initialize-options)))
 
+    (lspce--debug "server-cmd: %s" server-cmd)
     (lspce--debug "server-args: %s" server-args)
     (lspce--debug "initialize-options: %s" initialize-options)
 
