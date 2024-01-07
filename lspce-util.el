@@ -2,6 +2,7 @@
 
 (eval-when-compile
   (require 'cl-macs))
+(require 'url-util)
 (require 'yasnippet)
 
 (defconst LSPCE-VERSION "1.1.0")
