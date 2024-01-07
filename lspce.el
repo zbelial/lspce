@@ -522,17 +522,14 @@ Return value of `body', or nil if interrupted."
     programs))
 
 (defun lspce--choose-server (servers)
-  (let (server chosen)
+  (let ((server-ht (make-hash-table :test #'equal))
+        chosen)
+    (dolist (s servers)
+      (puthash (format "%s" s) s server-ht))
     (setq chosen (completing-read "Choose one server: "
-                                  (mapcar (lambda (p)
-                                            (let ((key (format "%s" p)))
-                                              (put-text-property 0 1 'server-info p key)
-                                              key))
-                                          servers)
-                                  ))
+                                  (hash-table-keys server-ht)))
     (when chosen
-      (setq server (get-text-property 0 'server-info chosen)))
-    server))
+      (gethash chosen server-ht))))
 
 ;; 返回server info.
 (cl-defun lspce--connect ()
@@ -809,10 +806,10 @@ The value is also a hash table, with uri as the key and the value is just t.")
             (if lspce--server-info
                 (lspce--info "Connected to lsp server.")
               (lspce--warn "Failed to connect to lsp server.")
-              (setq lspce-mode nil)))
+              (lspce-mode -1)))
         ((error user-error quit)
          (lspce--error "lspce-mode enable: error [%s]" err)
-         (setq lspce-mode nil))))))
+         (lspce-mode -1))))))
    (t
     (remove-hook 'after-change-functions 'lspce--after-change t)
     (remove-hook 'before-change-functions 'lspce--before-change t)
@@ -827,7 +824,8 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (remove-hook 'after-save-hook 'lspce--notify-textDocument/didSave t)
     (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
     (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-function t)
-    (lspce--notify-textDocument/didClose)
+    (when lspce--server-info
+      (lspce--notify-textDocument/didClose))
     (when (and lspce-enable-flymake
                (not lspce--flymake-already-enabled))
       (flymake-mode -1))
