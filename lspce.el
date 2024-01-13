@@ -49,11 +49,6 @@
   :group 'lspce
   :type 'integer)
 
-(defcustom lspce-doc-name "*lspce doc*"
-  "The name of lspce tooltip name."
-  :group 'lspce
-  :type 'string)
-
 (defcustom lspce-completion-ignore-case t
   "If non-nil, ignore case when completing."
   :group 'lspce
@@ -89,7 +84,7 @@
   :group 'lspce
   :type 'list)
 
-(defcustom lspce-enable-logging t
+(defcustom lspce-enable-logging nil
   "If non-nil, enable logging to file."
   :group 'lspce
   :type 'boolean)
