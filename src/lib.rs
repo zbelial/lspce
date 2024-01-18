@@ -56,7 +56,7 @@ use std::{
 
 #[derive(Debug)]
 struct FileInfo {
-    pub uri: String, // 文件名
+    pub uri: String, // file name
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -70,18 +70,6 @@ impl FileInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct Response4E {
-    pub code: i32, // 0: 成功返回，-1：server未返回，-9：其它错误
-    pub msg: Option<Response>,
-}
-
-impl Response4E {
-    pub fn new(code: i32, msg: Option<Response>) -> Response4E {
-        Response4E { code, msg }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
 struct LspServerInfo {
     pub name: String,
     pub version: String,
@@ -90,12 +78,12 @@ struct LspServerInfo {
 }
 
 impl LspServerInfo {
-    pub fn new(name: String, version: String, id: String, capabilities: String) -> LspServerInfo {
+    pub fn new() -> LspServerInfo {
         LspServerInfo {
-            name,
-            version,
-            id,
-            capabilities,
+            name: "".to_string(),
+            version: "".to_string(),
+            id: "".to_string(),
+            capabilities: "".to_string(),
         }
     }
 }
@@ -135,7 +123,7 @@ impl LspServerData {
 struct LspServer {
     pub child: Option<Child>,
     pub server_info: LspServerInfo,
-    pub status: u8, // 是否已经启动完 0：待启动，1：启动中，2：启动完成，3：退出中
+    pub status: u8,
     transport: Arc<Mutex<Option<Connection>>>,
     transport_threads: Option<IoThreads>,
     dispatcher: Option<thread::JoinHandle<()>>,
@@ -159,38 +147,28 @@ impl LspServer {
             .spawn();
 
         if let Ok(mut c) = child {
-            let mut server = LspServer {
-                child: None,
-                server_info: LspServerInfo::new(
-                    "".to_string(),
-                    "".to_string(),
-                    "".to_string(),
-                    "".to_string(),
-                ),
-                status: SERVER_STATUS_NEW,
-                transport: Arc::new(Mutex::new(None)),
-                transport_threads: None,
-                dispatcher: None,
-                server_data: Arc::new(Mutex::new(LspServerData::new())),
-                exit: Arc::new(Mutex::new(false)),
-            };
-
             let mut stdin = c.stdin.take().unwrap();
             let mut stdout = c.stdout.take().unwrap();
 
             let (mut transport, mut transport_threads) = Connection::stdio(stdin, stdout);
 
-            server.server_info.id = c.id().to_string();
-            server.child = Some(c);
-            server.transport = Arc::new(Mutex::new(Some(transport)));
-            // server.file_infos = Arc::new(Mutex::new(HashMap::new()));
-            server.transport_threads = Some(transport_threads);
+            let mut server_info = LspServerInfo::new();
+            server_info.id = c.id().to_string();
+            let mut server = LspServer {
+                child: Some(c),
+                server_info: server_info,
+                status: SERVER_STATUS_STARTING,
+                transport: Arc::new(Mutex::new(Some(transport))),
+                transport_threads: Some(transport_threads),
+                dispatcher: None,
+                server_data: Arc::new(Mutex::new(LspServerData::new())),
+                exit: Arc::new(Mutex::new(false)),
+            };
             server.dispatcher = Some(LspServer::start_dispatcher(
                 Arc::clone(&server.transport),
                 Arc::clone(&server.exit),
                 Arc::clone(&server.server_data),
             ));
-            server.status = SERVER_STATUS_STARTING;
 
             Some(server)
         } else {
@@ -203,13 +181,13 @@ impl LspServer {
     }
 
     fn start_dispatcher(
-        transport2: Arc<Mutex<Option<Connection>>>,
-        exit2: Arc<Mutex<bool>>,
-        server_data2: Arc<Mutex<LspServerData>>,
+        transport: Arc<Mutex<Option<Connection>>>,
+        exit: Arc<Mutex<bool>>,
+        server_data: Arc<Mutex<LspServerData>>,
     ) -> thread::JoinHandle<()> {
         let handle = thread::spawn(move || loop {
             {
-                let exit = exit2.lock().unwrap();
+                let exit = exit.lock().unwrap();
                 if *exit {
                     break;
                 }
@@ -217,7 +195,7 @@ impl LspServer {
 
             let mut message: Option<Message> = None;
             {
-                let transport = transport2.lock().unwrap();
+                let transport = transport.lock().unwrap();
                 message = transport.as_ref().unwrap().read();
             }
 
@@ -234,7 +212,7 @@ impl LspServer {
                         // Logger::log(&format!("Response {}", &r.content));
                         let id = r.id.clone();
 
-                        let mut server_data = server_data2.lock().unwrap();
+                        let mut server_data = server_data.lock().unwrap();
                         let request_tick = server_data.request_ticks.get(&id);
                         if (request_tick.is_some()) {
                             let request_tick = request_tick.unwrap().clone();
@@ -259,6 +237,7 @@ impl LspServer {
                         }
                     }
                     Message::Notification(r) => {
+                        // cacha diagnostics so they won't pour into Emacs
                         if r.method.eq("textDocument/publishDiagnostics") {
                             let params =
                                 serde_json::from_value::<PublishDiagnosticsParams>(r.params)
@@ -268,11 +247,11 @@ impl LspServer {
                             let mut file_info = FileInfo::new(uri.clone());
                             file_info.diagnostics = params.diagnostics;
 
-                            let mut server_data = server_data2.lock().unwrap();
+                            let mut server_data = server_data.lock().unwrap();
                             server_data.file_infos.insert(uri.clone(), file_info);
                         } else {
                             // other notifications
-                            let mut server_data = server_data2.lock().unwrap();
+                            let mut server_data = server_data.lock().unwrap();
                             if server_data.notifications.len() > 10 {
                                 server_data.notifications.pop_front();
                             }
@@ -397,8 +376,8 @@ impl LspServer {
 }
 
 struct Project {
-    pub root_uri: String,                    // 项目根目录
-    pub servers: HashMap<String, LspServer>, // 每个LspServer处理一种类型的文件
+    pub root_uri: String,                    // 
+    pub servers: HashMap<String, LspServer>, // map each language_id to a lsp server
 }
 
 impl Project {
@@ -552,7 +531,6 @@ fn initialize(
         match response {
             Some(m) => {
                 if m.error.is_some() {
-                    // 有错误
                     env.message(&format!("Lsp error {:?}", m.error));
                     return false;
                 }
@@ -565,7 +543,6 @@ fn initialize(
 
                     _notify(server, initialized);
 
-                    // 记录server初始化完成
                     server.status = SERVER_STATUS_RUNNING;
 
                     if let Some(si) = ir.server_info {
@@ -600,11 +577,11 @@ fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Resu
     let mut projects = projects().lock().unwrap();
     if let Some(mut p) = projects.get_mut(&root_uri) {
         if let Some(mut server) = p.servers.remove(&file_type) {
-            // shutdown in a seperate thread so as not to block Emacs
+            // shut down in a seperate thread so as not to block Emacs
             thread::spawn(move || {
                 let server_name = server.server_info.name.clone();
                 let server_id = server.server_info.id.clone();
-                Logger::log(&format!("start to shutdown server {}, server_id {}", &server_name, &server_id));
+                Logger::log(&format!("start to shut down server {}, server_id {}", &server_name, &server_id));
 
                 let msg = serde_json::from_str::<Request>(&req);
                 if msg.is_err() {
@@ -633,10 +610,10 @@ fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Resu
                                 server.stop_dispatcher();
                                 server.exit_transport();
                                 Logger::log(&format!("after exit transport for server {}, server_id {}.", &server_name, &server_id));
-                                // 等待读写线程结束
+                                // waiting for transport_threads to exit
                                 server.transport_threads.take().unwrap().join();
                                 Logger::log(&format!("after thread join for server {}, server_id {}.", &server_name, &server_id));
-                                // 等待子进程结束，否则会成僵尸进程。
+                                // waiting for child to exit
                                 server.child.take().unwrap().wait();
                                 Logger::log(&format!("after child wait for server {}, server_id {}.", &server_name, &server_id));
 
@@ -721,7 +698,6 @@ fn request_async(
     let mut projects = projects().lock().unwrap();
     if let Some(mut p) = projects.get_mut(&root_uri) {
         if let Some(mut server) = p.servers.get_mut(&file_type) {
-            // 检查server是否初始化完成
             if server.status != SERVER_STATUS_RUNNING {
                 return Ok(None);
             }
@@ -779,7 +755,6 @@ fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result
     let mut projects = projects().lock().unwrap();
     if let Some(mut p) = projects.get_mut(&root_uri) {
         if let Some(mut server) = p.servers.get_mut(&file_type) {
-            // 检查server是否初始化完成
             if server.status != SERVER_STATUS_RUNNING {
                 env.message(&format!("Server is not ready."));
                 return Ok(None);
