@@ -85,7 +85,7 @@ impl Response4E {
 struct LspServerInfo {
     pub name: String,
     pub version: String,
-    pub id: String, // pid at the moment
+    pub id: String, // server_id at the moment
     pub capabilities: String,
 }
 
@@ -563,7 +563,7 @@ fn initialize(
                         serde_json::to_value(InitializedParams {}).unwrap(),
                     );
 
-                    _notify(env, server, initialized);
+                    _notify(server, initialized);
 
                     // 记录server初始化完成
                     server.status = SERVER_STATUS_RUNNING;
@@ -599,72 +599,65 @@ fn initialize(
 fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Result<Option<String>> {
     let mut projects = projects().lock().unwrap();
     if let Some(mut p) = projects.get_mut(&root_uri) {
-        if let Some(mut server) = p.servers.get_mut(&file_type) {
-            // 退出中，不再向server发送请求和通知。
-            server.status = SERVER_STATUS_EXITING;
+        if let Some(mut server) = p.servers.remove(&file_type) {
+            // shutdown in a seperate thread so as not to block Emacs
+            thread::spawn(move || {
+                let server_name = server.server_info.name.clone();
+                let server_id = server.server_info.id.clone();
+                Logger::log(&format!("start to shutdown server {}, server_id {}", &server_name, &server_id));
 
-            let msg = serde_json::from_str::<Request>(&req);
-            if msg.is_err() {
-                Logger::log(&format!("request is not valid json {}", &req));
-                return Ok(None);
-            }
+                let msg = serde_json::from_str::<Request>(&req);
+                if msg.is_err() {
+                    Logger::log(&format!("request is not valid json {}", &req));
+                    return ();
+                }
 
-            let msg = msg.unwrap();
-            let id = msg.id.clone();
+                let msg = msg.unwrap();
+                let id = msg.id.clone();
 
-            if !_request_async(server, msg) {
-                return Ok(None);
-            }
+                if !_request_async(&mut server, msg) {
+                    return ();
+                }
 
-            let start_time = Instant::now();
-            loop {
-                let response = server.read_response();
-                match response {
-                    Some(r) => {
-                        let r_id = r.id.clone();
-                        if r_id.eq(&id) {
-                            let exit = Notification::new("exit".to_string(), json!({}));
+                let start_time = Instant::now();
+                loop {
+                    let response = server.read_response();
+                    match response {
+                        Some(r) => {
+                            let r_id = r.id.clone();
+                            if r_id.eq(&id) {
+                                let exit = Notification::new("exit".to_string(), json!({}));
 
-                            _notify(env, server, exit);
+                                _notify(&mut server, exit);
 
-                            server.stop_dispatcher();
-                            server.exit_transport();
-                            Logger::log("after exit transport.");
-                            // 等待读写线程结束
-                            server.transport_threads.take().unwrap().join();
-                            Logger::log("after thread join.");
-                            // 等待子进程结束，否则会成僵尸进程。
-                            server.child.take().unwrap().wait();
-                            Logger::log("after child wait.");
+                                server.stop_dispatcher();
+                                server.exit_transport();
+                                Logger::log(&format!("after exit transport for server {}, server_id {}.", &server_name, &server_id));
+                                // 等待读写线程结束
+                                server.transport_threads.take().unwrap().join();
+                                Logger::log(&format!("after thread join for server {}, server_id {}.", &server_name, &server_id));
+                                // 等待子进程结束，否则会成僵尸进程。
+                                server.child.take().unwrap().wait();
+                                Logger::log(&format!("after child wait for server {}, server_id {}.", &server_name, &server_id));
 
-                            p.servers.remove(&file_type);
-                            if p.servers.len() == 0 {
-                                projects.remove(&root_uri);
+                                return ();
                             }
-
-                            return Ok(Some(serde_json::to_string(&r).unwrap()));
+                        }
+                        None => {
+                            thread::sleep(std::time::Duration::from_millis(10));
                         }
                     }
-                    None => {
-                        thread::sleep(std::time::Duration::from_millis(10));
+
+                    if Instant::now().duration_since(start_time).as_millis() > 3 * 1000 {
+                        server.stop_dispatcher();
+                        server.exit_transport();
+                        server.kill_child();
+
+                        return ();
                     }
                 }
-
-                if Instant::now().duration_since(start_time).as_millis() > 3 * 1000 {
-                    env.message(&format!("timeout when shutdown server"));
-
-                    server.stop_dispatcher();
-                    server.exit_transport();
-                    server.kill_child();
-
-                    p.servers.remove(&file_type);
-                    if p.servers.len() == 0 {
-                        projects.remove(&root_uri);
-                    }
-
-                    return Ok(None);
-                }
-            }
+                
+            });
         } else {
             env.message(&format!("No server for {}", &file_type));
 
@@ -763,7 +756,7 @@ fn request_async(
     }
 }
 
-fn _notify(env: &Env, server: &mut LspServer, req: Notification) -> Result<Option<bool>> {
+fn _notify(server: &mut LspServer, req: Notification) -> Result<Option<bool>> {
     let method = req.method.clone();
 
     let write_result = server.write(Message::Notification(req));
@@ -795,7 +788,7 @@ fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result
             let json_object = serde_json::from_str::<Notification>(&req);
             match json_object {
                 Ok(notification) => {
-                    return _notify(env, server, notification);
+                    return _notify(server, notification);
                 }
                 Err(e) => {
                     env.message(&format!("Invalid json string {}", &req));
