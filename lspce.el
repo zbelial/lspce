@@ -1776,6 +1776,18 @@ Doubles as an indicator of snippet support."
 (defvar-local lspce--current-flymake-report-fn nil
   "Current flymake report function for this buffer.")
 
+(defun lspce-current-max-diagnostics-count ()
+  "Read current MAX_DIAGNOSTIC_COUNT."
+  (interactive)
+  (lspce-module-read-max-diagnostics-count))
+
+(defun lspce-change-max-diagnostics-count (count)
+  "Change current MAX_DIAGNOSTIC_COUNT to COUND."
+  (interactive (list (read-number "Max diagnostics count: ")))
+  (if (integerp count)
+      (lspce-module-change-max-diagnostics-count count)
+    (lspce--error "Invalid count: %s" count)))
+
 (defun lspce--diag-type (sev)
   (cond ((null sev) 'lspce-error)
         ((<= sev 1) 'lspce-error)

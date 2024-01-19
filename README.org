@@ -109,7 +109,11 @@
   | lspce-auto-enable-within-project    | t              | If non-nil, enable lspce when a file is opened if lspce has already been enabled in current project |
   | lspce-after-text-edit-hook          | nil            | Functions called after finishing all text edits in a buffer.                                        |
   | lspce-afte-each-text-edit-hook      | nil            | Functions called after finishing each text edit in a buffer.                                        |
+  | MAX_DIAGNOSTIC_COUNT                | 30             | How many diagnostics should be retrived.                                                            |
   
+** MAX_DIAGNOSTIC_COUNT
+   This variable is defined in rust code, you can customize it via =lspce-change-max-diagnostics-count= . If it's negative, then all diagnostics will be retrived.
+
 * Architecture
   [[file:images/Architecture_of_LSPCE.png]]
 

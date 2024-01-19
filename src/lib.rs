@@ -39,6 +39,8 @@ use std::io::Result as IoResult;
 use std::result::Result as RustResult;
 use std::str::Utf8Error;
 
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::AtomicU32;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
@@ -53,6 +55,8 @@ use std::{
     sync::{Arc, Mutex, Once},
     thread::{self, JoinHandle, Thread},
 };
+
+pub static MAX_DIAGNOSTICS_COUNT: AtomicI32 = AtomicI32::new(30);
 
 #[derive(Debug)]
 struct FileInfo {
@@ -239,13 +243,24 @@ impl LspServer {
                     Message::Notification(r) => {
                         // cacha diagnostics so they won't pour into Emacs
                         if r.method.eq("textDocument/publishDiagnostics") {
-                            let params =
+                            let mut params =
                                 serde_json::from_value::<PublishDiagnosticsParams>(r.params)
                                 .unwrap();
 
                             let uri = params.uri.as_str().to_string();
                             let mut file_info = FileInfo::new(uri.clone());
-                            file_info.diagnostics = params.diagnostics;
+                            // cache no more than MAX_DIAGNOSTICS_COUNT diagnostics
+                            let max_diagnostic_count = MAX_DIAGNOSTICS_COUNT.load(Ordering::Relaxed);
+                            if max_diagnostic_count < 0 {
+                                file_info.diagnostics = params.diagnostics;
+                            } else {
+                                if params.diagnostics.len() > max_diagnostic_count as usize {
+                                    params.diagnostics.truncate(max_diagnostic_count as usize);
+                                    file_info.diagnostics = params.diagnostics;
+                                } else {
+                                    file_info.diagnostics = params.diagnostics;
+                                }
+                            }
 
                             let mut server_data = server_data.lock().unwrap();
                             server_data.file_infos.insert(uri.clone(), file_info);
@@ -397,6 +412,21 @@ emacs::plugin_is_GPL_compatible!();
 fn init(env: &Env) -> Result<Value<'_>> {
     env.message("Done loading!")
 }
+
+#[defun]
+fn change_max_diagnostics_count(env: &Env, count: i32) -> Result<Value<'_>> {
+    MAX_DIAGNOSTICS_COUNT.store(count, Ordering::Relaxed);
+
+    env.message(&format!("max diagnostics changed to {}!", count))
+}
+
+#[defun]
+fn read_max_diagnostics_count(env: &Env) -> Result<i32> {
+    let count = MAX_DIAGNOSTICS_COUNT.load(Ordering::Relaxed);
+
+    return Ok(count);
+}
+
 
 /// disable logging to /tmp/lspce.log
 #[defun]
