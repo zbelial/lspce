@@ -109,10 +109,10 @@
   | lspce-auto-enable-within-project    | t              | If non-nil, enable lspce when a file is opened if lspce has already been enabled in current project |
   | lspce-after-text-edit-hook          | nil            | Functions called after finishing all text edits in a buffer.                                        |
   | lspce-afte-each-text-edit-hook      | nil            | Functions called after finishing each text edit in a buffer.                                        |
-  | MAX_DIAGNOSTIC_COUNT                | 30             | How many diagnostics should be retrived.                                                            |
+  | MAX_DIAGNOSTIC_COUNT                | 30             | How many diagnostics should be retrieved.                                                           |
   
 ** MAX_DIAGNOSTIC_COUNT
-   This variable is defined in rust code, you can customize it via =lspce-change-max-diagnostics-count= . If it's negative, then all diagnostics will be retrived.
+   This variable is defined in rust code, you can customize it via =lspce-change-max-diagnostics-count= . If it's negative, then all diagnostics will be retrieved.
 
 ** Logging
    On rust code side, there are 5 log level: DISABLED(0), ERROR(1), INFO(2), TRACE(3), DEBUG(4), and the default level is INFO. You can use functions =lspce-set-log-level-xxxx= to change log level to specific level.
