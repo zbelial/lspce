@@ -13,14 +13,20 @@ use std::{
 use chrono::Local;
 use lazy_static::lazy_static;
 
-pub static LOG_ENABLE: AtomicU8 = AtomicU8::new(0);
+pub const LOG_DISABLED: u8 = 0;
+pub const LOG_ERROR: u8 = 1;
+pub const LOG_INFO: u8 = 2;
+pub const LOG_TRACE: u8 = 3;
+pub const LOG_DEBUG: u8 = 4;
+
+pub static LOG_LEVEL: AtomicU8 = AtomicU8::new(LOG_INFO);
 
 lazy_static! {
     pub static ref LOG_FILE_NAME: Mutex<String> = Mutex::new(String::new());
 }
 
-pub fn log_enabled() -> bool {
-    LOG_ENABLE.load(Ordering::Relaxed) == 1
+pub fn log_enabled(level: u8) -> bool {
+    LOG_LEVEL.load(Ordering::Relaxed) >= level
 }
 
 pub fn log_file_name() -> String {
@@ -30,17 +36,39 @@ pub fn log_file_name() -> String {
 pub struct Logger {}
 
 impl Logger {
-    pub fn log(buf: &str) {
-        if log_enabled() {
-            let mut logger = logger().lock().unwrap();
-            logger.write_all(
-                Local::now()
-                    .format("%Y-%m-%d %H:%M:%S%.3f - ")
-                    .to_string()
-                    .as_bytes(),
-            );
-            logger.write_all(buf.as_bytes());
-            logger.write("\n".as_bytes());
+    fn log(buf: &str) {
+        let mut logger = logger().lock().unwrap();
+        logger.write_all(
+            Local::now()
+                .format("%Y-%m-%d %H:%M:%S%.3f - ")
+                .to_string()
+                .as_bytes(),
+        );
+        logger.write_all(buf.as_bytes());
+        logger.write("\n".as_bytes());
+    }
+    pub fn error(buf: &str) {
+        let log_level = LOG_LEVEL.load(Ordering::Relaxed);
+        if log_level >= LOG_ERROR {
+            Logger::log(buf);
+        }
+    }
+    pub fn info(buf: &str) {
+        let log_level = LOG_LEVEL.load(Ordering::Relaxed);
+        if log_level >= LOG_INFO {
+            Logger::log(buf);
+        }
+    }
+    pub fn trace(buf: &str) {
+        let log_level = LOG_LEVEL.load(Ordering::Relaxed);
+        if log_level >= LOG_TRACE {
+            Logger::log(buf);
+        }
+    }
+    pub fn debug(buf: &str) {
+        let log_level = LOG_LEVEL.load(Ordering::Relaxed);
+        if log_level >= LOG_DEBUG {
+            Logger::log(buf);
         }
     }
 }

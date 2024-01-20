@@ -16,7 +16,7 @@
 (defconst lspce--{} (make-hash-table) "The empty JSON object.")
 
 (defcustom lspce-log-level LSPCE-LOG-WARN
-  "lspce log level."
+  "lspce log level, in elisp side."
   :type 'integer
   :group 'stock)
 

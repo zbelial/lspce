@@ -11,7 +11,7 @@ use std::{
 use bytes::BytesMut;
 use crossbeam_channel::{bounded, Receiver, Sender};
 
-use crate::logger::log_enabled;
+use crate::logger::{log_enabled, LOG_DEBUG};
 use crate::msg::{Message, Response, RequestId, ErrorCode};
 use crate::{
     connection::{NOTIFICATION_MAX, REQUEST_MAX},
@@ -33,19 +33,19 @@ pub(crate) fn stdio_transport(
                 match exit_writer.lock() {
                     Ok(exit) => {
                         if *exit {
-                            Logger::log(&format!("stdio writer_thread exited"));
+                            Logger::info(&format!("stdio writer_thread exited"));
                             break;
                         }
                     }
                     Err(e) => {
-                        Logger::log(&format!("stdio writer_thread error {}", e));
+                        Logger::error(&format!("stdio writer_thread error {}", e));
                     }
                 }
             }
             let recv_value = receiver_from_client.recv_timeout(std::time::Duration::from_millis(1));
             match recv_value {
                 Ok(r) => {
-                    Logger::log(&format!(
+                    Logger::debug(&format!(
                         "stdio write {}",
                         serde_json::to_string_pretty(&r).unwrap_or("invalid json".to_string())
                     ));
@@ -55,7 +55,7 @@ pub(crate) fn stdio_transport(
                 Err(t) => Ok(()),
             };
         }
-        Logger::log(&format!("stdio writer_thread exited normally."));
+        Logger::info(&format!("stdio writer_thread exited normally."));
         Ok(())
     });
 
@@ -70,42 +70,42 @@ pub(crate) fn stdio_transport(
                 match exit_reader.lock() {
                     Ok(exit) => {
                         if *exit {
-                            Logger::log(&format!("stdio reader_thread exited"));
+                            Logger::info(&format!("stdio reader_thread exited"));
                             break;
                         }
                     }
                     Err(e) => {
-                        Logger::log(&format!("stdio reader_thread error {}", e));
+                        Logger::error(&format!("stdio reader_thread error {}", e));
                     }
                 }
             }
             match Message::read(&mut reader) {
                 Ok(m) => {
                     if let Some(msg) = m {
-                        if log_enabled() {
+                        if log_enabled(LOG_DEBUG) {
                             let msg_log = msg.clone();
                             match msg_log {
                                 Message::Request(r) => {
-                                    Logger::log(&format!("stdio read request {}", serde_json::to_string_pretty(&r).unwrap_or(r.content)))
+                                    Logger::debug(&format!("stdio read request {}", serde_json::to_string_pretty(&r).unwrap_or(r.content)))
                                 }
                                 Message::Response(r) => {
-                                    Logger::log(&format!("stdio read response {}", serde_json::to_string_pretty(&r).unwrap_or(r.content)))
+                                    Logger::debug(&format!("stdio read response {}", serde_json::to_string_pretty(&r).unwrap_or(r.content)))
                                 }
                                 Message::Notification(r) => {
-                                    Logger::log(&format!("stdio read notification {}", serde_json::to_string_pretty(&r).unwrap_or(r.content)))
+                                    Logger::debug(&format!("stdio read notification {}", serde_json::to_string_pretty(&r).unwrap_or(r.content)))
                                 }
                             }
                         }
                         let r = sender_to_client.send(msg);
                         if r.is_err() {
-                            Logger::log(&format!("stdio read error {}", r.err().unwrap()));
+                            Logger::error(&format!("stdio read error {}", r.err().unwrap()));
                         }
                     } else {
                         thread::sleep(std::time::Duration::from_millis(1));
                     }
                 }
                 Err(e) => {
-                    Logger::log(&format!("stdio read error {}", e));
+                    Logger::error(&format!("stdio read error {}", e));
 
                     let msg = Response::new_err(RequestId::from(1), -32603, format!("{}", e));
                     sender_to_client.send(Message::Response(msg));
@@ -113,7 +113,7 @@ pub(crate) fn stdio_transport(
             }
         }
 
-        Logger::log(&format!("stdio reader_thread exited."));
+        Logger::info(&format!("stdio reader_thread exited."));
         Ok(())
     });
     let threads = IoThreads { reader: reader_thread, writer: writer_thread };
@@ -135,7 +135,7 @@ pub struct IoThreads {
 
 impl IoThreads {
     pub fn join(self) -> io::Result<()> {
-        Logger::log("IoThreads join");
+        Logger::info("IoThreads join");
 
         match self.reader.join() {
             Ok(r) => r?,
@@ -151,7 +151,7 @@ impl IoThreads {
                 std::panic::panic_any(err);
             }
         };
-        Logger::log("IoThreads join finished.");
+        Logger::info("IoThreads join finished.");
 
         Ok(())
     }

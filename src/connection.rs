@@ -43,7 +43,7 @@ impl Connection {
                 Some(q)
             }
             Err(e) => {
-                // Logger::log(&format!("Connection read error {}", e));
+                // Logger::error(&format!("Connection read error {}", e));
                 None
             }
         };
@@ -57,10 +57,10 @@ impl Connection {
                 *e = true;
             }
             Err(e) => {
-                Logger::log(&format!("Connection to_exit error {}", e));
+                Logger::error(&format!("Connection to_exit error {}", e));
             }
         }
-        Logger::log("after exit");
+        Logger::info("after exit in Connection.");
     }
 
     /// Create connection over standard in/standard out.

@@ -114,6 +114,10 @@
 ** MAX_DIAGNOSTIC_COUNT
    This variable is defined in rust code, you can customize it via =lspce-change-max-diagnostics-count= . If it's negative, then all diagnostics will be retrived.
 
+** Logging
+   On rust code side, there are 5 log level: DISABLED(0), ERROR(1), INFO(2), TRACE(3), DEBUG(4), and the default level is INFO. You can use functions =lspce-set-log-level-xxxx= to change log level to specific level.
+   Before adding log level feature, two commands, =lspce-enable-logging= and =lspce-disable-logging=, already exist, which enable/disable logging entirely. Now =lspce-enable-logging= is equivalent of setting log level to DEBUG, and =lspce-disable-logging= is equivalent of setting log level to DISABLED.
+
 * Architecture
   [[file:images/Architecture_of_LSPCE.png]]
 

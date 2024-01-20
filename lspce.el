@@ -220,6 +220,23 @@ Return value of `body', or nil if interrupted."
   (interactive)
   (lspce-module-enable-logging))
 
+(defun lspce-set-log-level-error ()
+  "Set log level to error on rust code side."
+  (interactive)
+  (lspce-module-set-log-level 1))
+(defun lspce-set-log-level-info ()
+  "Set log level to info on rust code side."
+  (interactive)
+  (lspce-module-set-log-level 2))
+(defun lspce-set-log-level-trace ()
+  "Set log level to trace on rust code side."
+  (interactive)
+  (lspce-module-set-log-level 3))
+(defun lspce-set-log-level-debug ()
+  "Set log level to debug on rust code side."
+  (interactive)
+  (lspce-module-set-log-level 4))
+
 (defun lspce-set-log-file (filename)
   (let ((dirname (f-dirname filename)))
     (unless (file-exists-p dirname)

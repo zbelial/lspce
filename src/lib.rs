@@ -14,8 +14,10 @@ use connection::Connection;
 use crossbeam_channel::SendError;
 use emacs::{defun, Env, IntoLisp, Result, Value};
 use error::LspceError;
+use logger::LOG_DEBUG;
+use logger::LOG_DISABLED;
+use logger::LOG_LEVEL;
 use logger::Logger;
-use logger::LOG_ENABLE;
 use logger::LOG_FILE_NAME;
 
 use lsp_types::DidChangeTextDocumentParams;
@@ -176,7 +178,7 @@ impl LspServer {
 
             Some(server)
         } else {
-            Logger::log(&format!(
+            Logger::error(&format!(
                 "create child process failed with error {:?}",
                 child.err().unwrap(),
             ));
@@ -213,28 +215,28 @@ impl LspServer {
                         // }
                     }
                     Message::Response(mut r) => {
-                        // Logger::log(&format!("Response {}", &r.content));
+                        Logger::trace(&format!("Response {}", &r.content));
                         let id = r.id.clone();
 
                         let mut server_data = server_data.lock().unwrap();
                         let request_tick = server_data.request_ticks.get(&id);
                         if (request_tick.is_some()) {
                             let request_tick = request_tick.unwrap().clone();
-                            Logger::log(&format!("Request tick for id {} is {}", &id, &request_tick));
+                            Logger::debug(&format!("Request tick for id {} is {}", &id, &request_tick));
                             if (request_tick.eq(&server_data.latest_request_tick)) {
                                 r.request_tick = request_tick.clone();
                                 server_data.responses.push_back(r);
                             }
-                            Logger::log(&format!("Latest response id is {}, current response id {}", &server_data.latest_response_id, &id));
+                            Logger::debug(&format!("Latest response id is {}, current response id {}", &server_data.latest_response_id, &id));
                             if server_data.latest_response_id.lt(&id) {
                                 server_data.latest_response_id = id.clone();
                                 server_data.latest_response_tick = request_tick.clone();
-                                Logger::log(&format!("Change Latest response tick for id {} to {}", &server_data.latest_response_id, &request_tick));
+                                Logger::debug(&format!("Change Latest response tick for id {} to {}", &server_data.latest_response_id, &request_tick));
                             }
 
                             server_data.request_ticks.remove(&id);
                         } else {
-                            Logger::log(&format!("No request tick for id {}", id));
+                            Logger::trace(&format!("No request tick for id {}", id));
                             // if server_data.latest_response_id.lt(&id) {
                             //     server_data.latest_response_id = id.clone();
                             // }
@@ -346,7 +348,7 @@ impl LspServer {
         let latest_request_tick = server_data.latest_request_tick.clone();
         let mut reserved: VecDeque<Response> = VecDeque::new();
         for iter in server_data.responses.iter() {
-            // Logger::log(&format!("read_response_exact response {:#?}", &iter));
+            Logger::debug(&format!("read_response_exact response {:#?}", &iter));
             if iter.id.eq(&id) {
                 result = Some(iter.clone());
             }
@@ -361,7 +363,7 @@ impl LspServer {
         server_data.responses.append(&mut reserved);
 
         if result.is_none() {
-            Logger::log(&format!(
+            Logger::trace(&format!(
                 "read_response_exact get null for request_id {}, method {}",
                 id, method
             ));
@@ -431,7 +433,7 @@ fn read_max_diagnostics_count(env: &Env) -> Result<i32> {
 /// disable logging to /tmp/lspce.log
 #[defun]
 fn disable_logging(env: &Env) -> Result<Value<'_>> {
-    LOG_ENABLE.store(0, Ordering::Relaxed);
+    LOG_LEVEL.store(LOG_DISABLED, Ordering::Relaxed);
 
     env.message("Logging is disabled!")
 }
@@ -439,9 +441,16 @@ fn disable_logging(env: &Env) -> Result<Value<'_>> {
 /// enable logging to /tmp/lspce.log
 #[defun]
 fn enable_logging(env: &Env) -> Result<Value<'_>> {
-    LOG_ENABLE.store(1, Ordering::Relaxed);
+    LOG_LEVEL.store(LOG_DEBUG, Ordering::Relaxed);
 
     env.message("Logging is enabled!")
+}
+
+#[defun]
+fn set_log_level(env: &Env, level: u8) -> Result<Value<'_>> {
+    LOG_LEVEL.store(level, Ordering::Relaxed);
+
+    env.message(&format!("log level set to {}!", level))
 }
 
 /// set logging file name
@@ -476,7 +485,7 @@ fn connect(
     initialize_req: String,
     timeout: i32,
 ) -> Result<Option<String>> {
-    Logger::log(&format!(
+    Logger::info(&format!(
         "start initializing server for lsp_type {} in project {}",
         lsp_type, root_uri
     ));
@@ -485,7 +494,7 @@ fn connect(
 
     if let Some(p) = projects.get(&root_uri) {
         if let Some(s) = p.servers.get(&lsp_type) {
-            Logger::log(&format!(
+            Logger::info(&format!(
                 "server created already for lsp_type {} in project {}",
                 lsp_type, root_uri
             ));
@@ -525,10 +534,10 @@ fn connect(
             }
         }
 
-        Logger::log(&format!("Connected to server successfully."));
+        Logger::info(&format!("Connected to server successfully."));
         return Ok(Some(serde_json::to_string(&server_info).unwrap()));
     } else {
-        Logger::log(&format!("Failed to connect to server."));
+        Logger::error(&format!("Failed to connect to server {}, {} for project {} {}.", cmd.clone(), cmd_args.clone(), root_uri.clone(), lsp_type.clone()));
         return Ok(None);
     }
 }
@@ -540,11 +549,11 @@ fn initialize(
     req_str: String,
     timeout: i32,
 ) -> bool {
-    Logger::log(&format!("initialize request {:#?}", req_str));
+    Logger::info(&format!("initialize request {:#?}", req_str));
 
     let msg = serde_json::from_str::<Request>(&req_str);
     if msg.is_err() {
-        Logger::log(&format!("request is not valid json {}", &req_str));
+        Logger::error(&format!("request is not valid json {}", &req_str));
         return false;
     }
 
@@ -561,9 +570,10 @@ fn initialize(
         match response {
             Some(m) => {
                 if m.error.is_some() {
-                    env.message(&format!("Lsp error {:?}", m.error));
+                    Logger::error(&format!("Lsp error {:?}", m.error));
                     return false;
                 }
+                Logger::info(&format!("initialize response {:#?}", &m.content));
 
                 if let Ok(ir) = serde_json::from_value::<InitializeResult>(m.result.unwrap()) {
                     let initialized = Notification::new(
@@ -594,8 +604,7 @@ fn initialize(
         if timeout > 0
             && Instant::now().duration_since(start_time).as_millis() > timeout as u128 * 1000
         {
-            env.message(&format!("timeout when initializing server."));
-            Logger::log(&format!("timeout when initializing server."));
+            Logger::error(&format!("timeout when initializing server."));
 
             return false;
         }
@@ -611,11 +620,11 @@ fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Resu
             thread::spawn(move || {
                 let server_name = server.server_info.name.clone();
                 let server_id = server.server_info.id.clone();
-                Logger::log(&format!("start to shut down server {}, server_id {}", &server_name, &server_id));
+                Logger::info(&format!("start to shut down server {}, server_id {}", &server_name, &server_id));
 
                 let msg = serde_json::from_str::<Request>(&req);
                 if msg.is_err() {
-                    Logger::log(&format!("request is not valid json {}", &req));
+                    Logger::error(&format!("request is not valid json {}", &req));
                     return ();
                 }
 
@@ -639,13 +648,13 @@ fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Resu
 
                                 server.stop_dispatcher();
                                 server.exit_transport();
-                                Logger::log(&format!("after exit transport for server {}, server_id {}.", &server_name, &server_id));
+                                Logger::info(&format!("after exit transport for server {}, server_id {}.", &server_name, &server_id));
                                 // waiting for transport_threads to exit
                                 server.transport_threads.take().unwrap().join();
-                                Logger::log(&format!("after thread join for server {}, server_id {}.", &server_name, &server_id));
+                                Logger::info(&format!("after thread join for server {}, server_id {}.", &server_name, &server_id));
                                 // waiting for child to exit
                                 server.child.take().unwrap().wait();
-                                Logger::log(&format!("after child wait for server {}, server_id {}.", &server_name, &server_id));
+                                Logger::info(&format!("after child wait for server {}, server_id {}.", &server_name, &server_id));
 
                                 return ();
                             }
@@ -711,7 +720,7 @@ fn _request_async(server: &mut LspServer, req: Request) -> bool {
     match write_result {
         Ok(_) => return true,
         Err(e) => {
-            Logger::log(&format!("request error {:#?}", e));
+            Logger::error(&format!("request error {:#?}", e));
 
             return false;
         }
@@ -731,17 +740,17 @@ fn request_async(
             if server.status != SERVER_STATUS_RUNNING {
                 return Ok(None);
             }
-            Logger::log(&format!("request {}", &req));
+            Logger::trace(&format!("request {}", &req));
 
             let msg = serde_json::from_str::<Request>(&req);
             if msg.is_err() {
-                Logger::log(&format!("request is not valid json {}", &req));
+                Logger::error(&format!("request is not valid json {}", &req));
                 return Ok(None);
             }
             let msg = msg.unwrap();
 
             if msg.request_tick.is_none() {
-                Logger::log(&format!("no request_tick is req {}", &req));
+                Logger::error(&format!("no request_tick is req {}", &req));
                 return Ok(None);
             }
 
@@ -763,8 +772,6 @@ fn request_async(
 }
 
 fn _notify(server: &mut LspServer, req: Notification) -> Result<Option<bool>> {
-    let method = req.method.clone();
-
     let write_result = server.write(Message::Notification(req));
 
     match write_result {
@@ -772,7 +779,7 @@ fn _notify(server: &mut LspServer, req: Notification) -> Result<Option<bool>> {
             return Ok(Some(true));
         }
         Err(e) => {
-            Logger::log(&format!("notify error {:#?}", e));
+            Logger::error(&format!("notify error {:#?}", e));
             return Ok(None);
         }
     }
@@ -789,6 +796,7 @@ fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result
                 env.message(&format!("Server is not ready."));
                 return Ok(None);
             }
+            Logger::trace(&format!("notify {}", &req));
 
             let json_object = serde_json::from_str::<Notification>(&req);
             match json_object {

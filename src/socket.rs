@@ -38,18 +38,18 @@ fn make_reader(
     let reader_thread = thread::spawn(move || {
         let mut buf_read = BufReader::new(stream);
         while let Some(msg) = Message::read(&mut buf_read).unwrap() {
-            Logger::log(&format!("socket read {:#?}", &msg));
+            Logger::debug(&format!("socket read {:#?}", &msg));
 
             match sender_to_client.send(msg) {
                 Ok(_) => {}
                 Err(e) => {
-                    Logger::log(&format!("send to client error {}", e));
+                    Logger::error(&format!("send to client error {}", e));
                 }
             }
 
             let exit = exit.lock().unwrap();
             if *exit {
-                Logger::log("socket write finished.");
+                Logger::info("socket write finished.");
                 return Ok(());
             }
         }
@@ -69,11 +69,11 @@ fn make_writer(
             .try_for_each(|it| {
                 let exit = exit_writer.lock().unwrap();
                 if *exit {
-                    Logger::log("stdio write finished.");
+                    Logger::info("stdio write finished.");
                     return Ok(());
                 }
 
-                Logger::log(&format!("stdio write {:#?}", &it));
+                Logger::debug(&format!("stdio write {:#?}", &it));
 
                 it.write(&mut stream)
             })
