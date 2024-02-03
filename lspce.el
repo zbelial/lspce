@@ -430,8 +430,7 @@ Return value of `body', or nil if interrupted."
         response code msg response-error response-data)
     (lspce--debug "lspce--get-response for request-id %s" request-id)
     (when (member method '("textDocument/completion"))
-      (lspce--log-perf "before getting response ===== request-id %s, method %s, start-time %s" request-id method start-time)
-      )
+      (lspce--log-perf "before getting response ===== request-id %s, method %s, start-time %s" request-id method start-time))
     (while (and trying
                 (or (null timeout)
                     (> (+ start-time timeout) (float-time))))
@@ -460,8 +459,7 @@ Return value of `body', or nil if interrupted."
         (lspce--debug "sit-for is interrupted.")
         (setq trying nil)))
     (when (member method '("textDocument/completion"))
-      (lspce--log-perf "after getting response ===== request-id %s, method %s, end-time %s" request-id method (float-time))
-      )
+      (lspce--log-perf "after getting response ===== request-id %s, method %s, end-time %s" request-id method (float-time)))
     response-data))
 
 (defun lspce--request (method &optional params timeout root-uri lsp-type)
@@ -635,7 +633,7 @@ Return value of `body', or nil if interrupted."
                    (setq lspce--shutdown-status 0)))))
 
 ;;; Minor modes
-;;;
+;;;; lspce mode
 (cl-defstruct lspce--hash-key
   (root-uri)
   (lsp-type))
@@ -789,6 +787,9 @@ The value is also a hash table, with uri as the key and the value is just t.")
            (t
             )))))))
 
+(defun lspce--remove-overlays ()
+  (remove-overlays nil nil 'lspce--overlay t))
+
 ;; TODO add kill-emacs-hook to kill all lsp servers.
 ;;;###autoload
 (define-minor-mode lspce-mode
@@ -854,6 +855,8 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (when (and lspce-enable-eldoc
                (not lspce--eldoc-already-enabled))
       (eldoc-mode -1))
+    (lspce-inlay-hints-mode -1)
+    (lspce--remove-overlays)
     (lspce--buffer-disable-lsp))))
 
 ;; auto enable lspce-mode for files when some files in its project has enabled lspce-mode.
@@ -891,6 +894,143 @@ The value is also a hash table, with uri as the key and the value is just t.")
         (lspce-mode t)))))
 (add-hook 'after-save-hook #'lspce-enable-after-save)
 
+;;;; lspce inlay hints mode
+(defface lspce-inlay-hint-face '((t (:height 0.8 :inherit shadow)))
+  "Face used for inlay hint overlays.")
+
+(defface lspce-type-hint-face '((t (:inherit lspce-inlay-hint-face)))
+  "Face used for type inlay hint overlays.")
+
+(defface lspce-parameter-hint-face '((t (:inherit lspce-inlay-hint-face)))
+  "Face used for parameter inlay hint overlays.")
+
+(defvar-local lspce--inlay-hints-timer nil)
+(defvar-local lspce--inlay-hints-last-region nil)
+
+(defun lspce-start-update-hints ()
+  (message "lspce-start-update-hints")
+  (when lspce--inlay-hints-timer
+    (cancel-timer lspce--inlay-hints-timer))
+  (setq lspce--inlay-hints-timer
+        (run-with-idle-timer 0.01 t
+                             (lambda ()
+                               (lspce--do-update-hints)))))
+
+(defun lspce-stop-update-hints ()
+  (when lspce--inlay-hints-timer
+    (cancel-timer lspce--inlay-hints-timer)))
+
+(defun lspce--inlay-hint-label-text (label)
+  (cond
+   ((stringp label)
+    label)
+   ((listp label)
+    (mapconcat (lambda (l)
+                 (gethash "value" l))
+               label ""))
+   (t "")))
+
+(defun lspce--do-update-hints ()
+  (let* ((buf (current-buffer))
+         (start (window-start))
+         (end (window-end))
+         (hint-index 0)
+         (hints))
+    (when (and lspce-mode
+               (not (equal lspce--inlay-hints-last-region (cons start end))))
+      (setq lspce--inlay-hints-last-region (cons start end))
+      (message "lspce--do-update-hints start: %s, end: %s" start end)
+      (lspce--when-live-buffer buf
+        (setq hints (lspce--request-inlay-hints start end))
+        (when hints
+          (save-excursion
+            (save-restriction
+              (lspce--widening
+               (remove-overlays start end 'lspce--inlay-hint t)
+               (dolist (hint hints)
+                 (let* ((pos (gethash "position" hint))
+                        (label (gethash "label" hint))
+                        (kind (gethash "kind" hint))
+                        (paddingLeft (gethash "paddingLeft" hint))
+                        (paddingRight (gethash "paddingRight" hint))
+                        (hint-after-p (eql kind 1))
+                        (left-pad )
+                        (right-pad )
+                        ov text)
+                   ;; (message "hint: %s" (json-encode hint))
+                   (goto-char (lspce--lsp-position-to-point pos))
+                   (setq left-pad (and paddingLeft
+                                       (not (eq paddingLeft :json-false))
+                                       (not (memq (char-before) '(32 9)))
+                                       " "))
+                   (setq right-pad (and paddingRight
+                                        (not (eq paddingRight :json-false))
+                                        (not (memq (char-after) '(32 9)))
+                                        " "))
+                   (setq ov
+                         (if hint-after-p
+                             (make-overlay (point) (1+ (point)) nil t)
+                           (make-overlay (1- (point)) (point) nil nil nil)))
+                   (setq text (concat left-pad (lspce--inlay-hint-label-text label) right-pad))
+                   (when (and hint-after-p
+                              (= hint-index 0)
+                              (length> text 0))
+                     (put-text-property 0 1 'cursor 1 text))
+                   (overlay-put ov (if hint-after-p 'before-string 'after-string)
+                                (propertize
+                                 text
+                                 'face (cond 
+                                        ((eq kind 1)
+                                         'lspce-type-hint-face)
+                                        ((eq kind 2)
+                                         'lspce-parameter-hint-face)
+                                        (t
+                                         'lspce-inlay-hint-face))))
+                   (overlay-put ov 'lspce--inlay-hint t)
+                   (overlay-put ov 'evaporate t)
+                   (overlay-put ov 'lspce--overlay t)
+                   (setq hint-index (1+ hint-index))))))))))))
+
+(defun lspce--make-inlayHintsParams (start end)
+  (lspce--inlayHintsParams
+   (lspce--textDocumentIdenfitier (lspce--uri))
+   (lspce--make-range start end)))
+
+(cl-defun lspce--request-inlay-hints (start end)
+  (condition-case err
+      (let* ((method "textDocument/inlayHint")
+             (params (lspce--make-inlayHintsParams start end))
+             (response (lspce--request method params))
+             inlayHints)
+        (unless response
+          (lspce--debug "lspce--request-inlay-hints failed to get response")
+          (cl-return-from lspce--request-inlay-hints nil))
+
+        (lspce--debug "lspce--request-inlay-hints response: %S" response)
+        (lspce--debug "lspce--request-inlay-hints response type-of: %s" (type-of response))
+        (cond
+         ((listp response)
+          (setq inlayHints response))
+         (t
+          (cl-return-from lspce--request-inlay-hints nil)))
+        inlayHints)
+    ((error quit)
+     (lspce--error "lspce--request-inlay-hints error: [%s]" err)
+     nil)))
+
+(define-minor-mode lspce-inlay-hints-mode
+  "Minor mode to show inlay hints."
+  :global nil
+  (cond
+   (lspce-inlay-hints-mode
+    (if (and lspce-mode
+             (or (lspce--server-capable "inlayHintProvider")
+                 (lspce--server-capable-chain "inlayHintProvider" "resolveProvider")))
+        (lspce-start-update-hints)
+      (lspce-inlay-hints-mode -1)))
+   (t
+    (lspce-stop-update-hints)
+    (remove-overlays nil nil 'lspce--inlay-hint t))))
 
 ;;; Hooks
 (defvar-local lspce--recent-changes nil

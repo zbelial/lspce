@@ -534,7 +534,7 @@ fn connect(
             }
         }
 
-        Logger::info(&format!("Connected to server successfully."));
+        Logger::info(&format!("Connected to server successfully. server capabilities {}", &server_info.capabilities));
         return Ok(Some(serde_json::to_string(&server_info).unwrap()));
     } else {
         Logger::error(&format!("Failed to connect to server {}, {} for project {} {}.", cmd.clone(), cmd_args.clone(), root_uri.clone(), lsp_type.clone()));

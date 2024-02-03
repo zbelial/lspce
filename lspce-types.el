@@ -117,6 +117,8 @@
                                        :dynamicRegistration :json-false
                                        :prepareSupport :json-false
                                        :honorsChangeAnnotations :json-false)
+                  :inlayHint          (list
+                                       :dynamicRegistration :json-false)
                   :publishDiagnostics (list
                                        :relatedInformation :json-false
                                        :codeDescriptionSupport :json-false
@@ -252,6 +254,12 @@
     (puthash :textDocument textDocument params)
     (puthash :position position params)
     (puthash :newName newName params)
+    params))
+
+(defun lspce--inlayHintsParams (textDocument range)
+  (let ((params (make-hash-table)))
+    (puthash :textDocument textDocument params)
+    (puthash :range range params)
     params))
 
 (provide 'lspce-types)
