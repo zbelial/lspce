@@ -908,7 +908,6 @@ The value is also a hash table, with uri as the key and the value is just t.")
 (defvar-local lspce--inlay-hints-last-region nil)
 
 (defun lspce-start-update-hints ()
-  (message "lspce-start-update-hints")
   (when lspce--inlay-hints-timer
     (cancel-timer lspce--inlay-hints-timer))
   (setq lspce--inlay-hints-timer
@@ -920,6 +919,16 @@ The value is also a hash table, with uri as the key and the value is just t.")
   (when lspce--inlay-hints-timer
     (cancel-timer lspce--inlay-hints-timer)))
 
+(defun lspce--jit-lock-update-inlay-hints (start end)
+  (when lspce--inlay-hints-timer
+    (cancel-timer lspce--inlay-hints-timer))
+  (setq lspce--inlay-hints-timer
+        (run-at-time 0 nil
+                     (lambda ()
+                       (lspce--when-live-buffer (current-buffer)
+                         (lspce--jit-lock-do-update-hints start end)))))
+  (setq lspce--inlay-hints-timer nil))
+
 (defun lspce--inlay-hint-label-text (label)
   (cond
    ((stringp label)
@@ -930,66 +939,131 @@ The value is also a hash table, with uri as the key and the value is just t.")
                label ""))
    (t "")))
 
-(defun lspce--do-update-hints ()
+(defun lspce--remove-inlay-hint-overlays (start end)
+  (let ((ovs (overlays-in (1- start) end)))
+    (dolist (o ovs)
+      (when (and (overlay-get o 'lspce--inlay-hint)
+                 (cond ((eq (overlay-end o) start)
+                        (overlay-get o 'after-string))
+                       ((eq (overlay-end o) end)
+                        (overlay-get o 'before-string))
+                       (t)))
+        (delete-overlay o)))))
+
+(defun lspce--jit-lock-do-update-hints (start end)
   (let* ((buf (current-buffer))
-         (start (window-start))
-         (end (window-end))
          (hint-index 0)
          (hints))
-    (when (and lspce-mode
-               (not (equal lspce--inlay-hints-last-region (cons start end))))
-      (setq lspce--inlay-hints-last-region (cons start end))
-      (message "lspce--do-update-hints start: %s, end: %s" start end)
-      (lspce--when-live-buffer buf
-        (setq hints (lspce--request-inlay-hints start end))
-        (when hints
-          (save-excursion
-            (save-restriction
-              (lspce--widening
-               (remove-overlays start end 'lspce--inlay-hint t)
-               (dolist (hint hints)
-                 (let* ((pos (gethash "position" hint))
-                        (label (gethash "label" hint))
-                        (kind (gethash "kind" hint))
-                        (paddingLeft (gethash "paddingLeft" hint))
-                        (paddingRight (gethash "paddingRight" hint))
-                        (hint-after-p (eql kind 1))
-                        (left-pad )
-                        (right-pad )
-                        ov text)
-                   ;; (message "hint: %s" (json-encode hint))
-                   (goto-char (lspce--lsp-position-to-point pos))
-                   (setq left-pad (and paddingLeft
-                                       (not (eq paddingLeft :json-false))
-                                       (not (memq (char-before) '(32 9)))
-                                       " "))
-                   (setq right-pad (and paddingRight
-                                        (not (eq paddingRight :json-false))
-                                        (not (memq (char-after) '(32 9)))
-                                        " "))
-                   (setq ov
-                         (if hint-after-p
-                             (make-overlay (point) (1+ (point)) nil t)
-                           (make-overlay (1- (point)) (point) nil nil nil)))
-                   (setq text (concat left-pad (lspce--inlay-hint-label-text label) right-pad))
-                   (when (and hint-after-p
-                              (= hint-index 0)
-                              (length> text 0))
-                     (put-text-property 0 1 'cursor 1 text))
-                   (overlay-put ov (if hint-after-p 'before-string 'after-string)
-                                (propertize
-                                 text
-                                 'face (cond 
-                                        ((eq kind 1)
-                                         'lspce-type-hint-face)
-                                        ((eq kind 2)
-                                         'lspce-parameter-hint-face)
-                                        (t
-                                         'lspce-inlay-hint-face))))
-                   (overlay-put ov 'lspce--inlay-hint t)
-                   (overlay-put ov 'evaporate t)
-                   (overlay-put ov 'lspce--overlay t)
-                   (setq hint-index (1+ hint-index))))))))))))
+    (lspce--widening
+     (when (not (equal lspce--inlay-hints-last-region (cons start end)))
+       (setq lspce--inlay-hints-last-region (cons start end))
+       (lspce--when-live-buffer buf
+         (setq hints (lspce--request-inlay-hints start end))
+         (when hints
+           (lspce--remove-inlay-hint-overlays start end)
+           (dolist (hint hints)
+             (let* ((pos (gethash "position" hint))
+                    (label (gethash "label" hint))
+                    (kind (gethash "kind" hint))
+                    (paddingLeft (gethash "paddingLeft" hint))
+                    (paddingRight (gethash "paddingRight" hint))
+                    (hint-after-p (eql kind 1))
+                    (left-pad )
+                    (right-pad )
+                    ov text)
+               (goto-char (lspce--lsp-position-to-point pos))
+               (setq left-pad (and paddingLeft
+                                   (not (eq paddingLeft :json-false))
+                                   (not (memq (char-before) '(32 9)))
+                                   " "))
+               (setq right-pad (and paddingRight
+                                    (not (eq paddingRight :json-false))
+                                    (not (memq (char-after) '(32 9)))
+                                    " "))
+               (setq ov
+                     (if hint-after-p
+                         (make-overlay (point) (1+ (point)) nil t)
+                       (make-overlay (1- (point)) (point) nil nil nil)))
+               (setq text (concat left-pad (lspce--inlay-hint-label-text label) right-pad))
+               (when (and hint-after-p
+                          (= hint-index 0)
+                          (length> text 0))
+                 (put-text-property 0 1 'cursor 1 text))
+               (overlay-put ov (if hint-after-p 'before-string 'after-string)
+                            (propertize
+                             text
+                             'face (cond 
+                                    ((eql kind 1)
+                                     'lspce-type-hint-face)
+                                    ((eql kind 2)
+                                     'lspce-parameter-hint-face)
+                                    (t
+                                     'lspce-inlay-hint-face))))
+               (overlay-put ov 'lspce--inlay-hint t)
+               (overlay-put ov 'evaporate t)
+               (overlay-put ov 'lspce--overlay t)
+               (setq hint-index (1+ hint-index)))))))))
+  )
+
+(defun lspce--do-update-hints ()
+  (let* ((buf (current-buffer))
+         (start )
+         (end )
+         (hint-index 0)
+         (hints))
+    (when lspce-mode
+      (lspce--widening
+       (setq start (window-start))
+       (setq end (window-end))
+       (when (not (equal lspce--inlay-hints-last-region (cons start end)))
+         (setq lspce--inlay-hints-last-region (cons start end))
+         (lspce--when-live-buffer buf
+           (setq hints (lspce--request-inlay-hints start end))
+           (when hints
+             (remove-overlays start end 'lspce--inlay-hint t)
+             (dolist (hint hints)
+               (let* ((pos (gethash "position" hint))
+                      (label (gethash "label" hint))
+                      (kind (gethash "kind" hint))
+                      (paddingLeft (gethash "paddingLeft" hint))
+                      (paddingRight (gethash "paddingRight" hint))
+                      (hint-after-p (eql kind 1))
+                      (left-pad )
+                      (right-pad )
+                      ov text)
+                 (goto-char (lspce--lsp-position-to-point pos))
+                 (setq left-pad (and paddingLeft
+                                     (not (eq paddingLeft :json-false))
+                                     (not (memq (char-before) '(32 9)))
+                                     " "))
+                 (setq right-pad (and paddingRight
+                                      (not (eq paddingRight :json-false))
+                                      (not (memq (char-after) '(32 9)))
+                                      " "))
+                 (setq ov
+                       (if hint-after-p
+                           (make-overlay (point) (1+ (point)) nil t)
+                         (make-overlay (1- (point)) (point) nil nil nil)))
+                 (setq text (concat left-pad (lspce--inlay-hint-label-text label) right-pad))
+                 (when (and hint-after-p
+                            (= hint-index 0)
+                            (length> text 0))
+                   (put-text-property 0 1 'cursor 1 text))
+                 (overlay-put ov (if hint-after-p 'before-string 'after-string)
+                              (propertize
+                               text
+                               'face (cond 
+                                      ((eq kind 1)
+                                       'lspce-type-hint-face)
+                                      ((eq kind 2)
+                                       'lspce-parameter-hint-face)
+                                      (t
+                                       'lspce-inlay-hint-face))))
+                 (overlay-put ov 'lspce--inlay-hint t)
+                 (overlay-put ov 'evaporate t)
+                 (overlay-put ov 'lspce--overlay t)
+                 (setq hint-index (1+ hint-index))))))))))
+  )
 
 (defun lspce--make-inlayHintsParams (start end)
   (lspce--inlayHintsParams
@@ -1026,10 +1100,10 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (if (and lspce-mode
              (or (lspce--server-capable "inlayHintProvider")
                  (lspce--server-capable-chain "inlayHintProvider" "resolveProvider")))
-        (lspce-start-update-hints)
+        (jit-lock-register #'lspce--jit-lock-update-inlay-hints t)
       (lspce-inlay-hints-mode -1)))
    (t
-    (lspce-stop-update-hints)
+    (jit-lock-unregister #'lspce--jit-lock-update-inlay-hints)
     (remove-overlays nil nil 'lspce--inlay-hint t))))
 
 ;;; Hooks
