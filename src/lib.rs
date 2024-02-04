@@ -9,7 +9,6 @@ mod stdio;
 
 use bytes::Buf;
 use bytes::BytesMut;
-use chrono::Local;
 use connection::Connection;
 use crossbeam_channel::SendError;
 use emacs::{defun, Env, IntoLisp, Result, Value};
