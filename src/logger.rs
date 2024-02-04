@@ -8,10 +8,11 @@ use std::{
         atomic::{AtomicU8, Ordering},
         Arc, Mutex, Once,
     },
-    time::SystemTime,
 };
 
-// use chrono::Local;
+#[cfg(not(windows))]
+use chrono::Local;
+
 use lazy_static::lazy_static;
 
 pub const LOG_DISABLED: u8 = 0;
@@ -37,15 +38,21 @@ pub fn log_file_name() -> String {
 pub struct Logger {}
 
 impl Logger {
+    #[cfg(windows)]
     fn log(buf: &str) {
         let mut logger = logger().lock().unwrap();
-        logger.write_all(format!("{:?}", SystemTime::now()).to_string().as_bytes());
-        // logger.write_all(
-        //     Local::now()
-        //         .format("%Y-%m-%d %H:%M:%S%.3f - ")
-        //         .to_string()
-        //         .as_bytes(),
-        // );
+        logger.write_all(buf.as_bytes());
+        logger.write("\n".as_bytes());
+    }    
+    #[cfg(not(windows))]
+    fn log(buf: &str) {
+        let mut logger = logger().lock().unwrap();
+        logger.write_all(
+            Local::now()
+                .format("%Y-%m-%d %H:%M:%S%.3f - ")
+                .to_string()
+                .as_bytes(),
+        );
         logger.write_all(buf.as_bytes());
         logger.write("\n".as_bytes());
     }
