@@ -8,6 +8,7 @@ use std::{
         atomic::{AtomicU8, Ordering},
         Arc, Mutex, Once,
     },
+    time::SystemTime,
 };
 
 #[cfg(not(windows))]
@@ -40,7 +41,16 @@ pub struct Logger {}
 impl Logger {
     #[cfg(windows)]
     fn log(buf: &str) {
+        use std::time::UNIX_EPOCH;
+
         let mut logger = logger().lock().unwrap();
+        let since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+        let secs = since_epoch.as_secs();
+        let millis = since_epoch.as_millis();
+        logger.write_all(
+            format!("{} {} - ", secs, millis).as_bytes()
+        );
+
         logger.write_all(buf.as_bytes());
         logger.write("\n".as_bytes());
     }    
