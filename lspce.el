@@ -16,8 +16,7 @@
 (require 'flymake)
 
 (require 'lspce-module)
-(eval-when-compile
-  (require 'lspce-util))
+(require 'lspce-util)
 (require 'lspce-types)
 (require 'lspce-langs)
 (require 'lspce-structs)
