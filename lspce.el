@@ -612,7 +612,7 @@ Return value of `body', or nil if interrupted."
     (lspce--debug "lspce--connect initialize-params: %s" (json-encode initialize-params))
 
     (setq lspce--latest-tick (lspce--current-tick))
-    (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params lspce--latest-tick)) lspce-connect-server-timeout))
+    (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params lspce--latest-tick)) lspce-connect-server-timeout) (mapconcat 'identity exec-path ":"))
     (lspce--debug "lspce--connect response: %s" response-str)
 
     response-str))
