@@ -150,14 +150,15 @@ impl LspServer {
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn();
 
         if let Ok(mut c) = child {
             let mut stdin = c.stdin.take().unwrap();
             let mut stdout = c.stdout.take().unwrap();
+            let mut stderr = c.stderr.take().unwrap();
 
-            let (mut transport, mut transport_threads) = Connection::stdio(stdin, stdout);
+            let (mut transport, mut transport_threads) = Connection::stdio(stdin, stdout, stderr);
 
             let mut server_info = LspServerInfo::new();
             server_info.id = c.id().to_string();

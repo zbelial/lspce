@@ -1,3 +1,5 @@
+use std::io::Read;
+use std::process::ChildStderr;
 use std::time::Instant;
 use std::{
     collections::VecDeque,
@@ -22,6 +24,7 @@ use crate::{
 pub(crate) fn stdio_transport(
     mut child_stdin: ChildStdin,
     mut child_stdout: ChildStdout,
+    mut child_stderr: ChildStderr,
     exit: Arc<Mutex<bool>>,
 ) -> (Sender<Message>, Receiver<Message>, IoThreads) {
     let exit_writer = Arc::clone(&exit);
@@ -33,12 +36,12 @@ pub(crate) fn stdio_transport(
                 match exit_writer.lock() {
                     Ok(exit) => {
                         if *exit {
-                            Logger::info(&format!("stdio writer_thread exited"));
+                            Logger::info(&format!("stdio writer_thread exited normally."));
                             break;
                         }
                     }
                     Err(e) => {
-                        Logger::error(&format!("stdio writer_thread error {}", e));
+                        Logger::error(&format!("stdio writer_thread exit error {}", e));
                     }
                 }
             }
@@ -55,7 +58,6 @@ pub(crate) fn stdio_transport(
                 Err(t) => Ok(()),
             };
         }
-        Logger::info(&format!("stdio writer_thread exited normally."));
         Ok(())
     });
 
@@ -70,12 +72,12 @@ pub(crate) fn stdio_transport(
                 match exit_reader.lock() {
                     Ok(exit) => {
                         if *exit {
-                            Logger::info(&format!("stdio reader_thread exited"));
+                            Logger::info(&format!("stdio reader_thread exited normally."));
                             break;
                         }
                     }
                     Err(e) => {
-                        Logger::error(&format!("stdio reader_thread error {}", e));
+                        Logger::error(&format!("stdio reader_thread exit error {}", e));
                     }
                 }
             }
@@ -113,9 +115,42 @@ pub(crate) fn stdio_transport(
             }
         }
 
-        Logger::info(&format!("stdio reader_thread exited."));
         Ok(())
     });
+
+    let exit_stderr = Arc::clone(&exit);
+    let stderr_thread = thread::spawn(move || {
+        let mut stderr = child_stderr;
+        let mut buffer = String::new();
+        loop {
+            {
+                match exit_stderr.lock() {
+                    Ok(exit) => {
+                        if *exit {
+                            Logger::info(&format!("stdio stderr_thread exited normally."));
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        Logger::error(&format!("stdio stderr_thread error {}", e));
+                    }                    
+                }
+            }
+
+            match stderr.read_to_string(&mut buffer) {
+                Ok(_) => {
+                    if buffer.len() > 0 {
+                        Logger::info(&format!("[stderr] {}", &buffer));
+                        buffer.truncate(0);
+                    }
+                },
+                Err(e) => {
+                    Logger::error(&format!("stderr read error {}", e));
+                },
+            }
+        }
+    });
+
     let threads = IoThreads { reader: reader_thread, writer: writer_thread };
     (sender_for_client, receiver_for_client, threads)
 }
