@@ -67,6 +67,7 @@
       :load-path "/path/to/lspce"
       :config (progn
                 (setq lspce-send-changes-idle-time 1)
+                (setq lspce-show-log-level-in-modeline t) ;; show log level in mode line
 
                 ;; You should call this first if you want lspce to write logs
                 (lspce-set-log-file "/tmp/lspce.log")
@@ -91,6 +92,9 @@
       )
   #+END_SRC
   
+** About lsp servers' stderr
+   Lspce support writing stderr message from lsp servers to the log file (set up by calling `lspce-set-log-file`) in the log level INFO, and the log contains string "[stderr]".
+
 * Customization
   | Variable                            | Default        | Description                                                                                         |
   |-------------------------------------+----------------+-----------------------------------------------------------------------------------------------------|
