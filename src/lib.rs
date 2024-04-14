@@ -455,6 +455,13 @@ fn set_log_level(env: &Env, level: u8) -> Result<Value<'_>> {
     env.message(&format!("log level set to {}!", level))
 }
 
+#[defun]
+fn get_log_level(env: &Env) -> Result<u8> {
+    let log_level = LOG_LEVEL.load(Ordering::Relaxed);
+
+    return Ok(log_level);
+}
+
 /// set logging file name
 #[defun]
 fn set_log_file(env: &Env, file: String) -> Result<Value<'_>> {
