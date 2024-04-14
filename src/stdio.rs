@@ -140,7 +140,7 @@ pub(crate) fn stdio_transport(
             match stderr.read_to_string(&mut buffer) {
                 Ok(_) => {
                     if buffer.len() > 0 {
-                        Logger::info(&format!("[stderr] {}", &buffer));
+                        Logger::error(&format!("[stderr] {}", &buffer));
                         buffer.truncate(0);
                     }
                 },

@@ -93,7 +93,7 @@
   #+END_SRC
   
 ** About lsp servers' stderr
-   Lspce support writing stderr message from lsp servers to the log file (set up by calling `lspce-set-log-file`) in the log level INFO, and the log contains string "[stderr]".
+   Lspce support writing stderr message from lsp servers to the log file (set up by calling `lspce-set-log-file`) in the log level ERROR, and the log contains string "[stderr]".
 
 * Customization
   | Variable                            | Default        | Description                                                                                         |
