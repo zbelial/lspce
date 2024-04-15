@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::io::{BufRead, Read};
 use std::process::ChildStderr;
 use std::time::Instant;
 use std::{
@@ -121,6 +121,7 @@ pub(crate) fn stdio_transport(
     let exit_stderr = Arc::clone(&exit);
     let stderr_thread = thread::spawn(move || {
         let mut stderr = child_stderr;
+        let mut reader = std::io::BufReader::new(stderr);
         let mut buffer = String::new();
         loop {
             {
@@ -137,12 +138,13 @@ pub(crate) fn stdio_transport(
                 }
             }
 
-            match stderr.read_to_string(&mut buffer) {
-                Ok(_) => {
-                    if buffer.len() > 0 {
-                        Logger::error(&format!("[stderr] {}", &buffer));
-                        buffer.truncate(0);
-                    }
+            buffer.clear();
+            match reader.read_line(&mut buffer) {
+                Ok(0) => {
+                    Logger::error(&format!("stderr reach EOF"));
+                },
+                Ok(n) => {
+                    Logger::error(&format!("[stderr] {}", &buffer));
                 },
                 Err(e) => {
                     Logger::error(&format!("stderr read error {}", e));
