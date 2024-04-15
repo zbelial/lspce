@@ -16,8 +16,7 @@
 (require 'flymake)
 
 (require 'lspce-module)
-(eval-when-compile
-  (require 'lspce-util))
+(require 'lspce-util)
 (require 'lspce-types)
 (require 'lspce-langs)
 (require 'lspce-structs)
@@ -325,6 +324,9 @@ Return value of `body', or nil if interrupted."
    (lspce--make-position)
    context))
 (defalias 'lspce--make-signatureHelpParams 'lspce--make-textDocumentPositionParams "lspce--make-signatureHelpParams")
+
+(defun lspce--make-workspaceSymbolParams (pattern)
+  (lspce--workspaceSymbolParams pattern))
 
 (defun lspce--make-initializeParams (root-uri initializationOptions)
   (lspce--initializeParams root-uri initializationOptions))
@@ -1236,6 +1238,17 @@ If optional MARKERS, make markers."
            (response (lspce--request method (lspce--make-referenceParams))))
       (when response
         (lspce--locations-to-xref response)))))
+
+(cl-defmethod xref-backend-apropos ((_backend (eql xref-lspce)) pattern)
+  (when (lspce--server-capable "workspaceSymbolProvider")
+    (let* ((method "workspace/symbol")
+           (response (lspce--request method (lspce--make-workspaceSymbolParams pattern)))
+           location locations)
+      (when response
+        (dolist (symbol response)
+          (when-let ((location (gethash "location" symbol)))
+            (cl-pushnew location locations)))
+        (lspce--locations-to-xref locations)))))
 
 (cl-defmethod xref-backend-identifier-completion-table ((_backend (eql xref-lspce)))
   (list (propertize (or (thing-at-point 'symbol) "")

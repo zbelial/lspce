@@ -222,6 +222,11 @@
 (defalias 'lspce--hoverParams 'lspce--textDocumentPositionParams "lspce--hoverParams")
 (defalias 'lspce--signatureHelpParams 'lspce--textDocumentPositionParams "lspce--signatureHelpParams")
 
+(defun lspce--workspaceSymbolParams (query)
+  (let ((params (make-hash-table)))
+    (puthash :query query params)
+    params))
+
 (defconst LSPCE-Invoked 1 "Completion was triggered by typing an identifier or via API")
 (defconst LSPCE-TriggerCharacter 2 "Completion was triggered by a trigger character")
 (defconst LSPCE-TriggerForIncompleteCompletions 3 "Completion was re-triggered as the current completion list is incomplete")

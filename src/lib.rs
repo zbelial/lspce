@@ -149,6 +149,7 @@ impl LspServer {
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .stderr(Stdio::null())
             .spawn();
 
         if let Ok(mut c) = child {
