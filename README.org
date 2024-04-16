@@ -46,8 +46,10 @@
 
 * Installation
   At the moment, you can only install LSPCE by cloning this repo and compile rust code manually.
+
+  Before installing LSPCE, you should install rust and cargo first.
+
 ** Installing from the Git Repository
-   Before installing LSPCE, you should install rust and cargo first.
    #+BEGIN_SRC bash
      $ git clone https://github.com/zbelial/lspce.git ~/.emacs.d/site-lisp/lspce
      $ cd ~/.emacs.d/site-lisp/lspce
@@ -59,6 +61,18 @@
      # or alternatively, if .d and .dylib files are created for you: (thanks @fast-90 for this)
      $ mv target/debug/liblspce_module.d lspce-module.d
      $ mv target/debug/liblspce_module.dylib lspce-module.dylib
+   #+END_SRC
+
+** Installing using Straight
+   #+BEGIN_SRC elisp
+     (straight-use-package
+      `(lspce :type git :host github :repo "zbelial/lspce"
+              :files (:defaults ,(pcase system-type
+                                   ('gnu/linux "lspce-module.so")
+                                   ('darwin "lspce-module.dylib")))
+              :pre-build ,(pcase system-type
+                            ('gnu/linux '(("cargo" "build" "--release") ("cp" "./target/release/liblspce_module.so" "./lspce-module.so")))
+                            ('darwin '(("cargo" "build" "--release") ("cp" "./target/release/liblspce_module.dylib" "./lspce-module.dylib"))))))
    #+END_SRC
 
 * Get started
