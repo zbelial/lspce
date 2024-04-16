@@ -22,6 +22,10 @@
 (require 'lspce-structs)
 (require 'lspce-snippet)
 
+
+(unless (json-available-p)
+  (user-error "LSPCE needs JSON support in Emacs; please rebuild it using `--with-json'"))
+
 ;;; User tweakable stuff
 (defgroup lspce nil
   "Interaction with Language Server Protocol servers"
