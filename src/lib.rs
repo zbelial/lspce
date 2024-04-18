@@ -149,14 +149,15 @@ impl LspServer {
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn();
 
         if let Ok(mut c) = child {
             let mut stdin = c.stdin.take().unwrap();
             let mut stdout = c.stdout.take().unwrap();
+            let mut stderr = c.stderr.take().unwrap();
 
-            let (mut transport, mut transport_threads) = Connection::stdio(stdin, stdout);
+            let (mut transport, mut transport_threads) = Connection::stdio(stdin, stdout, stderr);
 
             let mut server_info = LspServerInfo::new();
             server_info.id = c.id().to_string();
@@ -451,6 +452,13 @@ fn set_log_level(env: &Env, level: u8) -> Result<Value<'_>> {
     LOG_LEVEL.store(level, Ordering::Relaxed);
 
     env.message(&format!("log level set to {}!", level))
+}
+
+#[defun]
+fn get_log_level(env: &Env) -> Result<u8> {
+    let log_level = LOG_LEVEL.load(Ordering::Relaxed);
+
+    return Ok(log_level);
 }
 
 /// set logging file name

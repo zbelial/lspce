@@ -46,8 +46,10 @@
 
 * Installation
   At the moment, you can only install LSPCE by cloning this repo and compile rust code manually.
+
+  Before installing LSPCE, you should install rust and cargo first.
+
 ** Installing from the Git Repository
-   Before installing LSPCE, you should install rust and cargo first.
    #+BEGIN_SRC bash
      $ git clone https://github.com/zbelial/lspce.git ~/.emacs.d/site-lisp/lspce
      $ cd ~/.emacs.d/site-lisp/lspce
@@ -61,12 +63,25 @@
      $ mv target/debug/liblspce_module.dylib lspce-module.dylib
    #+END_SRC
 
+** Installing using Straight
+   #+BEGIN_SRC elisp
+     (straight-use-package
+      `(lspce :type git :host github :repo "zbelial/lspce"
+              :files (:defaults ,(pcase system-type
+                                   ('gnu/linux "lspce-module.so")
+                                   ('darwin "lspce-module.dylib")))
+              :pre-build ,(pcase system-type
+                            ('gnu/linux '(("cargo" "build" "--release") ("cp" "./target/release/liblspce_module.so" "./lspce-module.so")))
+                            ('darwin '(("cargo" "build" "--release") ("cp" "./target/release/liblspce_module.dylib" "./lspce-module.dylib"))))))
+   #+END_SRC
+
 * Get started
   #+BEGIN_SRC elisp
     (use-package lspce
       :load-path "/path/to/lspce"
       :config (progn
                 (setq lspce-send-changes-idle-time 1)
+                (setq lspce-show-log-level-in-modeline t) ;; show log level in mode line
 
                 ;; You should call this first if you want lspce to write logs
                 (lspce-set-log-file "/tmp/lspce.log")
@@ -91,6 +106,9 @@
       )
   #+END_SRC
   
+** About lsp servers' stderr
+   Lspce support writing stderr message from lsp servers to the log file (set up by calling `lspce-set-log-file`) in the log level ERROR, and the log contains string "[stderr]".
+
 * Customization
   | Variable                            | Default        | Description                                                                                         |
   |-------------------------------------+----------------+-----------------------------------------------------------------------------------------------------|
@@ -109,6 +127,7 @@
   | lspce-auto-enable-within-project    | t              | If non-nil, enable lspce when a file is opened if lspce has already been enabled in current project |
   | lspce-after-text-edit-hook          | nil            | Functions called after finishing all text edits in a buffer.                                        |
   | lspce-afte-each-text-edit-hook      | nil            | Functions called after finishing each text edit in a buffer.                                        |
+  | lspce-show-log-level-in-modeline    | t              | If non-nil, show log level in modeline.                                                             |
   | MAX_DIAGNOSTIC_COUNT                | 30             | How many diagnostics should be retrieved.                                                           |
   
 ** MAX_DIAGNOSTIC_COUNT
