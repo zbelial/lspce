@@ -38,17 +38,16 @@ impl Connection {
     }
 
     pub fn read(&self) -> Option<Message> {
-        let msg = match self.receiver.recv_timeout(std::time::Duration::from_millis(1)) {
-            Ok(q) => {
-                Some(q)
-            }
+        match self
+            .receiver
+            .recv_timeout(std::time::Duration::from_millis(1))
+        {
+            Ok(q) => Some(q),
             Err(e) => {
                 // Logger::error(&format!("Connection read error {}", e));
                 None
             }
-        };
-
-        msg
+        }
     }
 
     pub fn to_exit(&self) {
@@ -70,8 +69,7 @@ impl Connection {
         let exit = Arc::new(Mutex::new(false));
 
         let exit2 = Arc::clone(&exit);
-        let (sender, receiver, io_threads) =
-            stdio::stdio_transport(stdin, stdout, stderr, exit2);
+        let (sender, receiver, io_threads) = stdio::stdio_transport(stdin, stdout, stderr, exit2);
         (
             Connection {
                 sender,

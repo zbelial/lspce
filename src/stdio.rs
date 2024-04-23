@@ -1,11 +1,10 @@
 use std::io::{BufRead, Read};
-use std::process::ChildStderr;
 use std::time::Instant;
 use std::{
     collections::VecDeque,
     io::{self, stdin, stdout},
     ops::ControlFlow,
-    process::{ChildStdin, ChildStdout},
+    process::{ChildStderr, ChildStdin, ChildStdout},
     sync::{Arc, Mutex},
     thread,
 };
@@ -14,7 +13,7 @@ use bytes::BytesMut;
 use crossbeam_channel::{bounded, Receiver, Sender};
 
 use crate::logger::{log_enabled, LOG_DEBUG};
-use crate::msg::{Message, Response, RequestId, ErrorCode};
+use crate::msg::{ErrorCode, Message, RequestId, Response};
 use crate::{
     connection::{NOTIFICATION_MAX, REQUEST_MAX},
     logger::Logger,
@@ -36,7 +35,7 @@ pub(crate) fn stdio_transport(
                 match exit_writer.lock() {
                     Ok(exit) => {
                         if *exit {
-                            Logger::info(&format!("stdio writer_thread exited normally."));
+                            Logger::info("stdio writer_thread exited normally.");
                             break;
                         }
                     }
@@ -72,7 +71,7 @@ pub(crate) fn stdio_transport(
                 match exit_reader.lock() {
                     Ok(exit) => {
                         if *exit {
-                            Logger::info(&format!("stdio reader_thread exited normally."));
+                            Logger::info("stdio reader_thread exited normally.");
                             break;
                         }
                     }
@@ -87,15 +86,18 @@ pub(crate) fn stdio_transport(
                         if log_enabled(LOG_DEBUG) {
                             let msg_log = msg.clone();
                             match msg_log {
-                                Message::Request(r) => {
-                                    Logger::debug(&format!("stdio read request {}", serde_json::to_string_pretty(&r).unwrap_or(r.content)))
-                                }
-                                Message::Response(r) => {
-                                    Logger::debug(&format!("stdio read response {}", serde_json::to_string_pretty(&r).unwrap_or(r.content)))
-                                }
-                                Message::Notification(r) => {
-                                    Logger::debug(&format!("stdio read notification {}", serde_json::to_string_pretty(&r).unwrap_or(r.content)))
-                                }
+                                Message::Request(r) => Logger::debug(&format!(
+                                    "stdio read request {}",
+                                    serde_json::to_string_pretty(&r).unwrap_or(r.content)
+                                )),
+                                Message::Response(r) => Logger::debug(&format!(
+                                    "stdio read response {}",
+                                    serde_json::to_string_pretty(&r).unwrap_or(r.content)
+                                )),
+                                Message::Notification(r) => Logger::debug(&format!(
+                                    "stdio read notification {}",
+                                    serde_json::to_string_pretty(&r).unwrap_or(r.content)
+                                )),
                             }
                         }
                         let r = sender_to_client.send(msg);
@@ -153,7 +155,10 @@ pub(crate) fn stdio_transport(
         }
     });
 
-    let threads = IoThreads { reader: reader_thread, writer: writer_thread };
+    let threads = IoThreads {
+        reader: reader_thread,
+        writer: writer_thread,
+    };
     (sender_for_client, receiver_for_client, threads)
 }
 
