@@ -14,14 +14,14 @@ use connection::Connection;
 use crossbeam_channel::SendError;
 use emacs::{defun, Env, IntoLisp, Result, Value};
 use error::LspceError;
+use logger::Logger;
 use logger::LOG_DEBUG;
 use logger::LOG_DISABLED;
-use logger::LOG_LEVEL;
-use logger::Logger;
 use logger::LOG_FILE_NAME;
+use logger::LOG_LEVEL;
 
-use lsp_types::DidChangeTextDocumentParams;
 use lsp_types::Diagnostic;
+use lsp_types::DidChangeTextDocumentParams;
 use lsp_types::InitializeParams;
 use lsp_types::InitializeResult;
 use lsp_types::InitializedParams;
@@ -163,7 +163,7 @@ impl LspServer {
             server_info.id = c.id().to_string();
             let mut server = LspServer {
                 child: Some(c),
-                server_info: server_info,
+                server_info,
                 status: SERVER_STATUS_STARTING,
                 transport: Arc::new(Mutex::new(Some(transport))),
                 transport_threads: Some(transport_threads),
@@ -223,16 +223,25 @@ impl LspServer {
                         let request_tick = server_data.request_ticks.get(&id);
                         if (request_tick.is_some()) {
                             let request_tick = request_tick.unwrap().clone();
-                            Logger::debug(&format!("Request tick for id {} is {}", &id, &request_tick));
+                            Logger::debug(&format!(
+                                "Request tick for id {} is {}",
+                                &id, &request_tick
+                            ));
                             if (request_tick.eq(&server_data.latest_request_tick)) {
                                 r.request_tick = request_tick.clone();
                                 server_data.responses.push_back(r);
                             }
-                            Logger::debug(&format!("Latest response id is {}, current response id {}", &server_data.latest_response_id, &id));
+                            Logger::debug(&format!(
+                                "Latest response id is {}, current response id {}",
+                                &server_data.latest_response_id, &id
+                            ));
                             if server_data.latest_response_id.lt(&id) {
                                 server_data.latest_response_id = id.clone();
                                 server_data.latest_response_tick = request_tick.clone();
-                                Logger::debug(&format!("Change Latest response tick for id {} to {}", &server_data.latest_response_id, &request_tick));
+                                Logger::debug(&format!(
+                                    "Change Latest response tick for id {} to {}",
+                                    &server_data.latest_response_id, &request_tick
+                                ));
                             }
 
                             server_data.request_ticks.remove(&id);
@@ -248,21 +257,20 @@ impl LspServer {
                         if r.method.eq("textDocument/publishDiagnostics") {
                             let mut params =
                                 serde_json::from_value::<PublishDiagnosticsParams>(r.params)
-                                .unwrap();
+                                    .unwrap();
 
                             let uri = params.uri.as_str().to_string();
                             let mut file_info = FileInfo::new(uri.clone());
                             // cache no more than MAX_DIAGNOSTICS_COUNT diagnostics
-                            let max_diagnostic_count = MAX_DIAGNOSTICS_COUNT.load(Ordering::Relaxed);
+                            let max_diagnostic_count =
+                                MAX_DIAGNOSTICS_COUNT.load(Ordering::Relaxed);
                             if max_diagnostic_count < 0 {
                                 file_info.diagnostics = params.diagnostics;
+                            } else if params.diagnostics.len() > max_diagnostic_count as usize {
+                                params.diagnostics.truncate(max_diagnostic_count as usize);
+                                file_info.diagnostics = params.diagnostics;
                             } else {
-                                if params.diagnostics.len() > max_diagnostic_count as usize {
-                                    params.diagnostics.truncate(max_diagnostic_count as usize);
-                                    file_info.diagnostics = params.diagnostics;
-                                } else {
-                                    file_info.diagnostics = params.diagnostics;
-                                }
+                                file_info.diagnostics = params.diagnostics;
                             }
 
                             let mut server_data = server_data.lock().unwrap();
@@ -282,7 +290,7 @@ impl LspServer {
             }
         });
 
-        return handle;
+        handle
     }
 
     pub fn stop_dispatcher(&mut self) {
@@ -394,7 +402,7 @@ impl LspServer {
 }
 
 struct Project {
-    pub root_uri: String,                    // 
+    pub root_uri: String,                    //
     pub servers: HashMap<String, LspServer>, // map each language_id to a lsp server
 }
 
@@ -420,16 +428,15 @@ fn init(env: &Env) -> Result<Value<'_>> {
 fn change_max_diagnostics_count(env: &Env, count: i32) -> Result<Value<'_>> {
     MAX_DIAGNOSTICS_COUNT.store(count, Ordering::Relaxed);
 
-    env.message(&format!("max diagnostics changed to {}!", count))
+    env.message(format!("max diagnostics changed to {}!", count))
 }
 
 #[defun]
 fn read_max_diagnostics_count(env: &Env) -> Result<i32> {
     let count = MAX_DIAGNOSTICS_COUNT.load(Ordering::Relaxed);
 
-    return Ok(count);
+    Ok(count)
 }
-
 
 /// disable logging to /tmp/lspce.log
 #[defun]
@@ -451,7 +458,7 @@ fn enable_logging(env: &Env) -> Result<Value<'_>> {
 fn set_log_level(env: &Env, level: u8) -> Result<Value<'_>> {
     LOG_LEVEL.store(level, Ordering::Relaxed);
 
-    env.message(&format!("log level set to {}!", level))
+    env.message(format!("log level set to {}!", level))
 }
 
 /// set logging file name
@@ -459,7 +466,7 @@ fn set_log_level(env: &Env, level: u8) -> Result<Value<'_>> {
 fn set_log_file(env: &Env, file: String) -> Result<Value<'_>> {
     *LOG_FILE_NAME.lock().unwrap() = file.clone();
 
-    env.message(&format!("Set logging file to {}", file))
+    env.message(format!("Set logging file to {}", file))
 }
 
 fn projects() -> &'static Arc<Mutex<HashMap<String, Project>>> {
@@ -535,11 +542,20 @@ fn connect(
             }
         }
 
-        Logger::info(&format!("Connected to server successfully. server capabilities {}", &server_info.capabilities));
-        return Ok(Some(serde_json::to_string(&server_info).unwrap()));
+        Logger::info(&format!(
+            "Connected to server successfully. server capabilities {}",
+            &server_info.capabilities
+        ));
+        Ok(Some(serde_json::to_string(&server_info).unwrap()))
     } else {
-        Logger::error(&format!("Failed to connect to server {}, {} for project {} {}.", cmd.clone(), cmd_args.clone(), root_uri.clone(), lsp_type.clone()));
-        return Ok(None);
+        Logger::error(&format!(
+            "Failed to connect to server {}, {} for project {} {}.",
+            cmd.clone(),
+            cmd_args.clone(),
+            root_uri.clone(),
+            lsp_type.clone()
+        ));
+        Ok(None)
     }
 }
 
@@ -605,7 +621,7 @@ fn initialize(
         if timeout > 0
             && Instant::now().duration_since(start_time).as_millis() > timeout as u128 * 1000
         {
-            Logger::error(&format!("timeout when initializing server."));
+            Logger::error("timeout when initializing server.");
 
             return false;
         }
@@ -621,19 +637,22 @@ fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Resu
             thread::spawn(move || {
                 let server_name = server.server_info.name.clone();
                 let server_id = server.server_info.id.clone();
-                Logger::info(&format!("start to shut down server {}, server_id {}", &server_name, &server_id));
+                Logger::info(&format!(
+                    "start to shut down server {}, server_id {}",
+                    &server_name, &server_id
+                ));
 
                 let msg = serde_json::from_str::<Request>(&req);
                 if msg.is_err() {
                     Logger::error(&format!("request is not valid json {}", &req));
-                    return ();
+                    return;
                 }
 
                 let msg = msg.unwrap();
                 let id = msg.id.clone();
 
                 if !_request_async(&mut server, msg) {
-                    return ();
+                    return;
                 }
 
                 let start_time = Instant::now();
@@ -649,15 +668,24 @@ fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Resu
 
                                 server.stop_dispatcher();
                                 server.exit_transport();
-                                Logger::info(&format!("after exit transport for server {}, server_id {}.", &server_name, &server_id));
+                                Logger::info(&format!(
+                                    "after exit transport for server {}, server_id {}.",
+                                    &server_name, &server_id
+                                ));
                                 // waiting for transport_threads to exit
                                 server.transport_threads.take().unwrap().join();
-                                Logger::info(&format!("after thread join for server {}, server_id {}.", &server_name, &server_id));
+                                Logger::info(&format!(
+                                    "after thread join for server {}, server_id {}.",
+                                    &server_name, &server_id
+                                ));
                                 // waiting for child to exit
                                 server.child.take().unwrap().wait();
-                                Logger::info(&format!("after child wait for server {}, server_id {}.", &server_name, &server_id));
+                                Logger::info(&format!(
+                                    "after child wait for server {}, server_id {}.",
+                                    &server_name, &server_id
+                                ));
 
-                                return ();
+                                return;
                             }
                         }
                         None => {
@@ -670,10 +698,9 @@ fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Resu
                         server.exit_transport();
                         server.kill_child();
 
-                        return ();
+                        return;
                     }
                 }
-                
             });
         } else {
             env.message(&format!("No server for {}", &file_type));
@@ -709,21 +736,20 @@ fn _request_async(server: &mut LspServer, req: Request) -> bool {
 
     server.update_request_info(id.clone(), request_tick);
 
-    if method == "textDocument/didChange" || method == "textDocument/didClose"{
+    if method == "textDocument/didChange" || method == "textDocument/didClose" {
         let param = serde_json::from_value::<DidChangeTextDocumentParams>(req.params.clone());
         if let Ok(param) = param {
-            server.clear_diagnostics(&param.text_document.uri.to_string());
+            server.clear_diagnostics(param.text_document.uri.as_ref());
         }
     }
-    
 
     let write_result = server.write(Message::Request(req));
     match write_result {
-        Ok(_) => return true,
+        Ok(_) => true,
         Err(e) => {
             Logger::error(&format!("request error {:#?}", e));
 
-            return false;
+            false
         }
     }
 }
@@ -756,19 +782,19 @@ fn request_async(
             }
 
             if _request_async(server, msg) {
-                return Ok(Some(true));
+                Ok(Some(true))
             } else {
-                return Ok(None);
+                Ok(None)
             }
         } else {
             env.message(&format!("No server for {}", &file_type));
 
-            return Ok(None);
+            Ok(None)
         }
     } else {
         env.message(&format!("No project for {} {}", &root_uri, &file_type));
 
-        return Ok(None);
+        Ok(None)
     }
 }
 
@@ -785,7 +811,7 @@ fn _notify(server: &mut LspServer, req: Notification) -> Result<Option<bool>> {
         }
     }
 
-    return Ok(None);
+    Ok(None)
 }
 
 #[defun]
@@ -794,7 +820,7 @@ fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result
     if let Some(mut p) = projects.get_mut(&root_uri) {
         if let Some(mut server) = p.servers.get_mut(&file_type) {
             if server.status != SERVER_STATUS_RUNNING {
-                env.message(&format!("Server is not ready."));
+                env.message("Server is not ready.");
                 return Ok(None);
             }
             Logger::trace(&format!("notify {}", &req));
@@ -815,7 +841,7 @@ fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result
         env.message(&format!("No project for {} {}", &root_uri, &file_type));
     }
 
-    return Ok(None);
+    Ok(None)
 }
 
 /// precondition: have called read_latest_response_id and gotten the id.
@@ -852,11 +878,7 @@ fn read_response_exact(
 }
 
 #[defun]
-fn read_notification(
-    env: &Env,
-    root_uri: String,
-    file_type: String,
-) -> Result<Option<String>> {
+fn read_notification(env: &Env, root_uri: String, file_type: String) -> Result<Option<String>> {
     let projects = projects().lock().unwrap();
     if let Some(p) = projects.get(&root_uri) {
         if let Some(server) = p.servers.get(&file_type) {
@@ -879,7 +901,6 @@ fn read_notification(
     Ok(None)
 }
 
-
 #[defun]
 fn read_file_diagnostics(
     env: &Env,
@@ -894,8 +915,8 @@ fn read_file_diagnostics(
             if let Some(file_info) = server_data.file_infos.get_mut(&uri) {
                 let result = serde_json::to_string(&file_info.diagnostics);
 
-                if result.is_ok() {
-                    return Ok(Some(result.unwrap()));
+                if let Ok(result) = result {
+                    return Ok(Some(result));
                 }
             }
         } else {
@@ -951,4 +972,3 @@ fn read_latest_response_tick(
 
     Ok(None)
 }
-
