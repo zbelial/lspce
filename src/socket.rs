@@ -20,8 +20,7 @@ pub(crate) fn socket_transport(
     exit: Arc<Mutex<bool>>,
 ) -> (Sender<Message>, Receiver<Message>, IoThreads) {
     let exit_reader = Arc::clone(&exit);
-    let (reader_receiver, reader) =
-        make_reader(stream.try_clone().unwrap(), exit_reader);
+    let (reader_receiver, reader) = make_reader(stream.try_clone().unwrap(), exit_reader);
 
     let exit_writer = Arc::clone(&exit);
     let (writer_sender, writer) = make_writer(stream.try_clone().unwrap(), exit_writer);

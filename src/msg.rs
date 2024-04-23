@@ -122,7 +122,7 @@ pub enum ErrorCode {
     /// Error code indicating that a server received a notification or
     /// request before the server has received the `initialize` request.
     ServerNotInitialized = -32002,
-    UnknownErrorCode = -32001,
+    UnknownError = -32001,
 
     // Defined by the protocol:
     /// The client has canceled a request and a server has detected
@@ -171,15 +171,15 @@ impl Message {
         match msg {
             Message::Request(mut r) => {
                 r.content = text;
-                return Ok(Some(Message::Request(r)));
+                Ok(Some(Message::Request(r)))
             }
             Message::Response(mut r) => {
                 r.content = text;
-                return Ok(Some(Message::Response(r)));
+                Ok(Some(Message::Response(r)))
             }
             Message::Notification(mut r) => {
                 r.content = text;
-                return Ok(Some(Message::Notification(r)));
+                Ok(Some(Message::Notification(r)))
             }
         }
     }
@@ -332,7 +332,7 @@ fn read_msg_text(inp: &mut dyn BufRead) -> io::Result<Option<String>> {
 }
 
 fn write_msg_text(out: &mut dyn Write, msg: &str) -> io::Result<()> {
-    out.write_all(&format!("Content-Length: {}\r\n\r\n{}", msg.len(), &msg).as_bytes())?;
+    out.write_all(format!("Content-Length: {}\r\n\r\n{}", msg.len(), &msg).as_bytes())?;
     out.flush()?;
 
     Ok(())
