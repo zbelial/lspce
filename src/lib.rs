@@ -142,15 +142,29 @@ impl LspServer {
         cmd: String,
         cmd_args: String,
         initialize_req: String,
+        emacs_exec_path: String,
     ) -> Option<LspServer> {
         let args = cmd_args.split_ascii_whitespace().collect::<Vec<&str>>();
 
-        let mut child = Command::new(cmd)
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn();
+        Logger::info(&format!("emacs_exec_path: {}", &emacs_exec_path));
+
+        let mut child;
+        if !emacs_exec_path.is_empty() {
+            child = Command::new(cmd)
+                .args(args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .env("PATH", emacs_exec_path)
+                .spawn();
+        } else {
+            child = Command::new(cmd)
+                .args(args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn();
+        }
 
         if let Ok(mut c) = child {
             let mut stdin = c.stdin.take().unwrap();
@@ -499,6 +513,7 @@ fn connect(
     cmd_args: String,
     initialize_req: String,
     timeout: i32,
+    emacs_exec_path: String,
 ) -> Result<Option<String>> {
     Logger::info(&format!(
         "start initializing server for lsp_type {} in project {}",
@@ -523,6 +538,7 @@ fn connect(
         cmd.clone(),
         cmd_args.clone(),
         initialize_req.clone(),
+        emacs_exec_path.clone(),
     );
     if let Some(mut s) = server {
         let server_info: LspServerInfo;
