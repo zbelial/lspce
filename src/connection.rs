@@ -9,7 +9,7 @@ use std::{
     collections::VecDeque,
     io,
     net::{TcpListener, TcpStream, ToSocketAddrs},
-    process::{ChildStdin, ChildStdout},
+    process::{ChildStderr, ChildStdin, ChildStdout},
     sync::{Arc, Mutex},
 };
 
@@ -38,17 +38,16 @@ impl Connection {
     }
 
     pub fn read(&self) -> Option<Message> {
-        let msg = match self.receiver.recv_timeout(std::time::Duration::from_millis(1)) {
-            Ok(q) => {
-                Some(q)
-            }
+        match self
+            .receiver
+            .recv_timeout(std::time::Duration::from_millis(1))
+        {
+            Ok(q) => Some(q),
             Err(e) => {
                 // Logger::error(&format!("Connection read error {}", e));
                 None
             }
-        };
-
-        msg
+        }
     }
 
     pub fn to_exit(&self) {
@@ -66,12 +65,11 @@ impl Connection {
     /// Create connection over standard in/standard out.
     ///
     /// Use this to create a real language server.
-    pub fn stdio(mut stdin: ChildStdin, mut stdout: ChildStdout) -> (Connection, IoThreads) {
+    pub fn stdio(mut stdin: ChildStdin, mut stdout: ChildStdout, mut stderr: ChildStderr) -> (Connection, IoThreads) {
         let exit = Arc::new(Mutex::new(false));
 
         let exit2 = Arc::clone(&exit);
-        let (sender, receiver, io_threads) =
-            stdio::stdio_transport(stdin, stdout, exit2);
+        let (sender, receiver, io_threads) = stdio::stdio_transport(stdin, stdout, stderr, exit2);
         (
             Connection {
                 sender,

@@ -37,7 +37,7 @@
     (lspce--add-option "cargo.autoreload" t options)
     (lspce--add-option "cargo.useRustcWrapperForBuildScripts" t options)
     (lspce--add-option "completion.addCallParenthesis" t options)
-    (lspce--add-option "completion.addCallArgumentSnippets" :json-false options)
+    (lspce--add-option "completion.addCallArgumentSnippets" t options)
     (lspce--add-option "completion.postfix.enable" :json-false options)
     (lspce--add-option "completion.autoimport.enable" t options)
     (lspce--add-option "procMacro.enable" t options)

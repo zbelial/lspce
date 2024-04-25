@@ -22,6 +22,10 @@
 (require 'lspce-structs)
 (require 'lspce-snippet)
 
+
+(unless (json-available-p)
+  (user-error "LSPCE needs JSON support in Emacs; please rebuild it using `--with-json'"))
+
 ;;; User tweakable stuff
 (defgroup lspce nil
   "Interaction with Language Server Protocol servers"
@@ -105,6 +109,11 @@ current buffer is set to the buffer being edited."
 
 (defcustom lspce-completion-no-annotation nil
   "If non-nil, do not display completion item's annotation."
+  :group 'lspce
+  :type 'boolean)
+
+(defcustom lspce-show-log-level-in-modeline t
+  "If non-nil, show log level in modeline."
   :group 'lspce
   :type 'boolean)
 
@@ -209,32 +218,53 @@ Return value of `body', or nil if interrupted."
      ,@body))
 
 ;;; Logging
+(defvar lspce--log-level-text nil)
+(defun lspce-get-log-level ()
+  "Get current log level."
+  (interactive)
+  (let ((ll (lspce-module-get-log-level)))
+    ll))
+
+(defconst lspce--log-level-plist '(0 "DISABLED" 1 "ERROR" 2 "INFO" 3 "TRACE" 4 "DEBUG"))
+(defun lspce--refresh-log-level ()
+  (when lspce-show-log-level-in-modeline
+    (let* ((ll (lspce-module-get-log-level))
+           (ltext (plist-get lspce--log-level-plist ll)))
+      (setq lspce--log-level-text ltext)
+      nil)))
+
 (defun lspce-disable-logging ()
   "Disable logging"
   (interactive)
-  (lspce-module-disable-logging))
+  (lspce-module-disable-logging)
+  (lspce--refresh-log-level))
 
 (defun lspce-enable-logging ()
   "Enable logging"
   (interactive)
-  (lspce-module-enable-logging))
+  (lspce-module-enable-logging)
+  (lspce--refresh-log-level))
 
 (defun lspce-set-log-level-error ()
   "Set log level to error on rust code side."
   (interactive)
-  (lspce-module-set-log-level 1))
+  (lspce-module-set-log-level 1)
+  (lspce--refresh-log-level))
 (defun lspce-set-log-level-info ()
   "Set log level to info on rust code side."
   (interactive)
-  (lspce-module-set-log-level 2))
+  (lspce-module-set-log-level 2)
+  (lspce--refresh-log-level))
 (defun lspce-set-log-level-trace ()
   "Set log level to trace on rust code side."
   (interactive)
-  (lspce-module-set-log-level 3))
+  (lspce-module-set-log-level 3)
+  (lspce--refresh-log-level))
 (defun lspce-set-log-level-debug ()
   "Set log level to debug on rust code side."
   (interactive)
-  (lspce-module-set-log-level 4))
+  (lspce-module-set-log-level 4)
+  (lspce--refresh-log-level))
 
 (defun lspce-set-log-file (filename)
   (let ((dirname (f-dirname filename)))
@@ -827,6 +857,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
         (flymake-mode 1))
       (condition-case err
           (progn
+            (lspce--refresh-log-level)
             (lspce--buffer-enable-lsp)
             (if lspce--server-info
                 (lspce--info "Connected to lsp server.")
@@ -2465,7 +2496,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
          name id)
     (when server
       (setq id (gethash "id" server))
-      (propertize (concat "lspce:" id) 'face 'lspce-mode-line))))
+      (propertize (concat "lspce:" id (when lspce-show-log-level-in-modeline (concat ":" lspce--log-level-text))) 'face 'lspce-mode-line))))
 
 (add-to-list 'mode-line-misc-info
              `(lspce-mode (" [" lspce--mode-line-format "] ")))

@@ -45,7 +45,7 @@ impl Logger {
                 .as_bytes(),
         );
         logger.write_all(buf.as_bytes());
-        logger.write("\n".as_bytes());
+        logger.write_all("\n".as_bytes());
     }
     pub fn error(buf: &str) {
         let log_level = LOG_LEVEL.load(Ordering::Relaxed);
@@ -90,7 +90,7 @@ fn logger() -> &'static Arc<Mutex<dyn Write>> {
 
     ONCE.call_once(|| unsafe {
         let file_name = log_file_name();
-        if file_name.len() > 0 {
+        if !file_name.is_empty() {
             if let Ok(f) = File::options().create(true).append(true).open(file_name) {
                 LOGGER.as_mut_ptr().write(Arc::new(Mutex::new(f)))
             } else {
