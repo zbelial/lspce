@@ -117,6 +117,11 @@ current buffer is set to the buffer being edited."
   :group 'lspce
   :type 'boolean)
 
+(defcustom lspce-inherit-exec-path nil
+  "If non-nil, pass `exec-path' as PATH to rust code to create the lsp subprocess."
+  :group 'lspce
+  :type 'boolean)
+
 ;; Customizable via `completion-category-overrides'.
 ;; (when (assoc 'flex completion-styles-alist)
 ;;   (add-to-list 'completion-category-defaults '(lspce-capf (styles flex basic))))
@@ -642,7 +647,7 @@ Return value of `body', or nil if interrupted."
     (lspce--debug "lspce--connect initialize-params: %s" (json-encode initialize-params))
 
     (setq lspce--latest-tick (lspce--current-tick))
-    (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params lspce--latest-tick)) lspce-connect-server-timeout (mapconcat 'identity exec-path ":")) )
+    (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params lspce--latest-tick)) lspce-connect-server-timeout (if lspce-inherit-exec-path (mapconcat 'identity exec-path ":") "")))
     (lspce--debug "lspce--connect response: %s" response-str)
 
     response-str))

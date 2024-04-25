@@ -147,13 +147,25 @@ impl LspServer {
     ) -> Option<LspServer> {
         let args = cmd_args.split_ascii_whitespace().collect::<Vec<&str>>();
 
-        let mut child = Command::new(cmd)
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .env("PATH", emacs_exec_path)
-            .spawn();
+        Logger::info(&format!("emacs_exec_path: {}", &emacs_exec_path));
+
+        let mut child;
+        if !emacs_exec_path.is_empty() {
+            child = Command::new(cmd)
+                .args(args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .env("PATH", emacs_exec_path)
+                .spawn();
+        } else {
+            child = Command::new(cmd)
+                .args(args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn();
+        }
 
         if let Ok(mut c) = child {
             let mut stdin = c.stdin.take().unwrap();
