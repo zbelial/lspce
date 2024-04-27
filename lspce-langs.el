@@ -177,7 +177,7 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
     (when filename 
       (setq fullname (f-join (lspce--jdtls-workspace-cache-dir) filename))
       ;; FIXME use a cache to reduce requesting
-      (lspce--info "jdt link uri %s" uri)
+      (lspce--debug "jdt link uri %s" uri)
       (setq content (lspce--request "java/classFileContents" (list :uri uri)))
       (when content
         (with-temp-file fullname
