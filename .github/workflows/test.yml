@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    paths-ignore: ['**.md', '**.adoc']
+  pull_request:
+    paths-ignore: ['**.md', '**.adoc']
+
+jobs:
+  test:
+    runs-on: ${{matrix.os}}
+    continue-on-error: ${{matrix.emacs_version == 'snapshot'}}
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        # FIXME: Expand later.
+        emacs_version: ['28.2']
+
+    steps:
+    - name: Set up Emacs
+      uses: jcs090218/setup-emacs@master
+      with:
+        version: ${{matrix.emacs_version}}
+
+    - name: Install Eldev
+      uses: emacs-eldev/setup-eldev@v1
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Check out the source code
+      uses: actions/checkout@v4
+
+    - name: Build the project
+      # Do this explicitly, so that it is easier to distinguish
+      # between (Rust) compilation errors and errors in tests.
+      run: |
+        eldev -dtT -C build
+
+    # Needed for JDTLS.
+    - name: Install Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    - name: Install JDTLS for tests
+      # Would be nice to get the latest version, but probably not
+      # worth the added complexity.  I don't know any action for this.
+      run: |
+        mkdir jdtls
+        cd jdtls
+        wget --output-document=jdtls.tar.gz "https://www.eclipse.org/downloads/download.php?file=/jdtls/milestones/1.35.0/jdt-language-server-1.35.0-202404251256.tar.gz"
+        tar -xzf jdtls.tar.gz
+        cd ..
+        # `$GITHUB_PATH' is a magic file which contents is translated to environment variable `$PATH'.
+        echo "$(pwd)/jdtls/bin" >> $GITHUB_PATH
+
+    - name: Test the project
+      run: |
+        eldev -p -dtT -C test
+
+    # FIXME: Uncomment later, when it is expected to pass.
+    # - name: Ensure there are no byte-compilation warnings
+    #   run: |
+    #     eldev -dtT -C compile --set all --warnings-as-errors
