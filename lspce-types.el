@@ -63,7 +63,8 @@
                                                      :documentationFormat (if (fboundp 'gfm-view-mode)
                                                                               ["markdown" "plaintext"]
                                                                             ["plaintext"])
-                                                     :deprecatedSupport :json-false
+                                                     :deprecatedSupport t
+                                                     :tagSupport (list :valueSet [1])
                                                      :preselectSupoort :json-false
                                                      :insertReplaceSupport :json-false
                                                      :resolveSupport (list :properties (vector "documentation" "details" "additionalTextEdits"))
@@ -118,6 +119,8 @@
                                        :dynamicRegistration :json-false
                                        :prepareSupport :json-false
                                        :honorsChangeAnnotations :json-false)
+                  :inlayHint          (list
+                                       :dynamicRegistration :json-false)
                   :publishDiagnostics (list
                                        :relatedInformation :json-false
                                        :codeDescriptionSupport :json-false
@@ -221,9 +224,15 @@
 (defalias 'lspce--hoverParams 'lspce--textDocumentPositionParams "lspce--hoverParams")
 (defalias 'lspce--signatureHelpParams 'lspce--textDocumentPositionParams "lspce--signatureHelpParams")
 
+(defun lspce--workspaceSymbolParams (query)
+  (let ((params (make-hash-table)))
+    (puthash :query query params)
+    params))
+
 (defconst LSPCE-Invoked 1 "Completion was triggered by typing an identifier or via API")
 (defconst LSPCE-TriggerCharacter 2 "Completion was triggered by a trigger character")
 (defconst LSPCE-TriggerForIncompleteCompletions 3 "Completion was re-triggered as the current completion list is incomplete")
+
 (defun lspce--completionContext (trigger-kind trigger-character)
   (let ((params (make-hash-table)))
     (when trigger-kind
@@ -252,6 +261,12 @@
     (puthash :textDocument textDocument params)
     (puthash :position position params)
     (puthash :newName newName params)
+    params))
+
+(defun lspce--inlayHintsParams (textDocument range)
+  (let ((params (make-hash-table)))
+    (puthash :textDocument textDocument params)
+    (puthash :range range params)
     params))
 
 (provide 'lspce-types)

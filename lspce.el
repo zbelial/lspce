@@ -16,12 +16,15 @@
 (require 'flymake)
 
 (require 'lspce-module)
-(eval-when-compile
-  (require 'lspce-util))
+(require 'lspce-util)
 (require 'lspce-types)
 (require 'lspce-langs)
 (require 'lspce-structs)
 (require 'lspce-snippet)
+
+
+(unless (json-available-p)
+  (user-error "LSPCE needs JSON support in Emacs; please rebuild it using `--with-json'"))
 
 ;;; User tweakable stuff
 (defgroup lspce nil
@@ -48,11 +51,6 @@
   "The timeout of lspce tooltip show time, in seconds."
   :group 'lspce
   :type 'integer)
-
-(defcustom lspce-doc-name "*lspce doc*"
-  "The name of lspce tooltip name."
-  :group 'lspce
-  :type 'string)
 
 (defcustom lspce-completion-ignore-case t
   "If non-nil, ignore case when completing."
@@ -89,7 +87,7 @@
   :group 'lspce
   :type 'list)
 
-(defcustom lspce-enable-logging t
+(defcustom lspce-enable-logging nil
   "If non-nil, enable logging to file."
   :group 'lspce
   :type 'boolean)
@@ -111,6 +109,16 @@ current buffer is set to the buffer being edited."
 
 (defcustom lspce-completion-no-annotation nil
   "If non-nil, do not display completion item's annotation."
+  :group 'lspce
+  :type 'boolean)
+
+(defcustom lspce-show-log-level-in-modeline t
+  "If non-nil, show log level in modeline."
+  :group 'lspce
+  :type 'boolean)
+
+(defcustom lspce-inherit-exec-path nil
+  "If non-nil, pass `exec-path' as PATH to rust code to create the lsp subprocess."
   :group 'lspce
   :type 'boolean)
 
@@ -198,17 +206,70 @@ For buffers managed by fully LSP-compliant servers, this should
 be set to `lspce-move-to-lsp-abiding-column', and
 `lspce-move-to-column' (the default) for all others.")
 
+;;; Macros
+(defmacro lspce--while-no-input (&rest body)
+  "Wrap BODY in `while-no-input' and respecting `non-essential'.
+Return value of `body', or nil if interrupted."
+  (declare (debug t) (indent 0))
+  `(if non-essential
+       (let ((res (while-no-input ,@body)))
+         (cond
+          ;; interrupted or input arriving
+          ((booleanp res)
+           nil)
+          ;; execute normally
+          (t
+           res)))
+     ,@body))
 
 ;;; Logging
+(defvar lspce--log-level-text nil)
+(defun lspce-get-log-level ()
+  "Get current log level."
+  (interactive)
+  (let ((ll (lspce-module-get-log-level)))
+    ll))
+
+(defconst lspce--log-level-plist '(0 "DISABLED" 1 "ERROR" 2 "INFO" 3 "TRACE" 4 "DEBUG"))
+(defun lspce--refresh-log-level ()
+  (when lspce-show-log-level-in-modeline
+    (let* ((ll (lspce-module-get-log-level))
+           (ltext (plist-get lspce--log-level-plist ll)))
+      (setq lspce--log-level-text ltext)
+      nil)))
+
 (defun lspce-disable-logging ()
   "Disable logging"
   (interactive)
-  (lspce-module-disable-logging))
+  (lspce-module-disable-logging)
+  (lspce--refresh-log-level))
 
 (defun lspce-enable-logging ()
   "Enable logging"
   (interactive)
-  (lspce-module-enable-logging))
+  (lspce-module-enable-logging)
+  (lspce--refresh-log-level))
+
+(defun lspce-set-log-level-error ()
+  "Set log level to error on rust code side."
+  (interactive)
+  (lspce-module-set-log-level 1)
+  (lspce--refresh-log-level))
+(defun lspce-set-log-level-info ()
+  "Set log level to info on rust code side."
+  (interactive)
+  (lspce-module-set-log-level 2)
+  (lspce--refresh-log-level))
+(defun lspce-set-log-level-trace ()
+  "Set log level to trace on rust code side."
+  (interactive)
+  (lspce-module-set-log-level 3)
+  (lspce--refresh-log-level))
+(defun lspce-set-log-level-debug ()
+  "Set log level to debug on rust code side."
+  (interactive)
+  (lspce-module-set-log-level 4)
+  (lspce--refresh-log-level))
 
 (defun lspce-set-log-file (filename)
   (let ((dirname (f-dirname filename)))
@@ -299,6 +360,9 @@ be set to `lspce-move-to-lsp-abiding-column', and
    context))
 (defalias 'lspce--make-signatureHelpParams 'lspce--make-textDocumentPositionParams "lspce--make-signatureHelpParams")
 
+(defun lspce--make-workspaceSymbolParams (pattern)
+  (lspce--workspaceSymbolParams pattern))
+
 (defun lspce--make-initializeParams (root-uri initializationOptions)
   (lspce--initializeParams root-uri initializationOptions))
 
@@ -345,6 +409,12 @@ be set to `lspce-move-to-lsp-abiding-column', and
     (when buffer-file-name
       (setq suffix (file-name-extension buffer-file-name)))
     (cond
+     ((member suffix '("js"))
+      "javascript")
+     ((member suffix '("ts"))
+      "typescript")
+     ((member suffix '("tsx"))
+      "typescriptreact")
      ((member suffix '("c" "c++" "cpp" "h" "hpp" "cxx" "cc"))
       "C")
      ((string-suffix-p "-ts-mode" mm)
@@ -379,6 +449,8 @@ be set to `lspce-move-to-lsp-abiding-column', and
 
     (lspce--notify-textDocument/didChange)
 
+    (when (string-equal method "textDocument/completion")
+      (lspce--log-perf "request ===== request_id: %s, method: %s" request-id method))
     (lspce--debug "lspce--request-async request: %s" (json-encode request))
     (when (lspce-module-request-async root-uri lsp-type (json-encode request))
       (puthash request-id lspce--latest-tick lspce--request-ticks)
@@ -401,11 +473,12 @@ be set to `lspce-move-to-lsp-abiding-column', and
         response-tick
         response code msg response-error response-data)
     (lspce--debug "lspce--get-response for request-id %s" request-id)
-    (lspce--log-perf "request-id %s, method %s, start-time %s" request-id method start-time)
+    (when (member method '("textDocument/completion"))
+      (lspce--log-perf "before getting response ===== request-id %s, method %s, start-time %s" request-id method start-time))
     (while (and trying
                 (or (null timeout)
                     (> (+ start-time timeout) (float-time))))
-      ;; (message "request-tick: %s, lspce--latest-tick: %s" request-tick lspce--latest-tick)
+      (lspce--debug "request-tick: %s, lspce--latest-tick: %s" request-tick lspce--latest-tick)
       (unless (string-equal request-tick lspce--latest-tick)
         (lspce--debug "lspce--get-response request outdated, request-tick: %s, lspce--latest-tick: %s" request-tick lspce--latest-tick)
         (cl-return-from lspce--get-response nil))
@@ -413,7 +486,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
           (progn
             (setq response-tick (lspce-module-read-latest-response-tick lspce--root-uri lspce--lsp-type))
             (lspce--debug "response-tick %S" response-tick)
-            ;; (message "response-tick %S" response-tick)
+            (lspce--debug "response-tick %S" response-tick)
 
             (when (string-equal response-tick request-tick)
               (lspce--debug "start to read response %s" request-id)
@@ -429,12 +502,18 @@ be set to `lspce-move-to-lsp-abiding-column', and
                   (setq response-data (gethash "result" msg))))))
         (lspce--debug "sit-for is interrupted.")
         (setq trying nil)))
-    (lspce--log-perf "request-id %s, method %s, end-time %s" request-id method (float-time))
+    (when (member method '("textDocument/completion"))
+      (lspce--log-perf "after getting response ===== request-id %s, method %s, end-time %s" request-id method (float-time)))
     response-data))
 
 (defun lspce--request (method &optional params timeout root-uri lsp-type)
-  (when-let (request-id (lspce--request-async method params root-uri lsp-type))
-    (lspce--get-response request-id method timeout root-uri lsp-type)))
+  (lspce--while-no-input
+    (let (response)
+      (when-let (request-id (lspce--request-async method params root-uri lsp-type))
+        (setq response (lspce--get-response request-id method timeout root-uri lsp-type))
+        (when (string-equal method "textDocument/completion")
+          (lspce--log-perf "response ===== request_id: %s, method: %s" request-id method)))
+      response)))
 
 (cl-defun lspce--notify (method &optional params root-uri lsp-type)
   (let ((notification (lspce--make-notification method params))
@@ -503,17 +582,14 @@ be set to `lspce-move-to-lsp-abiding-column', and
     programs))
 
 (defun lspce--choose-server (servers)
-  (let (server chosen)
+  (let ((server-ht (make-hash-table :test #'equal))
+        chosen)
+    (dolist (s servers)
+      (puthash (format "%s" s) s server-ht))
     (setq chosen (completing-read "Choose one server: "
-                                  (mapcar (lambda (p)
-                                            (let ((key (format "%s" p)))
-                                              (put-text-property 0 1 'server-info p key)
-                                              key))
-                                          servers)
-                                  ))
+                                  (hash-table-keys server-ht)))
     (when chosen
-      (setq server (get-text-property 0 'server-info chosen)))
-    server))
+      (gethash chosen server-ht))))
 
 (defvar-local lspce-workspace-configuration ()
   "Configure LSP servers specifically for a given project.
@@ -589,6 +665,9 @@ the Pylsp and Gopls LSP servers:
     (unless server-cmd
       (user-error "lspce--connect: Can not find lsp server progrom.")
       (cl-return-from lspce--connect nil))
+    (setq server-cmd (or (executable-find server-cmd)
+                         (user-error "Cannot find `%s' using `executable-find'"
+                                     server-cmd)))
     (when (functionp server-args)
       (setq server-args (funcall server-args)))
     (unless server-args
@@ -596,6 +675,7 @@ the Pylsp and Gopls LSP servers:
     (when (functionp initialize-options)
       (setq initialize-options (funcall initialize-options)))
 
+    (lspce--debug "server-cmd: %s" server-cmd)
     (lspce--debug "server-args: %s" server-args)
     (lspce--debug "initialize-options: %s" initialize-options)
 
@@ -604,7 +684,7 @@ the Pylsp and Gopls LSP servers:
     (lspce--debug "lspce--connect initialize-params: %s" (json-encode initialize-params))
 
     (setq lspce--latest-tick (lspce--current-tick))
-    (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params lspce--latest-tick)) lspce-connect-server-timeout))
+    (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params lspce--latest-tick)) lspce-connect-server-timeout (if lspce-inherit-exec-path (mapconcat 'identity exec-path ":") "")))
     (lspce--debug "lspce--connect response: %s" response-str)
 
     (when response-str
@@ -631,7 +711,7 @@ the Pylsp and Gopls LSP servers:
                    (setq lspce--shutdown-status 0)))))
 
 ;;; Minor modes
-;;;
+;;;; lspce mode
 (cl-defstruct lspce--hash-key
   (root-uri)
   (lsp-type))
@@ -786,7 +866,11 @@ The value is also a hash table, with uri as the key and the value is just t.")
            (t
             )))))))
 
+(defun lspce--remove-overlays ()
+  (remove-overlays nil nil 'lspce--overlay t))
+
 ;; TODO add kill-emacs-hook to kill all lsp servers.
+;;;###autoload
 (define-minor-mode lspce-mode
   "Mode for source buffers managed by some LSPCE project."
   :init-value nil :lighter nil :keymap lspce-mode-map
@@ -818,15 +902,17 @@ The value is also a hash table, with uri as the key and the value is just t.")
           (setq-local lspce--flymake-already-enabled t))
         (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
         (flymake-mode 1))
-      (condition-case nil
+      (condition-case err
           (progn
+            (lspce--refresh-log-level)
             (lspce--buffer-enable-lsp)
             (if lspce--server-info
                 (lspce--info "Connected to lsp server.")
               (lspce--warn "Failed to connect to lsp server.")
-              (setq lspce-mode nil)))
+              (lspce-mode -1)))
         ((error user-error quit)
-         (setq lspce-mode nil))))))
+         (lspce--error "lspce-mode enable: error [%s]" err)
+         (lspce-mode -1))))))
    (t
     (remove-hook 'after-change-functions 'lspce--after-change t)
     (remove-hook 'before-change-functions 'lspce--before-change t)
@@ -841,13 +927,16 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (remove-hook 'after-save-hook 'lspce--notify-textDocument/didSave t)
     (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
     (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-function t)
-    (lspce--notify-textDocument/didClose)
+    (when lspce--server-info
+      (lspce--notify-textDocument/didClose))
     (when (and lspce-enable-flymake
                (not lspce--flymake-already-enabled))
       (flymake-mode -1))
     (when (and lspce-enable-eldoc
                (not lspce--eldoc-already-enabled))
       (eldoc-mode -1))
+    (lspce-inlay-hints-mode -1)
+    (lspce--remove-overlays)
     (lspce--buffer-disable-lsp))))
 
 ;; auto enable lspce-mode for files when some files in its project has enabled lspce-mode.
@@ -885,6 +974,127 @@ The value is also a hash table, with uri as the key and the value is just t.")
         (lspce-mode t)))))
 (add-hook 'after-save-hook #'lspce-enable-after-save)
 
+;;;; lspce inlay hints mode
+(defface lspce-inlay-hint-face '((t (:height 0.8 :inherit shadow)))
+  "Face used for inlay hint overlays.")
+
+(defvar-local lspce--inlay-hints-timer nil)
+
+(defun lspce--jit-lock-update-inlay-hints (start end)
+  (when lspce--inlay-hints-timer
+    (cancel-timer lspce--inlay-hints-timer))
+  (setq lspce--inlay-hints-timer
+        (run-at-time 0 nil
+                     (lambda ()
+                       (lspce--when-live-buffer (current-buffer)
+                         (lspce--jit-lock-do-update-hints start end)))))
+  (setq lspce--inlay-hints-timer nil))
+
+(defun lspce--inlay-hint-label-text (label)
+  (cond
+   ((stringp label)
+    label)
+   ((listp label)
+    (mapconcat (lambda (l)
+                 (gethash "value" l))
+               label ""))
+   (t "")))
+
+(defun lspce--remove-inlay-hint-overlays (start end)
+  (lspce--debug "lspce--remove-inlay-hint-overlays from %s to %s" start end)
+  (let ((ovs (overlays-in (1- start) (1+ end))))
+    (dolist (o ovs)
+      (when (overlay-get o 'lspce--inlay-hint)
+        (lspce--debug "old overlay: %s" o)
+        (delete-overlay o)))))
+
+(defun lspce--jit-lock-do-update-hints (start end)
+  (let* ((buf (current-buffer))
+         (hint-index 0)
+         (hints))
+    (lspce--widening
+     (lspce--when-live-buffer buf
+       (lspce--debug "lspce--jit-lock-do-update-hints start %s, end %s" start end)
+       (setq hints (lspce--request-inlay-hints start end))
+       (when hints
+         (lspce--remove-inlay-hint-overlays start end)
+         (dolist (hint hints)
+           (let* ((pos (gethash "position" hint))
+                  (label (gethash "label" hint))
+                  (kind (gethash "kind" hint))
+                  (paddingLeft (gethash "paddingLeft" hint))
+                  (paddingRight (gethash "paddingRight" hint))
+                  (hint-after-p (eql kind 1))
+                  (hint-point (lspce--lsp-position-to-point pos))
+                  (left-pad )
+                  (right-pad )
+                  ov text)
+             (when (and (>= hint-point start) (<= hint-point end))
+               (goto-char hint-point)
+               (setq left-pad (and paddingLeft
+                                   (not (eq paddingLeft :json-false))
+                                   (not (memq (char-before) '(32 9)))
+                                   " "))
+               (setq right-pad (and paddingRight
+                                    (not (eq paddingRight :json-false))
+                                    (not (memq (char-after) '(32 9)))
+                                    " "))
+               (setq ov
+                     (if hint-after-p
+                         (make-overlay (point) (1+ (point)) nil t)
+                       (make-overlay (1- (point)) (point) nil nil nil)))
+               (lspce--debug "new overlay %s" ov)
+               (setq text (concat left-pad (lspce--inlay-hint-label-text label) right-pad))
+               (when (and hint-after-p
+                          (= hint-index 0)
+                          (length> text 0))
+                 (put-text-property 0 1 'cursor 1 text))
+               (overlay-put ov (if hint-after-p 'before-string 'after-string)
+                            (propertize
+                             text
+                             'face 'lspce-inlay-hint-face))
+               (overlay-put ov 'lspce--inlay-hint t)
+               (overlay-put ov 'evaporate t)
+               (overlay-put ov 'lspce--overlay t)
+
+               (setq hint-index (1+ hint-index))))))))))
+
+(defun lspce--make-inlayHintsParams (start end)
+  (lspce--inlayHintsParams
+   (lspce--textDocumentIdenfitier (lspce--uri))
+   (lspce--make-range start end)))
+
+(cl-defun lspce--request-inlay-hints (start end)
+  (let* ((method "textDocument/inlayHint")
+         (params (lspce--make-inlayHintsParams start end))
+         (response (lspce--request method params))
+         inlayHints)
+    (unless response
+      (lspce--debug "lspce--request-inlay-hints failed to get response")
+      (cl-return-from lspce--request-inlay-hints nil))
+
+    (lspce--debug "lspce--request-inlay-hints response: %S" response)
+    (lspce--debug "lspce--request-inlay-hints response type-of: %s" (type-of response))
+    (cond
+     ((listp response)
+      (setq inlayHints response))
+     (t
+      (cl-return-from lspce--request-inlay-hints nil)))
+    inlayHints))
+
+(define-minor-mode lspce-inlay-hints-mode
+  "Minor mode to show inlay hints."
+  :global nil
+  (cond
+   (lspce-inlay-hints-mode
+    (if (and lspce-mode
+             (or (lspce--server-capable "inlayHintProvider")
+                 (lspce--server-capable-chain "inlayHintProvider" "resolveProvider")))
+        (jit-lock-register #'lspce--jit-lock-update-inlay-hints t)
+      (lspce-inlay-hints-mode -1)))
+   (t
+    (jit-lock-unregister #'lspce--jit-lock-update-inlay-hints)
+    (remove-overlays nil nil 'lspce--inlay-hint t))))
 
 ;;; Hooks
 (defvar-local lspce--recent-changes nil
@@ -1107,6 +1317,17 @@ If optional MARKERS, make markers."
       (when response
         (lspce--locations-to-xref response)))))
 
+(cl-defmethod xref-backend-apropos ((_backend (eql xref-lspce)) pattern)
+  (when (lspce--server-capable "workspaceSymbolProvider")
+    (let* ((method "workspace/symbol")
+           (response (lspce--request method (lspce--make-workspaceSymbolParams pattern)))
+           location locations)
+      (when response
+        (dolist (symbol response)
+          (when-let ((location (gethash "location" symbol)))
+            (cl-pushnew location locations)))
+        (lspce--locations-to-xref locations)))))
+
 (cl-defmethod xref-backend-identifier-completion-table ((_backend (eql xref-lspce)))
   (list (propertize (or (thing-at-point 'symbol) "")
                     'identifier-at-point t)))
@@ -1227,7 +1448,7 @@ is nil, prompt only if there's no usable symbol at point."
 
 (defvar lspce--completion-cache nil
   "Cached candidates for completion at point function.
-In the form of plist (prefix-pos items :lsp-items :markers :prefix ...).
+In the form of plist (prefix-start-pos items :lsp-items :markers :prefix ...).
 When the completion is incomplete, `items' contains value of :incomplete.")
 
 (defvar lspce--completion-last-result nil
@@ -1235,14 +1456,15 @@ When the completion is incomplete, `items' contains value of :incomplete.")
 
 (defun lspce--completion-clear-cache (&optional keep-last-result)
   "Clear completion caches, and last result if KEEP-LAST-RESULT not specified."
-  (let ((pl (cddr lspce--completion-cache))
-        markers)
-    (when pl
-      (setq markers (plist-get pl :markers))
-      (when markers
-        (set-marker (cl-second markers) nil))))
+  (let ((markers (and lspce--completion-cache
+                      (lspce-completionCache-markers lspce--completion-cache))))
+    (when markers
+      (setq markers (list (cl-first markers)
+                          (set-marker (cl-second markers) nil)))
+      (setf (lspce-completionCache-markers lspce--completion-cache) markers)))
   (setq lspce--completion-cache nil)
-  (unless keep-last-result (setq lspce--completion-last-result nil)))
+  (unless keep-last-result
+    (setq lspce--completion-last-result nil)))
 
 (defun lspce--post-self-insert-hook ()
   "Set `lspce--last-inserted-char'."
@@ -1274,7 +1496,7 @@ When the completion is incomplete, `items' contains value of :incomplete.")
 (defvar lspce--in-completion-p nil)
 (cl-defun lspce--request-completion ()
   (setq lspce--in-completion-p t)
-  (condition-case nil
+  (condition-case err
       (let* ((method "textDocument/completion")
              (params (lspce--make-completionParams))
              (response (lspce--request method params))
@@ -1298,6 +1520,7 @@ When the completion is incomplete, `items' contains value of :incomplete.")
           (cl-return-from lspce--request-completion nil)))
         (list complete? items))
     ((error quit)
+     (lspce--error "lspce--request-completion error: [%s]" err)
      (setq lspce--in-completion-p nil)
      nil)))
 
@@ -1354,16 +1577,6 @@ Doubles as an indicator of snippet support."
                              start))))
     bounds-start))
 
-;; (defun delete-region-advice (start end)
-;;   (message "delete-region start %d - %S, end %d - %S"
-;;            start
-;;            (lspce--pos-to-lsp-position start)
-;;            (if (markerp end) (marker-position end) end)
-;;            (lspce--pos-to-lsp-position end)))
-
-;; (advice-add #'delete-region :before #'delete-region-advice)
-;; (advice-remove #'delete-region #'delete-region-advice)
-
 (defun lspce-completion-at-point()
   (when-let (completion-capability (lspce--server-capable "completionProvider"))
     (let* ((trigger-chars (lspce--server-capable-chain "completionProvider"
@@ -1382,43 +1595,79 @@ Doubles as an indicator of snippet support."
            (cached-proxies :none)
            (proxies
             (lambda ()
-              (cond
-               ((or done? (listp cached-proxies))
-                cached-proxies)
-               (t
-                (let* ((completions (lspce--request-completion))
-                       (complete? (nth 0 completions))
-                       (items (nth 1 completions))
-                       (markers (list bounds-start (copy-marker (point) t)))
-                       (prefix (buffer-substring-no-properties bounds-start (point))))
-                  (if completions
-                      (progn
-                        (if complete?
-                            (setq-local lspce--completion-complete? 2)
-                          (setq-local lspce--completion-complete? 1))
-                        (setq done? complete?)
-                        (setq cached-proxies
-                              (mapcar
-                               (lambda (item)
-                                 (let* ((label (gethash "label" item))
-                                        (insertTextFormat (or (gethash "insertTextFormat" item) 1))
-                                        (insertText (gethash "insertText" item))
-                                        (proxy
-                                         (cond 
-                                          ((and (eql insertTextFormat 2)
-                                                (lspce--snippet-expansion-fn))
-                                           (string-trim-left label))
-                                          ((and insertText
-                                                (not (string-empty-p insertText)))
-                                           insertText)
-                                          (t
-                                           (string-trim-left label)))))
-                                   (unless (zerop (length proxy))
-                                     (put-text-property 0 1 'lspce--lsp-item item proxy)
-                                     (put-text-property 0 1 'lspce--lsp-markers markers proxy)
-                                     (put-text-property 0 1 'lspce--lsp-prefix prefix proxy))
-                                   proxy))
-                               items)))))))))
+              (let* ((same-session? (and lspce--completion-cache
+                                         ;; Special case for empty prefix and empty result
+                                         (or (lspce-completionCache-candidates lspce--completion-cache)
+                                             (not (string-empty-p
+                                                   (lspce-completionCache-prefix lspce--completion-cache))))
+                                         (equal (lspce-completionCache-prefix-start lspce--completion-cache) bounds-start)
+                                         (string-prefix-p
+                                          (lspce-completionCache-prefix lspce--completion-cache)
+                                          (buffer-substring-no-properties bounds-start (point)))))
+                     (old-cached-proxies (and same-session?
+                                              lspce--completion-cache
+                                              (lspce-completionCache-candidates lspce--completion-cache))))
+                (if same-session?
+                    (lspce--debug "same-session")
+                  (lspce--debug "not same-session"))
+                (cond
+                 ((or done? (listp cached-proxies))
+                  (lspce--debug "use cached-proxies")
+                  cached-proxies)
+                 ((and same-session?
+                       old-cached-proxies
+                       (listp old-cached-proxies))
+                  (lspce--debug "use old cached-proxies")
+                  (setq cached-proxies old-cached-proxies))
+                 (t
+                  (let* ((completions (lspce--request-completion))
+                         (complete? (nth 0 completions))
+                         (items (nth 1 completions))
+                         (markers (list bounds-start (copy-marker (point) t)))
+                         (prefix (buffer-substring-no-properties bounds-start (point))))
+                    (if completions
+                        (progn
+                          (if complete?
+                              (setq-local lspce--completion-complete? 2)
+                            (setq-local lspce--completion-complete? 1))
+                          (setq cached-proxies
+                                (mapcar
+                                 (lambda (item)
+                                   (let* ((label (gethash "label" item))
+                                          (insertTextFormat (or (gethash "insertTextFormat" item) 1))
+                                          (insertText (gethash "insertText" item))
+                                          (proxy
+                                           (cond 
+                                            ((and (eql insertTextFormat 2)
+                                                  (lspce--snippet-expansion-fn))
+                                             (string-trim-left label))
+                                            ((and insertText
+                                                  (not (string-empty-p insertText)))
+                                             insertText)
+                                            (t
+                                             (string-trim-left label)))))
+                                     (unless (zerop (length proxy))
+                                       (put-text-property 0 1 'lspce--lsp-item item proxy)
+                                       (put-text-property 0 1 'lspce--lsp-markers markers proxy)
+                                       (put-text-property 0 1 'lspce--lsp-start bounds-start proxy)
+                                       (put-text-property 0 1 'lspce--lsp-prefix prefix proxy))
+                                     proxy))
+                                 items))
+                          (lspce--completion-clear-cache same-session?)
+                          (setq done? complete?)
+                          (setq lspce--completion-cache (make-lspce-completionCache :prefix-start bounds-start
+                                                                                    :candidates (cond
+                                                                                                 ((and done?
+                                                                                                       (not (seq-empty-p cached-proxies)))
+                                                                                                  cached-proxies)
+                                                                                                 ((not done?)
+                                                                                                  :incomplete))
+                                                                                    :lsp-items nil
+                                                                                    :markers markers
+                                                                                    :prefix prefix))
+                          (setq lspce--completion-last-result cached-proxies))
+                      (when same-session?
+                        lspce--completion-last-result))))))))
            (resolved (make-hash-table))
            (resolve-maybe (lambda (lsp-item)
                             (or (gethash lsp-item resolved)
@@ -1476,6 +1725,14 @@ Doubles as an indicator of snippet support."
                      (kind (alist-get (gethash "kind" lsp-item)
                                       lspce--kind-names)))
            (intern (downcase kind))))
+       :company-deprecated
+       (lambda (proxy)
+         (let ((lsp-item (get-text-property 0 'lspce--lsp-item proxy))
+               tags deprecated)
+           (setq tags (gethash "tags" lsp-item)
+                 deprecated (gethash "deprecated" lsp-item))
+           (or (seq-contains-p tags 1)
+               (eq t deprecated))))
        :company-doc-buffer
        (lambda (proxy)
          (let* ((documentation
@@ -1502,69 +1759,62 @@ Doubles as an indicator of snippet support."
        :exit-function
        (lambda (proxy status)
          (when (memq status '(finished exact))
-           (with-current-buffer (if (minibufferp)
-                                    (window-buffer (minibuffer-selected-window))
-                                  (current-buffer))
-             (setq-local lspce--completion-complete? nil)
-             (let* ((proxy (if (plist-member (text-properties-at 0 proxy) 'lspce--lsp-item)
-                               proxy
-                             (cl-find proxy (funcall proxies) :test #'equal)))
-                    (lsp-item (funcall resolve-maybe (get-text-property 0 'lspce--lsp-item proxy)))
-                    (lsp-markers (get-text-property 0 'lspce--lsp-markers proxy))
-                    (lsp-prefix (get-text-property 0 'lspce--lsp-prefix proxy))
-                    (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
-                    (insertText (gethash "insertText" lsp-item))
-                    (label (gethash "label" lsp-item))
-                    (textEdit (gethash "textEdit" lsp-item))
-                    (additionalTextEdits (gethash "additionalTextEdits" lsp-item))
-                    (snippet-fn (and (eql insertTextFormat 2)
-                                     (lspce--snippet-expansion-fn))))
-               (lspce--debug "lsp-item %S" (json-encode lsp-item))
-               (cond (textEdit
-                      (let* ((range (gethash "range" textEdit))
-                             (newText (gethash "newText" textEdit))
-                             (old-text (apply #'buffer-substring-no-properties lsp-markers))
-                             (region (lspce--range-region range))
-                             (delete-start (+ (- (point) (length proxy))
-                                              (if bounds
-                                                  (- (cdr bounds) (car bounds))
-                                                0)))
-                             (delete-end (point)))
-                        (if (and (length> old-text 0)
-                                 (string-prefix-p old-text newText))
+           (let ((inhibit-redisplay t))
+             (with-current-buffer (if (minibufferp)
+                                      (window-buffer (minibuffer-selected-window))
+                                    (current-buffer))
+               (setq-local lspce--completion-complete? nil)
+               (let* ((proxy (if (plist-member (text-properties-at 0 proxy) 'lspce--lsp-item)
+                                 proxy
+                               (cl-find proxy (funcall proxies) :test #'equal)))
+                      (lsp-item (funcall resolve-maybe (get-text-property 0 'lspce--lsp-item proxy)))
+                      (lsp-markers (get-text-property 0 'lspce--lsp-markers proxy))
+                      (lsp-prefix (get-text-property 0 'lspce--lsp-prefix proxy))
+                      (lsp-start (get-text-property 0 'lspce--lsp-start proxy))
+                      (insertTextFormat (or (gethash "insertTextFormat" lsp-item) 1))
+                      (insertText (gethash "insertText" lsp-item))
+                      (label (gethash "label" lsp-item))
+                      (textEdit (gethash "textEdit" lsp-item))
+                      (additionalTextEdits (gethash "additionalTextEdits" lsp-item))
+                      (snippet-fn (and (eql insertTextFormat 2)
+                                       (lspce--snippet-expansion-fn))))
+                 (lspce--debug "lsp-item %S" (json-encode lsp-item))
+                 (cond (textEdit
+                        (let* ((range (gethash "range" textEdit))
+                               (newText (gethash "newText" textEdit))
+                               (old-text (apply #'buffer-substring-no-properties lsp-markers))
+                               (region (lspce--range-region range)))
+                          (if (and (length> old-text 0)
+                                   (string-prefix-p old-text newText))
+                              (progn
+                                (funcall (or snippet-fn #'insert) (substring newText (length old-text))))
                             (progn
-                              (funcall (or snippet-fn #'insert) (substring newText (length old-text))))
-                          (progn
-                            (delete-region delete-start delete-end)
-                            (delete-region (car region) (cdr region))
-                            (goto-char (car region))
-                            (funcall (or snippet-fn #'insert) newText))))
-                      (when (cl-plusp (length additionalTextEdits))
-                        (lspce--apply-text-edits additionalTextEdits)))
-                     (snippet-fn
-                      ;; A snippet should be inserted, but using plain
-                      ;; `insertText' or `label'.  This requires us to delete the
-                      ;; whole completion, since `insertText' or `label' is the full
-                      ;; completion's text.
-                      (let* ((newText (or insertText label))
-                             (old-text (apply #'buffer-substring-no-properties lsp-markers)))
-                        (if (and (string-prefix-p old-text newText))
-                            (progn
-                              (funcall snippet-fn (substring newText (length old-text))))
-                          (delete-region (- (point) (length proxy)) (point))
-                          (funcall snippet-fn (or insertText label)))))
-                     ((or insertText label)
-                      ;; Insert `label' or `insertText'.  This requires us to delete the
-                      ;; whole completion, since `label' or `insertText' is the full
-                      ;; completion's text.
-                      (let* ((newText (or insertText label))
-                             (old-text (apply #'buffer-substring-no-properties lsp-markers)))
-                        (if (string-prefix-p old-text newText)
-                            (progn
-                              (insert (substring newText (length old-text))))
-                          (delete-region (- (point) (length proxy)) (point))
-                          (insert (or insertText label)))))))
-             (lspce--notify-textDocument/didChange))))))))
+                              (lspce--debug "lsp-markers: %s, markers: %s" lsp-markers (apply #'buffer-substring-no-properties lsp-markers))
+                              (lspce--debug "lsp-prefix: %s" lsp-prefix)
+                              (lspce--debug "region: %s, region: %s" region (buffer-substring-no-properties (car region) (cdr region)))
+                              (apply #'delete-region lsp-markers)
+                              (insert lsp-prefix)
+                              (delete-region (car region) (cdr region))
+                              (goto-char (car region))
+                              (funcall (or snippet-fn #'insert) newText))))
+                        (when (cl-plusp (length additionalTextEdits))
+                          (lspce--apply-text-edits additionalTextEdits)))
+                       (snippet-fn
+                        ;; A snippet should be inserted, but using plain
+                        ;; `insertText' or `label'.  This requires us to delete the
+                        ;; whole completion, since `insertText' or `label' is the full
+                        ;; completion's text.
+                        (let* ((newText (or insertText label))
+                               (old-text (apply #'buffer-substring-no-properties lsp-markers)))
+                          (if (and (string-prefix-p old-text newText))
+                              (progn
+                                (funcall snippet-fn (substring newText (length old-text))))
+                            (apply #'delete-region lsp-markers)
+                            (insert lsp-prefix)
+                            (delete-region lsp-start (point))
+                            (funcall snippet-fn (or insertText label)))))))
+               (lspce--completion-clear-cache)
+               (lspce--notify-textDocument/didChange)))))))))
 
 ;;; hover
 (defvar lspce--doc-buffer-name "*lspce-hover*")
@@ -1757,6 +2007,18 @@ Doubles as an indicator of snippet support."
   "Flymake diagnostics for this buffer.")
 (defvar-local lspce--current-flymake-report-fn nil
   "Current flymake report function for this buffer.")
+
+(defun lspce-current-max-diagnostics-count ()
+  "Read current MAX_DIAGNOSTIC_COUNT."
+  (interactive)
+  (lspce-module-read-max-diagnostics-count))
+
+(defun lspce-change-max-diagnostics-count (count)
+  "Change current MAX_DIAGNOSTIC_COUNT to COUND."
+  (interactive (list (read-number "Max diagnostics count: ")))
+  (if (integerp count)
+      (lspce-module-change-max-diagnostics-count count)
+    (lspce--error "Invalid count: %s" count)))
 
 (defun lspce--diag-type (sev)
   (cond ((null sev) 'lspce-error)
@@ -2269,13 +2531,6 @@ at point.  With prefix argument, prompt for ACTION-KIND."
                 (call-interactively #'lspce-restart-server))
             (lspce--warn "lspce-jdtls-reset-project - No server running in current server.")))))))
 
-;;; helpers
-
-;;;###autoload
-(defun lspce-trigger ()
-  "Just to trigger loading lspce in order to use xref to navigate lspce's source code."
-  (interactive))
-
 ;;; Mode-line
 ;;;
 (defvar lspce--mode-line-format `(:eval (lspce--mode-line-format)))
@@ -2288,7 +2543,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
          name id)
     (when server
       (setq id (gethash "id" server))
-      (propertize (concat "lspce:" id) 'face 'lspce-mode-line))))
+      (propertize (concat "lspce:" id (when lspce-show-log-level-in-modeline (concat ":" lspce--log-level-text))) 'face 'lspce-mode-line))))
 
 (add-to-list 'mode-line-misc-info
              `(lspce-mode (" [" lspce--mode-line-format "] ")))

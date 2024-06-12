@@ -15,11 +15,13 @@ use crossbeam_channel::SendError;
 use emacs::{defun, Env, IntoLisp, Result, Value};
 use error::LspceError;
 use logger::Logger;
-use logger::LOG_ENABLE;
+use logger::LOG_DEBUG;
+use logger::LOG_DISABLED;
 use logger::LOG_FILE_NAME;
+use logger::LOG_LEVEL;
 
-use lsp_types::DidChangeTextDocumentParams;
 use lsp_types::Diagnostic;
+use lsp_types::DidChangeTextDocumentParams;
 use lsp_types::InitializeParams;
 use lsp_types::InitializeResult;
 use lsp_types::InitializedParams;
@@ -39,6 +41,8 @@ use std::io::Result as IoResult;
 use std::result::Result as RustResult;
 use std::str::Utf8Error;
 
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::AtomicU32;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
@@ -54,9 +58,11 @@ use std::{
     thread::{self, JoinHandle, Thread},
 };
 
+pub static MAX_DIAGNOSTICS_COUNT: AtomicI32 = AtomicI32::new(30);
+
 #[derive(Debug)]
 struct FileInfo {
-    pub uri: String, // 文件名
+    pub uri: String, // file name
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -70,32 +76,20 @@ impl FileInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct Response4E {
-    pub code: i32, // 0: 成功返回，-1：server未返回，-9：其它错误
-    pub msg: Option<Response>,
-}
-
-impl Response4E {
-    pub fn new(code: i32, msg: Option<Response>) -> Response4E {
-        Response4E { code, msg }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
 struct LspServerInfo {
     pub name: String,
     pub version: String,
-    pub id: String, // pid at the moment
+    pub id: String, // server_id at the moment
     pub capabilities: String,
 }
 
 impl LspServerInfo {
-    pub fn new(name: String, version: String, id: String, capabilities: String) -> LspServerInfo {
+    pub fn new() -> LspServerInfo {
         LspServerInfo {
-            name,
-            version,
-            id,
-            capabilities,
+            name: "".to_string(),
+            version: "".to_string(),
+            id: "".to_string(),
+            capabilities: "".to_string(),
         }
     }
 }
@@ -135,7 +129,7 @@ impl LspServerData {
 struct LspServer {
     pub child: Option<Child>,
     pub server_info: LspServerInfo,
-    pub status: u8, // 是否已经启动完 0：待启动，1：启动中，2：启动完成，3：退出中
+    pub status: u8,
     transport: Arc<Mutex<Option<Connection>>>,
     transport_threads: Option<IoThreads>,
     dispatcher: Option<thread::JoinHandle<()>>,
@@ -149,52 +143,58 @@ impl LspServer {
         cmd: String,
         cmd_args: String,
         initialize_req: String,
+        emacs_exec_path: String,
     ) -> Option<LspServer> {
         let args = cmd_args.split_ascii_whitespace().collect::<Vec<&str>>();
 
-        let mut child = Command::new(cmd)
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn();
+        Logger::info(&format!("emacs_exec_path: {}", &emacs_exec_path));
+
+        let mut child;
+        if !emacs_exec_path.is_empty() {
+            child = Command::new(cmd)
+                .args(args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .env("PATH", emacs_exec_path)
+                .spawn();
+        } else {
+            child = Command::new(cmd)
+                .args(args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn();
+        }
 
         if let Ok(mut c) = child {
+            let mut stdin = c.stdin.take().unwrap();
+            let mut stdout = c.stdout.take().unwrap();
+            let mut stderr = c.stderr.take().unwrap();
+
+            let (mut transport, mut transport_threads) = Connection::stdio(stdin, stdout, stderr);
+
+            let mut server_info = LspServerInfo::new();
+            server_info.id = c.id().to_string();
             let mut server = LspServer {
-                child: None,
-                server_info: LspServerInfo::new(
-                    "".to_string(),
-                    "".to_string(),
-                    "".to_string(),
-                    "".to_string(),
-                ),
-                status: SERVER_STATUS_NEW,
-                transport: Arc::new(Mutex::new(None)),
-                transport_threads: None,
+                child: Some(c),
+                server_info,
+                status: SERVER_STATUS_STARTING,
+                transport: Arc::new(Mutex::new(Some(transport))),
+                transport_threads: Some(transport_threads),
                 dispatcher: None,
                 server_data: Arc::new(Mutex::new(LspServerData::new())),
                 exit: Arc::new(Mutex::new(false)),
             };
-
-            let mut stdin = c.stdin.take().unwrap();
-            let mut stdout = c.stdout.take().unwrap();
-
-            let (mut transport, mut transport_threads) = Connection::stdio(stdin, stdout);
-
-            server.server_info.id = c.id().to_string();
-            server.child = Some(c);
-            server.transport = Arc::new(Mutex::new(Some(transport)));
-            // server.file_infos = Arc::new(Mutex::new(HashMap::new()));
-            server.transport_threads = Some(transport_threads);
             server.dispatcher = Some(LspServer::start_dispatcher(
                 Arc::clone(&server.transport),
                 Arc::clone(&server.exit),
                 Arc::clone(&server.server_data),
             ));
-            server.status = SERVER_STATUS_STARTING;
 
             Some(server)
         } else {
-            Logger::log(&format!(
+            Logger::error(&format!(
                 "create child process failed with error {:?}",
                 child.err().unwrap(),
             ));
@@ -203,13 +203,13 @@ impl LspServer {
     }
 
     fn start_dispatcher(
-        transport2: Arc<Mutex<Option<Connection>>>,
-        exit2: Arc<Mutex<bool>>,
-        server_data2: Arc<Mutex<LspServerData>>,
+        transport: Arc<Mutex<Option<Connection>>>,
+        exit: Arc<Mutex<bool>>,
+        server_data: Arc<Mutex<LspServerData>>,
     ) -> thread::JoinHandle<()> {
         let handle = thread::spawn(move || loop {
             {
-                let exit = exit2.lock().unwrap();
+                let exit = exit.lock().unwrap();
                 if *exit {
                     break;
                 }
@@ -217,7 +217,7 @@ impl LspServer {
 
             let mut message: Option<Message> = None;
             {
-                let transport = transport2.lock().unwrap();
+                let transport = transport.lock().unwrap();
                 message = transport.as_ref().unwrap().read();
             }
 
@@ -231,48 +231,68 @@ impl LspServer {
                         // }
                     }
                     Message::Response(mut r) => {
-                        // Logger::log(&format!("Response {}", &r.content));
+                        Logger::trace(&format!("Response {}", &r.content));
                         let id = r.id.clone();
 
-                        let mut server_data = server_data2.lock().unwrap();
+                        let mut server_data = server_data.lock().unwrap();
                         let request_tick = server_data.request_ticks.get(&id);
                         if (request_tick.is_some()) {
                             let request_tick = request_tick.unwrap().clone();
-                            Logger::log(&format!("Request tick for id {} is {}", &id, &request_tick));
+                            Logger::debug(&format!(
+                                "Request tick for id {} is {}",
+                                &id, &request_tick
+                            ));
                             if (request_tick.eq(&server_data.latest_request_tick)) {
                                 r.request_tick = request_tick.clone();
                                 server_data.responses.push_back(r);
                             }
-                            Logger::log(&format!("Latest response id is {}, current response id {}", &server_data.latest_response_id, &id));
+                            Logger::debug(&format!(
+                                "Latest response id is {}, current response id {}",
+                                &server_data.latest_response_id, &id
+                            ));
                             if server_data.latest_response_id.lt(&id) {
                                 server_data.latest_response_id = id.clone();
                                 server_data.latest_response_tick = request_tick.clone();
-                                Logger::log(&format!("Change Latest response tick for id {} to {}", &server_data.latest_response_id, &request_tick));
+                                Logger::debug(&format!(
+                                    "Change Latest response tick for id {} to {}",
+                                    &server_data.latest_response_id, &request_tick
+                                ));
                             }
 
                             server_data.request_ticks.remove(&id);
                         } else {
-                            Logger::log(&format!("No request tick for id {}", id));
+                            Logger::trace(&format!("No request tick for id {}", id));
                             // if server_data.latest_response_id.lt(&id) {
                             //     server_data.latest_response_id = id.clone();
                             // }
                         }
                     }
                     Message::Notification(r) => {
+                        // cacha diagnostics so they won't pour into Emacs
                         if r.method.eq("textDocument/publishDiagnostics") {
-                            let params =
+                            let mut params =
                                 serde_json::from_value::<PublishDiagnosticsParams>(r.params)
-                                .unwrap();
+                                    .unwrap();
 
                             let uri = params.uri.as_str().to_string();
                             let mut file_info = FileInfo::new(uri.clone());
-                            file_info.diagnostics = params.diagnostics;
+                            // cache no more than MAX_DIAGNOSTICS_COUNT diagnostics
+                            let max_diagnostic_count =
+                                MAX_DIAGNOSTICS_COUNT.load(Ordering::Relaxed);
+                            if max_diagnostic_count < 0 {
+                                file_info.diagnostics = params.diagnostics;
+                            } else if params.diagnostics.len() > max_diagnostic_count as usize {
+                                params.diagnostics.truncate(max_diagnostic_count as usize);
+                                file_info.diagnostics = params.diagnostics;
+                            } else {
+                                file_info.diagnostics = params.diagnostics;
+                            }
 
-                            let mut server_data = server_data2.lock().unwrap();
+                            let mut server_data = server_data.lock().unwrap();
                             server_data.file_infos.insert(uri.clone(), file_info);
                         } else {
                             // other notifications
-                            let mut server_data = server_data2.lock().unwrap();
+                            let mut server_data = server_data.lock().unwrap();
                             if server_data.notifications.len() > 10 {
                                 server_data.notifications.pop_front();
                             }
@@ -285,7 +305,7 @@ impl LspServer {
             }
         });
 
-        return handle;
+        handle
     }
 
     pub fn stop_dispatcher(&mut self) {
@@ -352,7 +372,7 @@ impl LspServer {
         let latest_request_tick = server_data.latest_request_tick.clone();
         let mut reserved: VecDeque<Response> = VecDeque::new();
         for iter in server_data.responses.iter() {
-            // Logger::log(&format!("read_response_exact response {:#?}", &iter));
+            Logger::debug(&format!("read_response_exact response {:#?}", &iter));
             if iter.id.eq(&id) {
                 result = Some(iter.clone());
             }
@@ -367,7 +387,7 @@ impl LspServer {
         server_data.responses.append(&mut reserved);
 
         if result.is_none() {
-            Logger::log(&format!(
+            Logger::trace(&format!(
                 "read_response_exact get null for request_id {}, method {}",
                 id, method
             ));
@@ -397,8 +417,8 @@ impl LspServer {
 }
 
 struct Project {
-    pub root_uri: String,                    // 项目根目录
-    pub servers: HashMap<String, LspServer>, // 每个LspServer处理一种类型的文件
+    pub root_uri: String,                    //
+    pub servers: HashMap<String, LspServer>, // map each language_id to a lsp server
 }
 
 impl Project {
@@ -419,10 +439,24 @@ fn init(env: &Env) -> Result<Value<'_>> {
     env.message("Done loading!")
 }
 
+#[defun]
+fn change_max_diagnostics_count(env: &Env, count: i32) -> Result<Value<'_>> {
+    MAX_DIAGNOSTICS_COUNT.store(count, Ordering::Relaxed);
+
+    env.message(format!("max diagnostics changed to {}!", count))
+}
+
+#[defun]
+fn read_max_diagnostics_count(env: &Env) -> Result<i32> {
+    let count = MAX_DIAGNOSTICS_COUNT.load(Ordering::Relaxed);
+
+    Ok(count)
+}
+
 /// disable logging to /tmp/lspce.log
 #[defun]
 fn disable_logging(env: &Env) -> Result<Value<'_>> {
-    LOG_ENABLE.store(0, Ordering::Relaxed);
+    LOG_LEVEL.store(LOG_DISABLED, Ordering::Relaxed);
 
     env.message("Logging is disabled!")
 }
@@ -430,9 +464,23 @@ fn disable_logging(env: &Env) -> Result<Value<'_>> {
 /// enable logging to /tmp/lspce.log
 #[defun]
 fn enable_logging(env: &Env) -> Result<Value<'_>> {
-    LOG_ENABLE.store(1, Ordering::Relaxed);
+    LOG_LEVEL.store(LOG_DEBUG, Ordering::Relaxed);
 
     env.message("Logging is enabled!")
+}
+
+#[defun]
+fn set_log_level(env: &Env, level: u8) -> Result<Value<'_>> {
+    LOG_LEVEL.store(level, Ordering::Relaxed);
+
+    env.message(format!("log level set to {}!", level))
+}
+
+#[defun]
+fn get_log_level(env: &Env) -> Result<u8> {
+    let log_level = LOG_LEVEL.load(Ordering::Relaxed);
+
+    return Ok(log_level);
 }
 
 /// set logging file name
@@ -440,7 +488,7 @@ fn enable_logging(env: &Env) -> Result<Value<'_>> {
 fn set_log_file(env: &Env, file: String) -> Result<Value<'_>> {
     *LOG_FILE_NAME.lock().unwrap() = file.clone();
 
-    env.message(&format!("Set logging file to {}", file))
+    env.message(format!("Set logging file to {}", file))
 }
 
 fn projects() -> &'static Arc<Mutex<HashMap<String, Project>>> {
@@ -466,8 +514,9 @@ fn connect(
     cmd_args: String,
     initialize_req: String,
     timeout: i32,
+    emacs_exec_path: String,
 ) -> Result<Option<String>> {
-    Logger::log(&format!(
+    Logger::info(&format!(
         "start initializing server for lsp_type {} in project {}",
         lsp_type, root_uri
     ));
@@ -476,7 +525,7 @@ fn connect(
 
     if let Some(p) = projects.get(&root_uri) {
         if let Some(s) = p.servers.get(&lsp_type) {
-            Logger::log(&format!(
+            Logger::info(&format!(
                 "server created already for lsp_type {} in project {}",
                 lsp_type, root_uri
             ));
@@ -490,6 +539,7 @@ fn connect(
         cmd.clone(),
         cmd_args.clone(),
         initialize_req.clone(),
+        emacs_exec_path.clone(),
     );
     if let Some(mut s) = server {
         let server_info: LspServerInfo;
@@ -516,11 +566,20 @@ fn connect(
             }
         }
 
-        Logger::log(&format!("Connected to server successfully."));
-        return Ok(Some(serde_json::to_string(&server_info).unwrap()));
+        Logger::info(&format!(
+            "Connected to server successfully. server capabilities {}",
+            &server_info.capabilities
+        ));
+        Ok(Some(serde_json::to_string(&server_info).unwrap()))
     } else {
-        Logger::log(&format!("Failed to connect to server."));
-        return Ok(None);
+        Logger::error(&format!(
+            "Failed to connect to server {}, {} for project {} {}.",
+            cmd.clone(),
+            cmd_args.clone(),
+            root_uri.clone(),
+            lsp_type.clone()
+        ));
+        Ok(None)
     }
 }
 
@@ -531,11 +590,11 @@ fn initialize(
     req_str: String,
     timeout: i32,
 ) -> bool {
-    Logger::log(&format!("initialize request {:#?}", req_str));
+    Logger::info(&format!("initialize request {:#?}", req_str));
 
     let msg = serde_json::from_str::<Request>(&req_str);
     if msg.is_err() {
-        Logger::log(&format!("request is not valid json {}", &req_str));
+        Logger::error(&format!("request is not valid json {}", &req_str));
         return false;
     }
 
@@ -552,10 +611,10 @@ fn initialize(
         match response {
             Some(m) => {
                 if m.error.is_some() {
-                    // 有错误
-                    env.message(&format!("Lsp error {:?}", m.error));
+                    Logger::error(&format!("Lsp error {:?}", m.error));
                     return false;
                 }
+                Logger::info(&format!("initialize response {:#?}", &m.content));
 
                 if let Ok(ir) = serde_json::from_value::<InitializeResult>(m.result.unwrap()) {
                     let initialized = Notification::new(
@@ -563,9 +622,8 @@ fn initialize(
                         serde_json::to_value(InitializedParams {}).unwrap(),
                     );
 
-                    _notify(env, server, initialized);
+                    _notify(server, initialized);
 
-                    // 记录server初始化完成
                     server.status = SERVER_STATUS_RUNNING;
 
                     if let Some(si) = ir.server_info {
@@ -587,8 +645,7 @@ fn initialize(
         if timeout > 0
             && Instant::now().duration_since(start_time).as_millis() > timeout as u128 * 1000
         {
-            env.message(&format!("timeout when initializing server."));
-            Logger::log(&format!("timeout when initializing server."));
+            Logger::error("timeout when initializing server.");
 
             return false;
         }
@@ -599,72 +656,76 @@ fn initialize(
 fn shutdown(env: &Env, root_uri: String, file_type: String, req: String) -> Result<Option<String>> {
     let mut projects = projects().lock().unwrap();
     if let Some(mut p) = projects.get_mut(&root_uri) {
-        if let Some(mut server) = p.servers.get_mut(&file_type) {
-            // 退出中，不再向server发送请求和通知。
-            server.status = SERVER_STATUS_EXITING;
+        if let Some(mut server) = p.servers.remove(&file_type) {
+            // shut down in a seperate thread so as not to block Emacs
+            thread::spawn(move || {
+                let server_name = server.server_info.name.clone();
+                let server_id = server.server_info.id.clone();
+                Logger::info(&format!(
+                    "start to shut down server {}, server_id {}",
+                    &server_name, &server_id
+                ));
 
-            let msg = serde_json::from_str::<Request>(&req);
-            if msg.is_err() {
-                Logger::log(&format!("request is not valid json {}", &req));
-                return Ok(None);
-            }
+                let msg = serde_json::from_str::<Request>(&req);
+                if msg.is_err() {
+                    Logger::error(&format!("request is not valid json {}", &req));
+                    return;
+                }
 
-            let msg = msg.unwrap();
-            let id = msg.id.clone();
+                let msg = msg.unwrap();
+                let id = msg.id.clone();
 
-            if !_request_async(server, msg) {
-                return Ok(None);
-            }
+                if !_request_async(&mut server, msg) {
+                    return;
+                }
 
-            let start_time = Instant::now();
-            loop {
-                let response = server.read_response();
-                match response {
-                    Some(r) => {
-                        let r_id = r.id.clone();
-                        if r_id.eq(&id) {
-                            let exit = Notification::new("exit".to_string(), json!({}));
+                let start_time = Instant::now();
+                loop {
+                    let response = server.read_response();
+                    match response {
+                        Some(r) => {
+                            let r_id = r.id.clone();
+                            if r_id.eq(&id) {
+                                let exit = Notification::new("exit".to_string(), json!({}));
 
-                            _notify(env, server, exit);
+                                _notify(&mut server, exit);
 
-                            server.stop_dispatcher();
-                            server.exit_transport();
-                            Logger::log("after exit transport.");
-                            // 等待读写线程结束
-                            server.transport_threads.take().unwrap().join();
-                            Logger::log("after thread join.");
-                            // 等待子进程结束，否则会成僵尸进程。
-                            server.child.take().unwrap().wait();
-                            Logger::log("after child wait.");
+                                server.stop_dispatcher();
+                                server.exit_transport();
+                                Logger::info(&format!(
+                                    "after exit transport for server {}, server_id {}.",
+                                    &server_name, &server_id
+                                ));
+                                // waiting for transport_threads to exit
+                                server.transport_threads.take().unwrap().join();
+                                Logger::info(&format!(
+                                    "after thread join for server {}, server_id {}.",
+                                    &server_name, &server_id
+                                ));
+                                // waiting for child to exit
+                                server.child.take().unwrap().wait();
+                                Logger::info(&format!(
+                                    "after child wait for server {}, server_id {}.",
+                                    &server_name, &server_id
+                                ));
 
-                            p.servers.remove(&file_type);
-                            if p.servers.len() == 0 {
-                                projects.remove(&root_uri);
+                                return;
                             }
-
-                            return Ok(Some(serde_json::to_string(&r).unwrap()));
+                        }
+                        None => {
+                            thread::sleep(std::time::Duration::from_millis(10));
                         }
                     }
-                    None => {
-                        thread::sleep(std::time::Duration::from_millis(10));
+
+                    if Instant::now().duration_since(start_time).as_millis() > 3 * 1000 {
+                        server.stop_dispatcher();
+                        server.exit_transport();
+                        server.kill_child();
+
+                        return;
                     }
                 }
-
-                if Instant::now().duration_since(start_time).as_millis() > 3 * 1000 {
-                    env.message(&format!("timeout when shutdown server"));
-
-                    server.stop_dispatcher();
-                    server.exit_transport();
-                    server.kill_child();
-
-                    p.servers.remove(&file_type);
-                    if p.servers.len() == 0 {
-                        projects.remove(&root_uri);
-                    }
-
-                    return Ok(None);
-                }
-            }
+            });
         } else {
             env.message(&format!("No server for {}", &file_type));
 
@@ -699,21 +760,20 @@ fn _request_async(server: &mut LspServer, req: Request) -> bool {
 
     server.update_request_info(id.clone(), request_tick);
 
-    if method == "textDocument/didChange" || method == "textDocument/didClose"{
+    if method == "textDocument/didChange" || method == "textDocument/didClose" {
         let param = serde_json::from_value::<DidChangeTextDocumentParams>(req.params.clone());
         if let Ok(param) = param {
-            server.clear_diagnostics(&param.text_document.uri.to_string());
+            server.clear_diagnostics(param.text_document.uri.as_ref());
         }
     }
-    
 
     let write_result = server.write(Message::Request(req));
     match write_result {
-        Ok(_) => return true,
+        Ok(_) => true,
         Err(e) => {
-            Logger::log(&format!("request error {:#?}", e));
+            Logger::error(&format!("request error {:#?}", e));
 
-            return false;
+            false
         }
     }
 }
@@ -728,44 +788,41 @@ fn request_async(
     let mut projects = projects().lock().unwrap();
     if let Some(mut p) = projects.get_mut(&root_uri) {
         if let Some(mut server) = p.servers.get_mut(&file_type) {
-            // 检查server是否初始化完成
             if server.status != SERVER_STATUS_RUNNING {
                 return Ok(None);
             }
-            Logger::log(&format!("request {}", &req));
+            Logger::trace(&format!("request {}", &req));
 
             let msg = serde_json::from_str::<Request>(&req);
             if msg.is_err() {
-                Logger::log(&format!("request is not valid json {}", &req));
+                Logger::error(&format!("request is not valid json {}", &req));
                 return Ok(None);
             }
             let msg = msg.unwrap();
 
             if msg.request_tick.is_none() {
-                Logger::log(&format!("no request_tick is req {}", &req));
+                Logger::error(&format!("no request_tick is req {}", &req));
                 return Ok(None);
             }
 
             if _request_async(server, msg) {
-                return Ok(Some(true));
+                Ok(Some(true))
             } else {
-                return Ok(None);
+                Ok(None)
             }
         } else {
             env.message(&format!("No server for {}", &file_type));
 
-            return Ok(None);
+            Ok(None)
         }
     } else {
         env.message(&format!("No project for {} {}", &root_uri, &file_type));
 
-        return Ok(None);
+        Ok(None)
     }
 }
 
-fn _notify(env: &Env, server: &mut LspServer, req: Notification) -> Result<Option<bool>> {
-    let method = req.method.clone();
-
+fn _notify(server: &mut LspServer, req: Notification) -> Result<Option<bool>> {
     let write_result = server.write(Message::Notification(req));
 
     match write_result {
@@ -773,12 +830,12 @@ fn _notify(env: &Env, server: &mut LspServer, req: Notification) -> Result<Optio
             return Ok(Some(true));
         }
         Err(e) => {
-            Logger::log(&format!("notify error {:#?}", e));
+            Logger::error(&format!("notify error {:#?}", e));
             return Ok(None);
         }
     }
 
-    return Ok(None);
+    Ok(None)
 }
 
 #[defun]
@@ -786,16 +843,16 @@ fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result
     let mut projects = projects().lock().unwrap();
     if let Some(mut p) = projects.get_mut(&root_uri) {
         if let Some(mut server) = p.servers.get_mut(&file_type) {
-            // 检查server是否初始化完成
             if server.status != SERVER_STATUS_RUNNING {
-                env.message(&format!("Server is not ready."));
+                env.message("Server is not ready.");
                 return Ok(None);
             }
+            Logger::trace(&format!("notify {}", &req));
 
             let json_object = serde_json::from_str::<Notification>(&req);
             match json_object {
                 Ok(notification) => {
-                    return _notify(env, server, notification);
+                    return _notify(server, notification);
                 }
                 Err(e) => {
                     env.message(&format!("Invalid json string {}", &req));
@@ -808,7 +865,7 @@ fn notify(env: &Env, root_uri: String, file_type: String, req: String) -> Result
         env.message(&format!("No project for {} {}", &root_uri, &file_type));
     }
 
-    return Ok(None);
+    Ok(None)
 }
 
 /// precondition: have called read_latest_response_id and gotten the id.
@@ -845,11 +902,7 @@ fn read_response_exact(
 }
 
 #[defun]
-fn read_notification(
-    env: &Env,
-    root_uri: String,
-    file_type: String,
-) -> Result<Option<String>> {
+fn read_notification(env: &Env, root_uri: String, file_type: String) -> Result<Option<String>> {
     let projects = projects().lock().unwrap();
     if let Some(p) = projects.get(&root_uri) {
         if let Some(server) = p.servers.get(&file_type) {
@@ -872,7 +925,6 @@ fn read_notification(
     Ok(None)
 }
 
-
 #[defun]
 fn read_file_diagnostics(
     env: &Env,
@@ -887,8 +939,8 @@ fn read_file_diagnostics(
             if let Some(file_info) = server_data.file_infos.get_mut(&uri) {
                 let result = serde_json::to_string(&file_info.diagnostics);
 
-                if result.is_ok() {
-                    return Ok(Some(result.unwrap()));
+                if let Ok(result) = result {
+                    return Ok(Some(result));
                 }
             }
         } else {
@@ -944,4 +996,3 @@ fn read_latest_response_tick(
 
     Ok(None)
 }
-

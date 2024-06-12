@@ -1,3 +1,4 @@
+# -*- eval: (org-appear-mode -1); -*-
 #+TITLE: LSPCE
 #+AUTHOR: zbelial
 #+EMAIL: zjyzhaojiyang@gmail.com
@@ -45,8 +46,10 @@
 
 * Installation
   At the moment, you can only install LSPCE by cloning this repo and compile rust code manually.
+
+  Before installing LSPCE, you should install rust and cargo first.
+
 ** Installing from the Git Repository
-   Before installing LSPCE, you should install rust and cargo first.
    #+BEGIN_SRC bash
      $ git clone https://github.com/zbelial/lspce.git ~/.emacs.d/site-lisp/lspce
      $ cd ~/.emacs.d/site-lisp/lspce
@@ -60,12 +63,25 @@
      $ mv target/debug/liblspce_module.dylib lspce-module.dylib
    #+END_SRC
 
+** Installing using Straight
+   #+BEGIN_SRC elisp
+     (straight-use-package
+      `(lspce :type git :host github :repo "zbelial/lspce"
+              :files (:defaults ,(pcase system-type
+                                   ('gnu/linux "lspce-module.so")
+                                   ('darwin "lspce-module.dylib")))
+              :pre-build ,(pcase system-type
+                            ('gnu/linux '(("cargo" "build" "--release") ("cp" "./target/release/liblspce_module.so" "./lspce-module.so")))
+                            ('darwin '(("cargo" "build" "--release") ("cp" "./target/release/liblspce_module.dylib" "./lspce-module.dylib"))))))
+   #+END_SRC
+
 * Get started
   #+BEGIN_SRC elisp
     (use-package lspce
       :load-path "/path/to/lspce"
       :config (progn
                 (setq lspce-send-changes-idle-time 1)
+                (setq lspce-show-log-level-in-modeline t) ;; show log level in mode line
 
                 ;; You should call this first if you want lspce to write logs
                 (lspce-set-log-file "/tmp/lspce.log")
@@ -90,6 +106,38 @@
       )
   #+END_SRC
   
+** About lsp servers' stderr
+   Lspce support writing stderr message from lsp servers to the log file (set up by calling `lspce-set-log-file`) in the log level ERROR, and the log contains string "[stderr]".
+
+* Customization
+  | Variable                            | Default        | Description                                                                                         |
+  |-------------------------------------+----------------+-----------------------------------------------------------------------------------------------------|
+  | lspce-send-changes-idle-time        | 0.5            | How much idle time to wait before sending changes to the lsp server.                                |
+  | lspce-doc-tooltip-border-width      | 1              | The border width of lspce tooltip.                                                                  |
+  | lspce-doc-tooltip-timeout           | 30             | How long to wait before lspce tooltip disappears (only for posframe)                                |
+  | lspce-completion-ignore-case        | t              | If non-nil, ignore case when completing.                                                            |
+  | lspce-completion-no-annotation      | nil            | If non-nil, do not display completion item's annotation.                                            |
+  | lspce-enable-eldoc                  | t              | If non-nil, enable eldoc.                                                                           |
+  | lspce-eldoc-enable-hover            | t              | If non-nil, enable hover in eldoc.                                                                  |
+  | lspce-eldoc-enable-signature        | t              | If non-nil, enable signature in eldoc.                                                              |
+  | lspce-enable-flymake                | t              | If non-nil, enable flymake.                                                                         |
+  | lspce-connect-server-timeout        | 60             | The timeout of connecting to lsp server, in seconds.                                                |
+  | lspce-modes-enable-single-file-root | `(python-mode) | Major modes where lspce enables even for a single file (IOW no project).                            |
+  | lspce-enable-logging                | nil            | If non-nil, enable logging to file.                                                                 |
+  | lspce-auto-enable-within-project    | t              | If non-nil, enable lspce when a file is opened if lspce has already been enabled in current project |
+  | lspce-after-text-edit-hook          | nil            | Functions called after finishing all text edits in a buffer.                                        |
+  | lspce-afte-each-text-edit-hook      | nil            | Functions called after finishing each text edit in a buffer.                                        |
+  | lspce-show-log-level-in-modeline    | t              | If non-nil, show log level in modeline.                                                             |
+  | lspce-inherit-exec-path             | nil            | If non-nil, pass `exec-path' as PATH to rust code to create the lsp subprocess.                     |
+  | MAX_DIAGNOSTIC_COUNT                | 30             | How many diagnostics should be retrieved.                                                           |
+  
+** MAX_DIAGNOSTIC_COUNT
+   This variable is defined in rust code, you can customize it via =lspce-change-max-diagnostics-count= . If it's negative, then all diagnostics will be retrieved.
+
+** Logging
+   On rust code side, there are 5 log level: DISABLED(0), ERROR(1), INFO(2), TRACE(3), DEBUG(4), and the default level is INFO. You can use functions =lspce-set-log-level-xxxx= to change log level to specific level.
+   Before adding log level feature, two commands, =lspce-enable-logging= and =lspce-disable-logging=, already exist, which enable/disable logging entirely. Now =lspce-enable-logging= is equivalent of setting log level to DEBUG, and =lspce-disable-logging= is equivalent of setting log level to DISABLED.
+
 * Architecture
   [[file:images/Architecture_of_LSPCE.png]]
 
@@ -113,7 +161,6 @@
   - ...
 
 * Lspce vs Eglot/lsp-mode/lsp-bridge
-
 ** lspce vs eglot
 *** pros
     - lspce has less chance to block user input or freeze Emacs
@@ -154,7 +201,6 @@
     - lspce does not support running multiple servers in a single buffer
     - lsp-bridge has built-in remote editing support
     - lsp-bridge provides other completing backends
-
 
 * License
   GPLv3

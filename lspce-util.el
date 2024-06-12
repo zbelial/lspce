@@ -2,6 +2,7 @@
 
 (eval-when-compile
   (require 'cl-macs))
+(require 'url-util)
 (require 'yasnippet)
 
 (defconst LSPCE-VERSION "1.1.0")
@@ -15,7 +16,7 @@
 (defconst lspce--{} (make-hash-table) "The empty JSON object.")
 
 (defcustom lspce-log-level LSPCE-LOG-WARN
-  "lspce log level."
+  "lspce log level, in elisp side."
   :type 'integer
   :group 'stock)
 
@@ -67,24 +68,31 @@
    until (zerop diff)
    do (forward-char (/ (if (> diff 0) (1+ diff) (1- diff)) 2))))
 
+;; copied from eglot
 (defconst lspce--uri-path-allowed-chars
   (let ((vec (copy-sequence url-path-allowed-chars)))
-    (aset vec ?: nil) ;; see github#639
+    (aset vec ?: nil)
     vec)
   "Like `url-path-allows-chars' but more restrictive.")
 
 (defun lspce--path-to-uri (path)
   "URIfy PATH."
-  (let ((truepath (file-truename path)))
-    (concat "file://"
-            ;; Add a leading "/" for local MS Windows-style paths.
-            (if (and (eq system-type 'windows-nt)
-                     (not (file-remote-p truepath)))
-                "/")
-            (url-hexify-string
-             ;; Again watch out for trampy paths.
-             (directory-file-name (file-local-name truepath))
-             lspce--uri-path-allowed-chars))))
+  (let* ((truepath (file-truename path))
+         (full-name (directory-file-name (file-local-name truepath))))
+    (if (eq system-type 'windows-nt)
+        (let ((label (url-type (url-generic-parse-url path)))
+              prefix)
+          (setq prefix (concat label ":"))
+          (concat "file:///"
+                  prefix
+                  (url-hexify-string
+                   (substring full-name (length prefix))
+                   lspce--uri-path-allowed-chars)))
+      (concat "file://"
+              (url-hexify-string
+               ;; Again watch out for trampy paths.
+               (directory-file-name (file-local-name truepath))
+               lspce--uri-path-allowed-chars)))))
 
 (defun lspce--uri-to-path (uri)
   "Convert URI to a file path."
@@ -113,27 +121,31 @@
   "Message out with FORMAT with ARGS."
   (message "[lspce] [%s] %s %s" level (format-time-string "%Y-%m-%d %H:%M:%S.%3N") (apply #'format format args)))
 
-(defun lspce--error (format &rest args)
-  (when (<= lspce-log-level LSPCE-LOG-ERROR)
-    (apply #'lspce--log "ERROR" format args)
-    (display-warning 'lspce-mode (apply #'format-message format args) :error)))
+(defmacro lspce--error (format &rest args)
+  `(when (<= lspce-log-level LSPCE-LOG-ERROR)
+     (apply #'lspce--log "ERROR" ,format (list ,@args))))
 
-(defun lspce--warn (format &rest args)
-  (when (<= lspce-log-level LSPCE-LOG-WARN)
-    (apply #'lspce--log "WARN" format args)))
+(defmacro lspce--info (format &rest args)
+  `(when (<= lspce-log-level LSPCE-LOG-INFO)
+     (apply #'lspce--log "INFO" ,format (list ,@args))))
 
-(defun lspce--info (format &rest args)
-  (when (<= lspce-log-level LSPCE-LOG-INFO)
-    (apply #'lspce--log "INFO" format args)))
+(defmacro lspce--warn (format &rest args)
+  `(when (<= lspce-log-level LSPCE-LOG-WARN)
+     (apply #'lspce--log "WARN" ,format (list ,@args))))
 
-(defun lspce--debug (format &rest args)
-  (when (<= lspce-log-level LSPCE-LOG-DEBUG)
-    (apply #'lspce--log "DEBUG" format args)))
+(defmacro lspce--debug (format &rest args)
+  `(when (<= lspce-log-level LSPCE-LOG-DEBUG)
+     (apply #'lspce--log "DEBUG" ,format (list ,@args))))
 
 (defvar lspce--log-perf-enabled nil)
-(defun lspce--log-perf (format &rest args)
-  (when lspce--log-perf-enabled
-    (apply #'lspce--log "PERF" format args)))
+(defmacro lspce--log-perf (format &rest args)
+  `(when lspce--log-perf-enabled
+     (apply #'lspce--log "PERF" ,format (list ,@args))))
+
+(defvar lspce--log-temp-enabled nil)
+(defmacro lspce--log-temp (format &rest args)
+  `(when lspce--log-temp-enabled
+     (apply #'lspce--log "TEMP" ,format (list ,@args))))
 
 (defun lspce--download-file (source-url dest-location)
   "Download a file from a URL at SOURCE-URL and save it to file at DEST-LOCATION."
