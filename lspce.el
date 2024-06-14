@@ -1,5 +1,22 @@
 ;;; lspce.el --- LSP Client for Emacs -*- lexical-binding: t; -*-
 
+;; Version:    1.1snapshot
+;; Homepage:   https://github.com/zbelial/lspce
+;; Package-Requires: ((emacs "28.2") (markdown-mode "2.6") (yasnippet "0.14") (f "0.20"))
+
+;; This program is free software; you can redistribute it and/or
+;; modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation, either version 3 of
+;; the License, or (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see https://www.gnu.org/licenses.
+
 
 ;;; Require
 (require 'json)
@@ -2508,3 +2525,4 @@ at point.  With prefix argument, prompt for ACTION-KIND."
 
 
 (provide 'lspce)
+;;; lspce.el ends here

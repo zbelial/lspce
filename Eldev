@@ -1,0 +1,66 @@
+; -*- mode: emacs-lisp; lexical-binding: t -*-
+
+(eldev-use-package-archive 'gnu-elpa)     ; for `yasnippet'
+(eldev-use-package-archive 'nongnu-elpa)  ; for `markdown-mode'
+(eldev-use-package-archive 'melpa)        ; for `f'
+
+(eldev-use-plugin 'autoloads)
+
+
+(setf eldev-files-to-package `(:or ,eldev-files-to-package "/lspce-module.so")
+      ;; For us stdout is not terribly important, so let Eldev write indirect build progress to it too.
+      eldev-display-indirect-build-stdout t)
+
+
+;; So that the Rust helper module is always up-to-date.  Can still be overwritten by user.
+(eldev-set-loading-mode 'built)
+
+
+(defun lspce-cargo-executable (&optional not-required)
+  (eldev-find-executable nil not-required (executable-find "cargo") "Cannot find Cargo, Rust build system; install it first"))
+
+;; FIXME: Hardcoding `debug' and `.so'; to be improved.
+
+(eldev-defbuilder lspce-cargo (sources targets)
+  :short-name     "CARGO"
+  :type           many-to-many
+  :message        (lambda (_ _) "Rust code")
+  :source-files   "/src/**/*.rs"
+  :targets        "target/debug/liblspce_module.so"
+  :collect        ":default"
+  (ignore sources targets)
+  (eldev-call-process (lspce-cargo-executable) `("build")
+    :forward-output t
+    (unless (= exit-code 0)
+      (signal 'eldev-error `("Compilation of Rust code failed with error code %d" ,exit-code)))))
+
+;; Cleaner is defined separately as it deletes more than the lib-file.
+(eldev-defcleaner lspce-cleaner-cargo ()
+  "Delete the compiled Rust module."
+  :aliases rust
+  :default t
+  "target")
+
+(eldev-defbuilder lspce-module (source target)
+  :short-name     "COPY-LIB"
+  :message        target
+  :source-files   "/target/debug/liblspce_module.so"
+  :targets        "lspce-module.so"
+  :define-cleaner (lspce-cleaner-module
+                   "Delete the compiled Rust module."
+                   :default t)
+  :collect        ":default"
+  (ignore source)
+  (copy-file source target :overwrite))
+
+
+(eldev-defcommand lspce-install (&rest parameters)
+  "Install LSPCE in your Emacs."
+  (when parameters
+    (signal 'eldev-wrong-command-usage `(t "Unexpected command parameters")))
+  ;; FIXME: Using some internal variables...
+  (let ((eldev--skip-nothing-to-do-messages t))
+    (eldev-package)
+    ;; FIXME: Or try to do that ourselves using `server-eval-at'?
+    (eldev-output "Please evaluate in your Emacs now: `(package-install-file %S)'"
+                  (abbreviate-file-name (expand-file-name eldev--package-target-file eldev-project-dir)))))
