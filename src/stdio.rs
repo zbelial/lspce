@@ -143,7 +143,7 @@ pub(crate) fn stdio_transport(
             buffer.clear();
             match reader.read_line(&mut buffer) {
                 Ok(0) => {
-                    Logger::error(&format!("stderr reach EOF"));
+                    // Logger::error(&format!("stderr reach EOF"));
                 },
                 Ok(n) => {
                     Logger::error(&format!("[stderr] {}", &buffer));
