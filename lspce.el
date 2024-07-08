@@ -410,7 +410,7 @@ Return value of `body', or nil if interrupted."
       "typescriptreact")
      ((member suffix '("c" "c++" "cpp" "h" "hpp" "cxx" "cc"))
       "C")
-     ((member mm '("go-mode" "go-ts-mode" "go-dot-mod-mode"))
+     ((member mm '("go-mode" "go-ts-mode"))
       "go")
      ((string-suffix-p "-ts-mode" mm)
       (string-remove-suffix "-ts-mode" mm))
