@@ -122,6 +122,12 @@ current buffer is set to the buffer being edited."
   :group 'lspce
   :type 'boolean)
 
+(defcustom lspce-xref-append-implementations-to-definitions nil
+  "If non-nil, when finding definitions, also query implementations
+ and append them to definitions."
+  :group 'lspce
+  :type 'boolean)
+
 ;; Customizable via `completion-category-overrides'.
 ;; (when (assoc 'flex completion-styles-alist)
 ;;   (add-to-list 'completion-category-defaults '(lspce-capf (styles flex basic))))
@@ -329,6 +335,11 @@ Return value of `body', or nil if interrupted."
 
 (defun lspce--make-definitionParams (&optional context)
   (lspce--definitionParams
+   (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
+   (lspce--make-position)))
+
+(defun lspce--make-implementationParams ()
+  (lspce--implementationParams
    (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
    (lspce--make-position)))
 
@@ -1253,6 +1264,19 @@ If optional MARKERS, make markers."
   (propertize (or (thing-at-point 'symbol) "")
               'identifier-at-point t))
 
+(defun lspce--xref-dup-test (x1 x2)
+  (let* ((x1-location (xref-item-location x1))
+         (x1-file (xref-file-location-file x1-location))
+         (x1-line (xref-file-location-line x1-location))
+         (x1-column (xref-file-location-column x1-location))
+         (x2-location (xref-item-location x2))
+         (x2-file (xref-file-location-file x2-location))
+         (x2-line (xref-file-location-line x2-location))
+         (x2-column (xref-file-location-column x2-location)))
+    (and (string-equal x1-file x2-file)
+         (= x1-line x2-line)
+         (= x1-column x2-column))))
+
 (cl-defmethod xref-backend-definitions ((_backend (eql xref-lspce)) identifier)
   (let (defs
         impls)
@@ -1262,12 +1286,13 @@ If optional MARKERS, make markers."
                (response (lspce--request method (lspce--make-definitionParams))))
           (when response
             (setq defs (lspce--locations-to-xref response)))))
-      (when (lspce--server-capable "implementationProvider")
+      (when (and lspce-xref-append-implementations-to-definitions
+                 (lspce--server-capable "implementationProvider"))
         (let* ((method "textDocument/implementation")
                (response (lspce--request method (lspce--make-implementationParams))))
           (when response
             (setq impls (lspce--locations-to-xref response))))))
-    (append defs impls)))
+    (cl-remove-duplicates (append defs impls) :test #'lspce--xref-dup-test)))
 
 ;; NOTE if you use `ivy-xref-show-xrefs' as the `xref-show-xrefs-function',
 ;; you will find `xref-backend-references' is called twice.
@@ -1294,6 +1319,41 @@ If optional MARKERS, make markers."
 (cl-defmethod xref-backend-identifier-completion-table ((_backend (eql xref-lspce)))
   (list (propertize (or (thing-at-point 'symbol) "")
                     'identifier-at-point t)))
+
+(when (not (fboundp 'xref-backend-implementations))
+  (cl-defgeneric xref-backend-implementations (backend identifier)
+    "Find implementations of IDENTIFIER.
+
+The result must be a list of xref objects. If there are multiple possible
+implementations, return all of them.  If no implementations can be found,
+return nil.
+
+IDENTIFIER can be any string returned by
+`xref-backend-identifier-at-point', or from the table returned by
+`xref-backend-identifier-completion-table'.
+
+To create an xref object, call `xref-make'.")
+  
+  )
+
+(cl-defmethod xref-backend-implementations ((_backend (eql xref-lspce)) identifier)
+  (when (lspce--server-capable "implementationProvider")
+    (save-excursion
+      (let* ((method "textDocument/implementation")
+             (response (lspce--request method (lspce--make-implementationParams))))
+        (when response
+          (lspce--locations-to-xref response))))))
+
+;;;###autoload
+(defun xref-find-implementations (identifier)
+  "Find implementations to the identifier at point.
+This command might prompt for the identifier as needed, perhaps
+offering the symbol at point as the default.
+With prefix argument, or if `xref-prompt-for-identifier' is t,
+always prompt for the identifier.  If `xref-prompt-for-identifier'
+is nil, prompt only if there's no usable symbol at point."
+  (interactive (list (xref--read-identifier "Find implementations of: ")))
+  (xref--find-xrefs identifier 'implementations identifier nil))
 
 ;; type definition
 (when (not (fboundp 'xref-backend-type-definition))
@@ -1960,7 +2020,7 @@ Doubles as an indicator of snippet support."
         (setq diagnostics (lspce-module-read-file-diagnostics lspce--root-uri lspce--lsp-type (lspce--uri)))
         (lspce--debug "diagnostics: %S" diagnostics)
         (when diagnostics
-          ;; FIXME 根据diag-type和位置排序。
+          ;; FIXME sort according to diag-type and positon.
           (dolist (d (lspce--json-deserialize diagnostics))
             (lspce--debug "d %S" d)
             (setq range (gethash "range" d)
