@@ -1258,24 +1258,32 @@ If optional MARKERS, make markers."
   (propertize (or (thing-at-point 'symbol) "")
               'identifier-at-point t))
 
-;; FIXME check server capability: definitionProvider
 (cl-defmethod xref-backend-definitions ((_backend (eql xref-lspce)) identifier)
-  (save-excursion
-    (let* ((method "textDocument/definition")
-           (response (lspce--request method (lspce--make-definitionParams))))
-      (when response
-        (lspce--locations-to-xref response)))))
+  (let (defs
+        impls)
+    (save-excursion
+      (when (lspce--server-capable "definitionProvider")
+        (let* ((method "textDocument/definition")
+               (response (lspce--request method (lspce--make-definitionParams))))
+          (when response
+            (setq defs (lspce--locations-to-xref response)))))
+      (when (lspce--server-capable "implementationProvider")
+        (let* ((method "textDocument/implementation")
+               (response (lspce--request method (lspce--make-implementationParams))))
+          (when response
+            (setq impls (lspce--locations-to-xref response))))))
+    (append defs impls)))
 
 ;; NOTE if you use `ivy-xref-show-xrefs' as the `xref-show-xrefs-function',
 ;; you will find `xref-backend-references' is called twice.
 ;; See https://github.com/alexmurray/ivy-xref/issues/2
-;; FIXME check server capability: referencesProvider
 (cl-defmethod xref-backend-references ((_backend (eql xref-lspce)) identifier)
-  (save-excursion
-    (let* ((method "textDocument/references")
-           (response (lspce--request method (lspce--make-referenceParams))))
-      (when response
-        (lspce--locations-to-xref response)))))
+  (when (lspce--server-capable "referencesProvider")
+    (save-excursion
+      (let* ((method "textDocument/references")
+             (response (lspce--request method (lspce--make-referenceParams))))
+        (when response
+          (lspce--locations-to-xref response))))))
 
 (cl-defmethod xref-backend-apropos ((_backend (eql xref-lspce)) pattern)
   (when (lspce--server-capable "workspaceSymbolProvider")
@@ -1291,41 +1299,6 @@ If optional MARKERS, make markers."
 (cl-defmethod xref-backend-identifier-completion-table ((_backend (eql xref-lspce)))
   (list (propertize (or (thing-at-point 'symbol) "")
                     'identifier-at-point t)))
-
-(when (not (fboundp 'xref-backend-implementations))
-  (cl-defgeneric xref-backend-implementations (backend identifier)
-    "Find implementations of IDENTIFIER.
-
-The result must be a list of xref objects. If there are multiple possible
-implementations, return all of them.  If no implementations can be found,
-return nil.
-
-IDENTIFIER can be any string returned by
-`xref-backend-identifier-at-point', or from the table returned by
-`xref-backend-identifier-completion-table'.
-
-To create an xref object, call `xref-make'.")
-
-  )
-
-;; FIXME check server capability: implementationProvider
-(cl-defmethod xref-backend-implementations ((_backend (eql xref-lspce)) identifier)
-  (save-excursion
-    (let* ((method "textDocument/implementation")
-           (response (lspce--request method (lspce--make-implementationParams))))
-      (when response
-        (lspce--locations-to-xref response)))))
-
-;;;###autoload
-(defun xref-find-implementations (identifier)
-  "Find implementations to the identifier at point.
-This command might prompt for the identifier as needed, perhaps
-offering the symbol at point as the default.
-With prefix argument, or if `xref-prompt-for-identifier' is t,
-always prompt for the identifier.  If `xref-prompt-for-identifier'
-is nil, prompt only if there's no usable symbol at point."
-  (interactive (list (xref--read-identifier "Find implementations of: ")))
-  (xref--find-xrefs identifier 'implementations identifier nil))
 
 ;; type definition
 (when (not (fboundp 'xref-backend-type-definition))
@@ -1343,13 +1316,13 @@ IDENTIFIER can be any string returned by
 To create an xref object, call `xref-make'.")
   )
 
-;; FIXME check server capability: typeDefinitionProvider
 (cl-defmethod xref-backend-type-definition ((_backend (eql xref-lspce)) identifier)
-  (save-excursion
-    (let* ((method "textDocument/typeDefinition")
-           (response (lspce--request method (lspce--make-typeDefinitionParams))))
-      (when response
-        (lspce--locations-to-xref response)))))
+  (when (lspce--server-capable "typeDefinitionProvider")
+    (save-excursion
+      (let* ((method "textDocument/typeDefinition")
+             (response (lspce--request method (lspce--make-typeDefinitionParams))))
+        (when response
+          (lspce--locations-to-xref response))))))
 
 ;;;###autoload
 (defun xref-find-type-definition (identifier)
@@ -1380,13 +1353,13 @@ IDENTIFIER can be any string returned by
 To create an xref object, call `xref-make'.")
   )
 
-;; FIXME check server capability: typeDefinitionProvider
 (cl-defmethod xref-backend-declaration ((_backend (eql xref-lspce)) identifier)
-  (save-excursion
-    (let* ((method "textDocument/declaration")
-           (response (lspce--request method (lspce--make-declarationParams))))
-      (when response
-        (lspce--locations-to-xref response)))))
+  (when (lspce--server-capable "declarationProvider")
+    (save-excursion
+      (let* ((method "textDocument/declaration")
+             (response (lspce--request method (lspce--make-declarationParams))))
+        (when response
+          (lspce--locations-to-xref response))))))
 
 ;;;###autoload
 (defun xref-find-declaration (identifier)
@@ -1396,7 +1369,7 @@ offering the symbol at point as the default.
 With prefix argument, or if `xref-prompt-for-identifier' is t,
 always prompt for the identifier.  If `xref-prompt-for-identifier'
 is nil, prompt only if there's no usable symbol at point."
-  (interactive (list (xref--read-identifier "Find Type Definition of: ")))
+  (interactive (list (xref--read-identifier "Find Definition of: ")))
   (xref--show-defs
    (xref--create-fetcher identifier 'declaration identifier)
    nil))
