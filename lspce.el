@@ -338,11 +338,6 @@ Return value of `body', or nil if interrupted."
    (lspce--make-position)
    (lspce--referenceContext)))
 
-(defun lspce--make-implementationParams ()
-  (lspce--implementationParams
-   (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
-   (lspce--make-position)))
-
 (defun lspce--make-typeDefinitionParams ()
   (lspce--typeDefinitionParams
    (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
@@ -1305,9 +1300,8 @@ If optional MARKERS, make markers."
   (cl-defgeneric xref-backend-type-definition (backend identifier)
     "Find type definition of IDENTIFIER.
 
-The result must be a list of xref objects. If there are multiple possible
-implementations, return all of them.  If no implementations can be found,
-return nil.
+The result must be a list of xref objects.
+If no type definition can be found, return nil.
 
 IDENTIFIER can be any string returned by
 `xref-backend-identifier-at-point', or from the table returned by
@@ -1343,7 +1337,7 @@ is nil, prompt only if there's no usable symbol at point."
     "Find declaration of IDENTIFIER.
 
 The result must be a list of xref objects. If there are multiple possible
-implementations, return all of them.  If no implementations can be found,
+declarations, return all of them.  If no declaration can be found,
 return nil.
 
 IDENTIFIER can be any string returned by
