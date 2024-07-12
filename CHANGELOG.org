@@ -1,5 +1,5 @@
 * Next
-* 1.1.0
+* 1.1.0 (2024-07-12)
 ** enhancement - add =xref-find-type-definition=
 ** enhancement - support =xref-find-declaration=
 ** enhancement - support =deprecatedSupport= in completion
@@ -11,5 +11,5 @@
 ** bugfix - fix no argument snippets for rust code
 ** bugfix - stop writing "stderr reach EOF" repeatedly to log
 ** other enhancements and bugfixes
-* 1.0.0 
+* 1.0.0  (2023-06-21)
   Hard to say.
