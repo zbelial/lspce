@@ -110,26 +110,27 @@
    Lspce support writing stderr message from lsp servers to the log file (set up by calling `lspce-set-log-file`) in the log level ERROR, and the log contains string "[stderr]".
 
 * Customization
-  | Variable                            | Default        | Description                                                                                         |
-  |-------------------------------------+----------------+-----------------------------------------------------------------------------------------------------|
-  | lspce-send-changes-idle-time        | 0.5            | How much idle time to wait before sending changes to the lsp server.                                |
-  | lspce-doc-tooltip-border-width      | 1              | The border width of lspce tooltip.                                                                  |
-  | lspce-doc-tooltip-timeout           | 30             | How long to wait before lspce tooltip disappears (only for posframe)                                |
-  | lspce-completion-ignore-case        | t              | If non-nil, ignore case when completing.                                                            |
-  | lspce-completion-no-annotation      | nil            | If non-nil, do not display completion item's annotation.                                            |
-  | lspce-enable-eldoc                  | t              | If non-nil, enable eldoc.                                                                           |
-  | lspce-eldoc-enable-hover            | t              | If non-nil, enable hover in eldoc.                                                                  |
-  | lspce-eldoc-enable-signature        | t              | If non-nil, enable signature in eldoc.                                                              |
-  | lspce-enable-flymake                | t              | If non-nil, enable flymake.                                                                         |
-  | lspce-connect-server-timeout        | 60             | The timeout of connecting to lsp server, in seconds.                                                |
-  | lspce-modes-enable-single-file-root | `(python-mode) | Major modes where lspce enables even for a single file (IOW no project).                            |
-  | lspce-enable-logging                | nil            | If non-nil, enable logging to file.                                                                 |
-  | lspce-auto-enable-within-project    | t              | If non-nil, enable lspce when a file is opened if lspce has already been enabled in current project |
-  | lspce-after-text-edit-hook          | nil            | Functions called after finishing all text edits in a buffer.                                        |
-  | lspce-afte-each-text-edit-hook      | nil            | Functions called after finishing each text edit in a buffer.                                        |
-  | lspce-show-log-level-in-modeline    | t              | If non-nil, show log level in modeline.                                                             |
-  | lspce-inherit-exec-path             | nil            | If non-nil, pass `exec-path' as PATH to rust code to create the lsp subprocess.                     |
-  | MAX_DIAGNOSTIC_COUNT                | 30             | How many diagnostics should be retrieved.                                                           |
+  | Variable                                         | Default        | Description                                                                                         |
+  |--------------------------------------------------+----------------+-----------------------------------------------------------------------------------------------------|
+  | lspce-send-changes-idle-time                     | 0.5            | How much idle time to wait before sending changes to the lsp server.                                |
+  | lspce-doc-tooltip-border-width                   | 1              | The border width of lspce tooltip.                                                                  |
+  | lspce-doc-tooltip-timeout                        | 30             | How long to wait before lspce tooltip disappears (only for posframe)                                |
+  | lspce-completion-ignore-case                     | t              | If non-nil, ignore case when completing.                                                            |
+  | lspce-completion-no-annotation                   | nil            | If non-nil, do not display completion item's annotation.                                            |
+  | lspce-enable-eldoc                               | t              | If non-nil, enable eldoc.                                                                           |
+  | lspce-eldoc-enable-hover                         | t              | If non-nil, enable hover in eldoc.                                                                  |
+  | lspce-eldoc-enable-signature                     | t              | If non-nil, enable signature in eldoc.                                                              |
+  | lspce-enable-flymake                             | t              | If non-nil, enable flymake.                                                                         |
+  | lspce-connect-server-timeout                     | 60             | The timeout of connecting to lsp server, in seconds.                                                |
+  | lspce-modes-enable-single-file-root              | `(python-mode) | Major modes where lspce enables even for a single file (IOW no project).                            |
+  | lspce-enable-logging                             | nil            | If non-nil, enable logging to file.                                                                 |
+  | lspce-auto-enable-within-project                 | t              | If non-nil, enable lspce when a file is opened if lspce has already been enabled in current project |
+  | lspce-after-text-edit-hook                       | nil            | Functions called after finishing all text edits in a buffer.                                        |
+  | lspce-afte-each-text-edit-hook                   | nil            | Functions called after finishing each text edit in a buffer.                                        |
+  | lspce-show-log-level-in-modeline                 | t              | If non-nil, show log level in modeline.                                                             |
+  | lspce-inherit-exec-path                          | nil            | If non-nil, pass `exec-path' as PATH to rust code to create the lsp subprocess.                     |
+  | MAX_DIAGNOSTIC_COUNT                             | 30             | How many diagnostics should be retrieved.                                                           |
+  | lspce-xref-append-implementations-to-definitions | nil            | If non-nil, also fetch implementations when fetching definitions.                                   |
   
 ** MAX_DIAGNOSTIC_COUNT
    This variable is defined in rust code, you can customize it via =lspce-change-max-diagnostics-count= . If it's negative, then all diagnostics will be retrieved.
