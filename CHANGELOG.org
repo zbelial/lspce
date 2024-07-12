@@ -1,0 +1,15 @@
+* Next
+* 1.1.0
+** enhancement - add =xref-find-type-definition=
+** enhancement - support =xref-find-declaration=
+** enhancement - support =deprecatedSupport= in completion
+** enhancement - support =inlayHint= 
+** enhancement - support =xref-backend-apropos= 
+** enhancement - support passing exec-path to then environment when spawning a LSP server
+** enhancement - support writing LSP server's stderr to the log file
+** enhancement - support fetching implementations when fetching definitions in =xref-find-declaration= (useful for languages like go/rust/java etc.)
+** bugfix - fix no argument snippets for rust code
+** bugfix - stop writing "stderr reach EOF" repeatedly to log
+** other enhancements and bugfixes
+* 1.0.0 
+  Hard to say.
