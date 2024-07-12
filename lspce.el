@@ -122,6 +122,12 @@ current buffer is set to the buffer being edited."
   :group 'lspce
   :type 'boolean)
 
+(defcustom lspce-xref-append-implementations-to-definitions nil
+  "If non-nil, when finding definitions, also query implementations
+ and append them to definitions."
+  :group 'lspce
+  :type 'boolean)
+
 ;; Customizable via `completion-category-overrides'.
 ;; (when (assoc 'flex completion-styles-alist)
 ;;   (add-to-list 'completion-category-defaults '(lspce-capf (styles flex basic))))
@@ -332,16 +338,16 @@ Return value of `body', or nil if interrupted."
    (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
    (lspce--make-position)))
 
+(defun lspce--make-implementationParams ()
+  (lspce--implementationParams
+   (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
+   (lspce--make-position)))
+
 (defun lspce--make-referenceParams ()
   (lspce--referencesParams
    (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
    (lspce--make-position)
    (lspce--referenceContext)))
-
-(defun lspce--make-implementationParams ()
-  (lspce--implementationParams
-   (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
-   (lspce--make-position)))
 
 (defun lspce--make-typeDefinitionParams ()
   (lspce--typeDefinitionParams
@@ -1258,24 +1264,46 @@ If optional MARKERS, make markers."
   (propertize (or (thing-at-point 'symbol) "")
               'identifier-at-point t))
 
-;; FIXME check server capability: definitionProvider
+(defun lspce--xref-dup-test (x1 x2)
+  (let* ((x1-location (xref-item-location x1))
+         (x1-file (xref-file-location-file x1-location))
+         (x1-line (xref-file-location-line x1-location))
+         (x1-column (xref-file-location-column x1-location))
+         (x2-location (xref-item-location x2))
+         (x2-file (xref-file-location-file x2-location))
+         (x2-line (xref-file-location-line x2-location))
+         (x2-column (xref-file-location-column x2-location)))
+    (and (string-equal x1-file x2-file)
+         (= x1-line x2-line)
+         (= x1-column x2-column))))
+
 (cl-defmethod xref-backend-definitions ((_backend (eql xref-lspce)) identifier)
-  (save-excursion
-    (let* ((method "textDocument/definition")
-           (response (lspce--request method (lspce--make-definitionParams))))
-      (when response
-        (lspce--locations-to-xref response)))))
+  (let (defs
+        impls)
+    (save-excursion
+      (when (lspce--server-capable "definitionProvider")
+        (let* ((method "textDocument/definition")
+               (response (lspce--request method (lspce--make-definitionParams))))
+          (when response
+            (setq defs (lspce--locations-to-xref response)))))
+      (when (and lspce-xref-append-implementations-to-definitions
+                 (lspce--server-capable "implementationProvider"))
+        (let* ((method "textDocument/implementation")
+               (response (lspce--request method (lspce--make-implementationParams))))
+          (when response
+            (setq impls (lspce--locations-to-xref response))))))
+    (cl-remove-duplicates (append defs impls) :test #'lspce--xref-dup-test)))
 
 ;; NOTE if you use `ivy-xref-show-xrefs' as the `xref-show-xrefs-function',
 ;; you will find `xref-backend-references' is called twice.
 ;; See https://github.com/alexmurray/ivy-xref/issues/2
-;; FIXME check server capability: referencesProvider
 (cl-defmethod xref-backend-references ((_backend (eql xref-lspce)) identifier)
-  (save-excursion
-    (let* ((method "textDocument/references")
-           (response (lspce--request method (lspce--make-referenceParams))))
-      (when response
-        (lspce--locations-to-xref response)))))
+  (when (lspce--server-capable "referencesProvider")
+    (save-excursion
+      (let* ((method "textDocument/references")
+             (response (lspce--request method (lspce--make-referenceParams))))
+        (when response
+          (lspce--locations-to-xref response))))))
 
 (cl-defmethod xref-backend-apropos ((_backend (eql xref-lspce)) pattern)
   (when (lspce--server-capable "workspaceSymbolProvider")
@@ -1305,16 +1333,16 @@ IDENTIFIER can be any string returned by
 `xref-backend-identifier-completion-table'.
 
 To create an xref object, call `xref-make'.")
-
+  
   )
 
-;; FIXME check server capability: implementationProvider
 (cl-defmethod xref-backend-implementations ((_backend (eql xref-lspce)) identifier)
-  (save-excursion
-    (let* ((method "textDocument/implementation")
-           (response (lspce--request method (lspce--make-implementationParams))))
-      (when response
-        (lspce--locations-to-xref response)))))
+  (when (lspce--server-capable "implementationProvider")
+    (save-excursion
+      (let* ((method "textDocument/implementation")
+             (response (lspce--request method (lspce--make-implementationParams))))
+        (when response
+          (lspce--locations-to-xref response))))))
 
 ;;;###autoload
 (defun xref-find-implementations (identifier)
@@ -1332,9 +1360,8 @@ is nil, prompt only if there's no usable symbol at point."
   (cl-defgeneric xref-backend-type-definition (backend identifier)
     "Find type definition of IDENTIFIER.
 
-The result must be a list of xref objects. If there are multiple possible
-implementations, return all of them.  If no implementations can be found,
-return nil.
+The result must be a list of xref objects.
+If no type definition can be found, return nil.
 
 IDENTIFIER can be any string returned by
 `xref-backend-identifier-at-point', or from the table returned by
@@ -1343,13 +1370,13 @@ IDENTIFIER can be any string returned by
 To create an xref object, call `xref-make'.")
   )
 
-;; FIXME check server capability: typeDefinitionProvider
 (cl-defmethod xref-backend-type-definition ((_backend (eql xref-lspce)) identifier)
-  (save-excursion
-    (let* ((method "textDocument/typeDefinition")
-           (response (lspce--request method (lspce--make-typeDefinitionParams))))
-      (when response
-        (lspce--locations-to-xref response)))))
+  (when (lspce--server-capable "typeDefinitionProvider")
+    (save-excursion
+      (let* ((method "textDocument/typeDefinition")
+             (response (lspce--request method (lspce--make-typeDefinitionParams))))
+        (when response
+          (lspce--locations-to-xref response))))))
 
 ;;;###autoload
 (defun xref-find-type-definition (identifier)
@@ -1370,7 +1397,7 @@ is nil, prompt only if there's no usable symbol at point."
     "Find declaration of IDENTIFIER.
 
 The result must be a list of xref objects. If there are multiple possible
-implementations, return all of them.  If no implementations can be found,
+declarations, return all of them.  If no declaration can be found,
 return nil.
 
 IDENTIFIER can be any string returned by
@@ -1380,13 +1407,13 @@ IDENTIFIER can be any string returned by
 To create an xref object, call `xref-make'.")
   )
 
-;; FIXME check server capability: typeDefinitionProvider
 (cl-defmethod xref-backend-declaration ((_backend (eql xref-lspce)) identifier)
-  (save-excursion
-    (let* ((method "textDocument/declaration")
-           (response (lspce--request method (lspce--make-declarationParams))))
-      (when response
-        (lspce--locations-to-xref response)))))
+  (when (lspce--server-capable "declarationProvider")
+    (save-excursion
+      (let* ((method "textDocument/declaration")
+             (response (lspce--request method (lspce--make-declarationParams))))
+        (when response
+          (lspce--locations-to-xref response))))))
 
 ;;;###autoload
 (defun xref-find-declaration (identifier)
@@ -1396,7 +1423,7 @@ offering the symbol at point as the default.
 With prefix argument, or if `xref-prompt-for-identifier' is t,
 always prompt for the identifier.  If `xref-prompt-for-identifier'
 is nil, prompt only if there's no usable symbol at point."
-  (interactive (list (xref--read-identifier "Find Type Definition of: ")))
+  (interactive (list (xref--read-identifier "Find Definition of: ")))
   (xref--show-defs
    (xref--create-fetcher identifier 'declaration identifier)
    nil))
@@ -1993,7 +2020,7 @@ Doubles as an indicator of snippet support."
         (setq diagnostics (lspce-module-read-file-diagnostics lspce--root-uri lspce--lsp-type (lspce--uri)))
         (lspce--debug "diagnostics: %S" diagnostics)
         (when diagnostics
-          ;; FIXME 根据diag-type和位置排序。
+          ;; FIXME sort according to diag-type and positon.
           (dolist (d (lspce--json-deserialize diagnostics))
             (lspce--debug "d %S" d)
             (setq range (gethash "range" d)
