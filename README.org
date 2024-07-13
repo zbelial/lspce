@@ -139,6 +139,22 @@
    On rust code side, there are 5 log level: DISABLED(0), ERROR(1), INFO(2), TRACE(3), DEBUG(4), and the default level is INFO. You can use functions =lspce-set-log-level-xxxx= to change log level to specific level.
    Before adding log level feature, two commands, =lspce-enable-logging= and =lspce-disable-logging=, already exist, which enable/disable logging entirely. Now =lspce-enable-logging= is equivalent of setting log level to DEBUG, and =lspce-disable-logging= is equivalent of setting log level to DISABLED.
 
+** About python virtual environment
+   ATM, you can use virtual environments with both pylsp and jedi-language-server in lspce, all you need is a variable =lspce-jedi-environment=, which can be specified to point to the python interpreter, and a =.dir-locals.el= file.
+   The following is a simple .dir-locals.el:
+   #+BEGIN_SRC elisp
+     ((python-mode
+       . ((eval . (progn
+                    (setq-local lspce-jedi-environment "/home/lucency/tmp/venv/.venv/bin/python")))))
+      (python-ts-mode
+       . ((eval . (progn
+                    (setq-local lspce-jedi-environment "/home/lucency/tmp/venv/.venv/bin/python")))))
+      )
+
+   #+END_SRC
+
+   And you can see how =lspce-jedi-environment= is used in =lspce-jedi-initializationOptions= and =lspce-pylsp-initializationOptions=.
+   
 * Architecture
   [[file:images/Architecture_of_LSPCE.png]]
 

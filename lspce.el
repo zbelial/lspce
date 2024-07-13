@@ -157,8 +157,8 @@ current buffer is set to the buffer being edited."
 
 ;;; Variables and custom
 (defvar lspce-server-programs `(("rust"  "rust-analyzer" "")
-                                ("python" "pylsp" "" )
-                                ("python" "pyright-langserver" "--stdio")
+                                ("python" "jedi-language-server" "" lspce-jedi-initializationOptions)
+                                ("python" "pylsp" "" lspce-pylsp-initializationOptions)
                                 ("C" "clangd" "")
                                 ("java" ,lspce-java-path lspce-jdtls-cmd-args)
                                 ("sh" "bash-language-server" "start")

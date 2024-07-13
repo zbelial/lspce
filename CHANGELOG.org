@@ -1,4 +1,6 @@
 * Next
+** enhancement - add initializationOptions for deno/pylsp/jedi-language-server, delete things about pyright
+** README - mention how to support python virtual environments for pylsp and jedi-language-server
 * 1.1.0 (2024-07-12)
 ** enhancement - add =xref-find-type-definition=
 ** enhancement - support =xref-find-declaration=

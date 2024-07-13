@@ -43,7 +43,7 @@
     (lspce--add-option "procMacro.enable" t options)
     (lspce--add-option "lens.enable" :json-false options)))
 
-;;; java 
+;;; java jdtls
 (defcustom lspce-jdtls-workspace-dir (expand-file-name "~/.jdtls/workspace/")
   "jdtls workspace directory."
   :group 'lspce
@@ -212,22 +212,41 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
     (lspce--add-option "settings.java.showBuildStatusOnStart.enabled" t options)
     (lspce--add-option "extendedClientCapabilities.classFileContentsSupport" t options)))
 
-;;; python pyright
-(defun lspce-pyright-initializationOptions ()
+;;; python pylsp
+(defun lspce-pylsp-initializationOptions ()
   (let ((options (make-hash-table :test #'equal)))
-    (lspce--add-option "python.analysis.autoImportCompletions" t options)
-    (lspce--add-option "python.analysis.useLibraryCodeForTypes" t options)
-    (lspce--add-option "python.analysis.typeCheckingMode" "basic" options)
-    (lspce--add-option "python.analysis.diagnosticMode" "openFilesOnly" options)
-    (lspce--add-option "python.analysis.stubPath" "" options)
-    (lspce--add-option "python.analysis.autoSearchPaths" t options)
-    (lspce--add-option "python.analysis.typeshedPaths" (vector) options)
-    (lspce--add-option "python.analysis.extraPaths" (vector) options)))
+    (lspce--add-option "pylsp.plugins.jedi_completion.include_params" t options)
+    (lspce--add-option "pylsp.plugins.jedi_completion.fuzzy" t options)
+    (when (boundp 'lspce-jedi-environment)
+      (lspce--add-option "pylsp.plugins.jedi.environment" lspce-jedi-environment options))
+    (lspce--add-option "pylsp.plugins.pylint.enabled" :json-false options)
+    options))
 
+;;; python jedi-language-server
+(defun lspce-jedi-initializationOptions ()
+  (let ((options (make-hash-table :test #'equal)))
+    (when (boundp 'lspce-jedi-environment)
+      (lspce--add-option "workspace.environmentPath" lspce-jedi-environment options))
+    (lspce--add-option "completion.disableSnippets" :json-false options)
+    (lspce--add-option "completion.resolveEagerly" :json-false options)
+    (lspce--add-option "diagnostics.enable" t options)
+    (lspce--add-option "hover.enable" t options)
+    (lspce--add-option "jediSettings.caseInsensitiveCompletion" t options)
+    (lspce--add-option "jediSettings.debug" :json-false options)
+    (lspce--add-option "markupKindPreferred" "markdown" options)
+    options))
 
 ;;; go gopls
 (defun lspce-gopls-initializationOptions ()
   (let ((options (make-hash-table :test #'equal)))
     (lspce--add-option "settings.gopls.usePlaceholders" t options)))
+
+;;; typescript deno
+(defun lspce-deno-initializationOptions ()
+  (let ((options (make-hash-table :test #'equal)))
+    (lspce--add-option "enable" t options)
+    (lspce--add-option "lint" t options)
+    (lspce--add-option "unstable" :json-false options)
+    options))
 
 (provide 'lspce-langs)
