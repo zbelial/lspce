@@ -895,9 +895,10 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-function t)
     (when lspce--server-info
       (lspce--notify-textDocument/didClose))
-    (when (and lspce-enable-flymake
-               (not lspce--flymake-already-enabled))
-      (flymake-mode -1))
+    (when lspce-enable-flymake
+      (if (not lspce--flymake-already-enabled)
+          (flymake-mode -1)
+        (mapc #'delete-overlay (flymake--overlays))))
     (when (and lspce-enable-eldoc
                (not lspce--eldoc-already-enabled))
       (eldoc-mode -1))

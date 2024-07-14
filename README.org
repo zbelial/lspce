@@ -80,7 +80,7 @@
     (use-package lspce
       :load-path "/path/to/lspce"
       :config (progn
-                (setq lspce-send-changes-idle-time 1)
+                (setq lspce-send-changes-idle-time 0.1)
                 (setq lspce-show-log-level-in-modeline t) ;; show log level in mode line
 
                 ;; You should call this first if you want lspce to write logs
@@ -140,20 +140,35 @@
    Before adding log level feature, two commands, =lspce-enable-logging= and =lspce-disable-logging=, already exist, which enable/disable logging entirely. Now =lspce-enable-logging= is equivalent of setting log level to DEBUG, and =lspce-disable-logging= is equivalent of setting log level to DISABLED.
 
 ** About python virtual environment
-   ATM, you can use virtual environments with both pylsp and jedi-language-server in lspce, all you need is a variable =lspce-jedi-environment=, which can be specified to point to the python interpreter, and a =.dir-locals.el= file.
-   The following is a simple .dir-locals.el:
-   #+BEGIN_SRC elisp
-     ((python-mode
-       . ((eval . (progn
-                    (setq-local lspce-jedi-environment "/home/lucency/tmp/venv/.venv/bin/python")))))
-      (python-ts-mode
-       . ((eval . (progn
-                    (setq-local lspce-jedi-environment "/home/lucency/tmp/venv/.venv/bin/python")))))
-      )
+*** pylsp and jedi-language-server
+    ATM, you can use virtual environments with both pylsp and jedi-language-server in lspce, all you need is a variable =lspce-jedi-environment=, which can be specified to point to the python interpreter, and a =.dir-locals.el= file.
+    The following is a simple .dir-locals.el:
+    #+BEGIN_SRC elisp
+      ((python-mode
+        . ((eval . (progn
+                     (setq-local lspce-jedi-environment "/home/XXXX/tmp/venv/.venv/bin/python")))))
+       (python-ts-mode
+        . ((eval . (progn
+                     (setq-local lspce-jedi-environment "/home/XXXX/tmp/venv/.venv/bin/python")))))
+       )
 
-   #+END_SRC
+    #+END_SRC
 
-   And you can see how =lspce-jedi-environment= is used in =lspce-jedi-initializationOptions= and =lspce-pylsp-initializationOptions=.
+    And you can see how =lspce-jedi-environment= is used in =lspce-jedi-initializationOptions= and =lspce-pylsp-initializationOptions=.
+*** pyright
+    If you want to use pyright with lspce, =.dir-locals.el= can also help you. But I haven't tested it throughly.
+    #+BEGIN_SRC elisp
+      ((python-mode
+        . ((eval . (progn
+                     (setq-local exec-path (append (list "/home/XXXX/tmp/venv/.venv/bin/") exec-path))
+                     (setq-local lspce-inherit-exec-path t)))))
+       (python-ts-mode
+        . ((eval . (progn
+                     (setq-local exec-path (append (list "/home/XXXX/tmp/venv/.venv/bin/") exec-path))
+                     (setq-local lspce-inherit-exec-path t))))))
+    #+END_SRC
+
+    I personally do NOT recommend to use lspce with pyright though, and please do NOT create issues about it. Thanks.
    
 * Architecture
   [[file:images/Architecture_of_LSPCE.png]]
@@ -164,18 +179,6 @@
   3. Responses/notifications/requests issued by LSP servers are sent to ~Transport~ and then dispatched into three different queues by ~Message Dispatcher~. 
      Note that diagnositcs are disptched into a separate queue, from where LSPCE reads them and shows them using flymake. 
   4. After sending a request, LSPCE will read the response from the response queue in an interruptable way, so it won't block Emacs.
-
-* TODOs
-  There are some bugs/issues that should be fixed. Here is the list:
-  - +renaming class name in Java won't rename the file name (LSPCE does not support file rename/create/delete now)+
-  - +support server request `workspace/configuration`+ 
-    I've decided not to support it, unless this makes it impossible to implement some necessary features/functions.
-  - support workspaceFolders (or not, not decided yet)
-  - +new created files cannot be recognized by lsp server (workaround: revert it or close and then open it)+
-  - +diagnostics does not work well, sometimes they won't disappear.+
-  - +completion has a little bug, where it may complete foo.bar to foo.barb when current text is foo.b+
-  - after editing pom.xml, jdt.ls cannot automatically update configuration(e.g. cannot find class from the new added jar)
-  - ...
 
 * Lspce vs Eglot/lsp-mode/lsp-bridge
 ** lspce vs eglot
