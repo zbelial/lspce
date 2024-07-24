@@ -835,6 +835,18 @@ The value is also a hash table, with uri as the key and the value is just t.")
 (defun lspce--remove-overlays ()
   (remove-overlays nil nil 'lspce--overlay t))
 
+(defvar-local lspce--saved-bindings nil
+  "Bindings saved by `lspce--save-and-setq'.")
+
+(defmacro lspce--save-and-rebind (symbol binding)
+  `(unless (not (boundp ',symbol))
+     (push (cons ',symbol (symbol-value ',symbol)) lspce--saved-bindings)
+     (setq-local ,symbol ,binding)))
+
+(defun lspce--restore-bindings ()
+  (cl-loop for (var . saved-binding) in lspce--saved-bindings
+           do (set (make-local-variable var) saved-binding)))
+
 ;; TODO add kill-emacs-hook to kill all lsp servers.
 ;;;###autoload
 (define-minor-mode lspce-mode
@@ -866,7 +878,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
       (when lspce-enable-flymake
         (when flymake-mode
           (setq-local lspce--flymake-already-enabled t))
-        (add-hook 'flymake-diagnostic-functions 'lspce-flymake-backend nil t)
+        (lspce--save-and-rebind flymake-diagnostic-functions '(lspce-flymake-backend))
         (flymake-mode 1))
       (condition-case err
           (progn
@@ -898,13 +910,14 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (when lspce-enable-flymake
       (if (not lspce--flymake-already-enabled)
           (flymake-mode -1)
-        (mapc #'delete-overlay (flymake--overlays))))
+        (mapc #'delete-overlay (flymake-diagnostics))))
     (when (and lspce-enable-eldoc
                (not lspce--eldoc-already-enabled))
       (eldoc-mode -1))
     (lspce-inlay-hints-mode -1)
     (lspce--remove-overlays)
-    (lspce--buffer-disable-lsp))))
+    (lspce--buffer-disable-lsp)
+    (lspce--restore-bindings))))
 
 ;; auto enable lspce-mode for files when some files in its project has enabled lspce-mode.
 (cl-defun lspce-enable-within-project ()
