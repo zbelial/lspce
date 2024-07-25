@@ -156,6 +156,10 @@ current buffer is set to the buffer being edited."
 
 
 ;;; Variables and custom
+(defvar lspce-envs-pass-to-subprocess '()
+  "Environment variables that should be passed to rust to start lsp server process.
+Should be a list of string, e.g. '(\"PATH\")")
+
 (defvar lspce-server-programs `(("rust"  "rust-analyzer" "")
                                 ("python" "jedi-language-server" "" lspce-jedi-initializationOptions)
                                 ("python" "pylsp" "" lspce-pylsp-initializationOptions)
@@ -592,6 +596,26 @@ Return value of `body', or nil if interrupted."
     (when chosen
       (gethash chosen server-ht))))
 
+(defun lspce--process-environment ()
+  (let ((ht (make-hash-table :test #'equal))
+        key value pos)
+    (dolist (env process-environment)
+      (when-let (pos (string-search "=" env))
+        (setq key (substring env 0 pos)
+              value (substring env (1+ pos)))
+        (puthash key value ht)))
+    ht))
+
+(defun lspce--envs-pass-to-subprocess ()
+  (let ((ht (make-hash-table :test #'equal))
+        (process-envs (lspce--process-environment)))
+    (dolist (env lspce-envs-pass-to-subprocess)
+      (when-let (value (gethash env process-envs))
+        (puthash env value ht)))
+    (when lspce-inherit-exec-path
+      (puthash "PATH" (mapconcat 'identity exec-path ":") ht))
+    (lspce--json-serialize ht)))
+
 ;; 返回server info.
 (cl-defun lspce--connect ()
   (let ((root-uri lspce--root-uri)
@@ -655,7 +679,7 @@ Return value of `body', or nil if interrupted."
     (lspce--debug "lspce--connect initialize-params: %s" (json-encode initialize-params))
 
     (setq lspce--latest-tick (lspce--current-tick))
-    (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params lspce--latest-tick)) lspce-connect-server-timeout (if lspce-inherit-exec-path (mapconcat 'identity exec-path ":") "")))
+    (setq response-str (lspce-module-connect root-uri lsp-type server-cmd server-args (json-encode (lspce--make-request "initialize" initialize-params lspce--latest-tick)) lspce-connect-server-timeout (lspce--envs-pass-to-subprocess)))
     (lspce--debug "lspce--connect response: %s" response-str)
 
     response-str))

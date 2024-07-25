@@ -131,6 +131,7 @@
   | lspce-inherit-exec-path                          | nil            | If non-nil, pass `exec-path' as PATH to rust code to create the lsp subprocess.                     |
   | MAX_DIAGNOSTIC_COUNT                             | 30             | How many diagnostics should be retrieved.                                                           |
   | lspce-xref-append-implementations-to-definitions | nil            | If non-nil, also fetch implementations when fetching definitions.                                   |
+  | lspce-envs-pass-to-subprocess                    | nil            | Environment variables that should be passed to rust code to create the lsp subprocess.              |
   
 ** MAX_DIAGNOSTIC_COUNT
    This variable is defined in rust code, you can customize it via =lspce-change-max-diagnostics-count= . If it's negative, then all diagnostics will be retrieved.
@@ -170,6 +171,10 @@
 
     I personally do NOT recommend to use lspce with pyright though, and please do NOT create issues about it. Thanks.
    
+** About environment variables
+   Sometime, you may need to pass some environment variables to rust code so that lspce can use these environment variables to start lsp server processes. You can use =lspce-envs-pass-to-subprocess= then, which is a list of environment variables, and the values of these environment variables are retrieved from =process-environment=, except ~PATH~, which is from =exec-path=. 
+   The reason why this feature works in this way is I don't want lspce to be tightly bound with other tools, such as direnv, python's venv, and so on. So you should use someway to populate =process-environment= first if you want to use this feature.
+
 * Architecture
   [[file:images/Architecture_of_LSPCE.png]]
 

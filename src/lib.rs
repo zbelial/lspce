@@ -143,21 +143,32 @@ impl LspServer {
         cmd: String,
         cmd_args: String,
         initialize_req: String,
-        emacs_exec_path: String,
+        emacs_envs: String,
     ) -> Option<LspServer> {
         let args = cmd_args.split_ascii_whitespace().collect::<Vec<&str>>();
 
-        Logger::info(&format!("emacs_exec_path: {}", &emacs_exec_path));
+        Logger::info(&format!("emacs_envs: {}", &emacs_envs));
 
         let mut child;
-        if !emacs_exec_path.is_empty() {
-            child = Command::new(cmd)
-                .args(args)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .env("PATH", emacs_exec_path)
-                .spawn();
+        if !emacs_envs.is_empty() {
+            let envs = serde_json::from_str::<HashMap<String, String>>(&emacs_envs);
+            match envs {
+                Ok(envs) => {
+                    child = Command::new(cmd)
+                        .args(args)
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .envs(envs)
+                        .spawn();                    
+                }
+                Err(e) => {
+                    Logger::error(&format!(
+                        "deserializing emacs_envs failed with error {:?}", e
+                    ));
+                    return None;
+                }
+            } 
         } else {
             child = Command::new(cmd)
                 .args(args)
@@ -514,7 +525,7 @@ fn connect(
     cmd_args: String,
     initialize_req: String,
     timeout: i32,
-    emacs_exec_path: String,
+    emacs_envs: String,
 ) -> Result<Option<String>> {
     Logger::info(&format!(
         "start initializing server for lsp_type {} in project {}",
@@ -539,7 +550,7 @@ fn connect(
         cmd.clone(),
         cmd_args.clone(),
         initialize_req.clone(),
-        emacs_exec_path.clone(),
+        emacs_envs.clone(),
     );
     if let Some(mut s) = server {
         let server_info: LspServerInfo;
