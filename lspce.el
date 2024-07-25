@@ -844,8 +844,8 @@ The value is also a hash table, with uri as the key and the value is just t.")
      (setq-local ,symbol ,binding)))
 
 (defun lspce--restore-bindings ()
-  (cl-loop for (var . saved-binding) in lspce--saved-bindings
-           do (set (make-local-variable var) saved-binding)))
+  (dolist (binding lspce--saved-bindings)
+    (set (make-local-variable (car binding)) (cdr binding))))
 
 ;; TODO add kill-emacs-hook to kill all lsp servers.
 ;;;###autoload
