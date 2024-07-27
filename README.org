@@ -173,8 +173,11 @@
    
 ** About environment variables
    Sometime, you may need to pass some environment variables to rust code so that lspce can use these environment variables to start lsp server processes. You can use =lspce-envs-pass-to-subprocess= then, which is a list of environment variables, and the values of these environment variables are retrieved from =process-environment=, except ~PATH~, which is from =exec-path=. 
-   The reason why this feature works in this way is I don't want lspce to be tightly bound with other tools, such as direnv, python's venv, and so on. So you should use someway to populate =process-environment= first if you want to use this feature.
 
+   The reason why this feature works in this way is I don't want lspce to be tightly bound with other tools, such as direnv, python's venv, and so on. So you should use someway to populate =process-environment= first if you want to use this feature.
+   
+   =lspce-envs-pass-to-subprocess= has made =lspce-inherit-exec-path= obsolete, even you can still use it. The logic is: all environment variables will be passed, and if =lspce-inherit-exec-path= is set true, PATH will be passed too.
+   
 * Architecture
   [[file:images/Architecture_of_LSPCE.png]]
 
