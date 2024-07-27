@@ -611,7 +611,9 @@ Return value of `body', or nil if interrupted."
         (process-envs (lspce--process-environment)))
     (dolist (env lspce-envs-pass-to-subprocess)
       (when-let (value (gethash env process-envs))
-        (puthash env value ht)))
+        (if (string-equal env "PATH")
+            (puthash "PATH" (mapconcat 'identity exec-path ":") ht)
+          (puthash env value ht))))
     (when lspce-inherit-exec-path
       (puthash "PATH" (mapconcat 'identity exec-path ":") ht))
     (lspce--json-serialize ht)))
