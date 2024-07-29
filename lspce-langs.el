@@ -196,7 +196,7 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
     (lspce--add-option "settings.java.progressReports.enabled" t options)
     (lspce--add-option "settings.java.foldingRange.enabled" :json-false options)
     (lspce--add-option "settings.java.maxConcurrentBuilds" 1 options)
-    (lspce--add-option "settings.java.autobuild.enabled" :json-false options)
+    (lspce--add-option "settings.java.autobuild.enabled" t options)
     (lspce--add-option "settings.java.import.maven.enabled" t options)
     (lspce--add-option "settings.java.import.gradle.enabled" t options)
     (lspce--add-option "settings.java.import.gradle.wrapper.enabled" t options)
