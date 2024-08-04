@@ -490,7 +490,7 @@ Return value of `body', or nil if interrupted."
         (start-time (float-time))
         (request-tick (gethash request-id lspce--request-ticks))
         response-tick
-        response code msg response-error response-data)
+        response msg response-error response-data)
     (lspce--debug "lspce--get-response for request-id %s" request-id)
     (when (member method '("textDocument/completion"))
       (lspce--log-perf
@@ -631,7 +631,7 @@ Return value of `body', or nil if interrupted."
 
 (defun lspce--process-environment ()
   (let ((ht (make-hash-table :test #'equal))
-        key value pos)
+        key value)
     (dolist (env process-environment)
       (when-let (pos (string-search "=" env))
         (setq key (substring env 0 pos)
@@ -658,7 +658,7 @@ Return value of `body', or nil if interrupted."
         (initialize-params nil)
         lsp-server
         servers server server-cmd server-args initialize-options
-        response-str response response-error response-result)
+        response-str)
     (unless (and root-uri lsp-type)
       (lspce--warn
        "lspce--connect: Can not get root-uri or lsp-type of current buffer.")
@@ -731,8 +731,7 @@ Return value of `body', or nil if interrupted."
 (defvar lspce--shutdown-status 0)
 (defun lspce--shutdown ()
   (let ((root-uri lspce--root-uri)
-        (lsp-type lspce--lsp-type)
-        response-str)
+        (lsp-type lspce--lsp-type))
     (unless (and root-uri lsp-type)
       (user-error "lspce--shutdown: Can not get root-uri or lsp-type.")
       (cl-return-from lspce--shutdown nil))
@@ -1253,14 +1252,6 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
       (if (= left-start-line right-start-line)
           (< left-start-column right-start-column)
         (< left-start-line right-start-line)))))
-
-(defun lspce--extract-line-from-buffer (pos)
-  "Return the line pointed to by POS (a Position object) in the current buffer."
-  (let* ((point (lsp--position-to-point pos))
-         (inhibit-field-text-motion t))
-    (save-excursion
-      (goto-char point)
-      (buffer-substring (line-beginning-position) (line-end-position)))))
 
 (defun lspce--lsp-position-to-point (pos &optional markers)
   "Convert LSP position to Emacs point."
@@ -2228,12 +2219,12 @@ matches any of the TRIGGER-CHARACTERS."
 
 (defun lspce--apply-file-edits (change)
   (lspce--debug "lspce--apply-file-edits change %s" change)
-  (let* ((kind (gethash "kind" change))
-         (options (gethash "options" change))
-         uri
-         filename
-         new-uri new-filename
-         overwrite ignoreIfExists recursive ignoreIfNotExists)
+  (let ((kind (gethash "kind" change))
+        (options (gethash "options" change))
+        uri
+        filename
+        new-uri new-filename
+        overwrite ignoreIfExists recursive ignoreIfNotExists)
     (cond
      ((equal kind "create")
       (setq uri (gethash "uri" change))
@@ -2352,15 +2343,15 @@ matches any of the TRIGGER-CHARACTERS."
                         (let* ((newText (gethash "newText" edit))
                                (range (lspce--range-region (gethash "range" edit) t)))
                           (cons newText range)))
-                      (nreverse edits)))))
+                      (nreverse edits)))
+        (undo-amalgamate-change-group change-group)))
     (run-hooks 'lspce-after-text-edit-hook)))
 
 (defun lspce--apply-workspace-edit (wedit &optional confirm)
   (let ((changes (gethash "changes" wedit))
         (documentChanges (gethash "documentChanges" wedit))
         (confirmed t)
-        kind
-        filename edits all-edits)
+        kind edits all-edits)
     (if documentChanges
         (progn
           (dolist (dc documentChanges)
@@ -2385,8 +2376,7 @@ matches any of the TRIGGER-CHARACTERS."
                                       (mapcar
                                        (lambda (edit)
                                          (let ((kind (lspce-documentChange-kind edit))
-                                               (change (lspce-documentChange-change edit))
-                                               uri new-uri)
+                                               (change (lspce-documentChange-change edit)))
                                            (cond
                                             ((equal kind "change")
                                              (format "edit %s" (gethash "uri" change)))
@@ -2509,7 +2499,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
 
 (defun lspce--incoming-calls (item)
   (let ((response (lspce--request "callHierarchy/incomingCalls" (list :item item)))
-        children child
+        children
         from result)
     (when response
       (dolist (incoming response)
@@ -2521,7 +2511,6 @@ at point.  With prefix argument, prompt for ACTION-KIND."
 (defun lspce--query-incoming-calls ()
   (if (lspce--server-capable-chain "callHierarchyProvider")
       (let ((response (lspce--request "textDocument/prepareCallHierarchy" (lspce--make-textDocumentPositionParams)))
-            name kind detail uri range
             tree)
         (when response
           (dolist (item response)
@@ -2538,8 +2527,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
 (defun lspce-shutdown-server ()
   "Shutdown server running in current buffer."
   (interactive)
-  (let (buffers
-        server-id
+  (let (server-id
         server-buffers)
     (setq server-id (lspce--server-id (current-buffer)))
     (lspce--debug "server-id %S" server-id)
@@ -2557,8 +2545,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
 (defun lspce-restart-server ()
   "Restart server running in current buffer."
   (interactive)
-  (let (buffers
-        server-id
+  (let (server-id
         server-buffers)
     (setq server-id (lspce--server-id (current-buffer)))
     (lspce--debug "server-id %S" server-id)
@@ -2583,8 +2570,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
 (defun lspce-restart-workspace ()
   "Restart all server in current project."
   (interactive)
-  (let (buffers
-        server-id
+  (let (server-id
         root-uri
         server-buffers)
     (setq server-id (lspce--server-id (current-buffer)))
@@ -2616,8 +2602,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
     (let ((file-name (file-name-nondirectory (buffer-file-name)))
           (root-uri (lspce--root-uri))
           ;; TODO use a more general mothod
-          (lsp-type "java")
-          response)
+          (lsp-type "java"))
       (when (and root-uri
                  lsp-type
                  (or (string-equal file-name "pom.xml")
@@ -2650,8 +2635,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
             (setq jdtls-flag t))))
       (when jdtls-flag
         (let ((root-uri (lspce--root-uri))
-              (lsp-type (lspce--lsp-type))
-              (file-name (file-name-nondirectory (buffer-file-name))))
+              (lsp-type (lspce--lsp-type)))
           (if (and root-uri lsp-type
                    (lspce-module-server root-uri lsp-type))
               (progn
@@ -2671,7 +2655,7 @@ at point.  With prefix argument, prompt for ACTION-KIND."
 (defun lspce--mode-line-format ()
   "Compose the LSPCE's mode-line."
   (let* ((server lspce--server-info)
-         name id)
+         id)
     (when server
       (setq id (gethash "id" server))
       (propertize (concat "lspce:"
