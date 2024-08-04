@@ -49,7 +49,14 @@
   :group 'lspce
   :type 'directory)
 
-(defcustom lspce-java-vmargs '("--add-modules=ALL-SYSTEM" "--add-opens java.base/java.util=ALL-UNNAMED" "--add-opens java.base/java.lang=ALL-UNNAMED" "-XX:+UseParallelGC" "-XX:GCTimeRatio=4" "-XX:AdaptiveSizePolicyWeight=90" "-Dsun.zip.disableMemoryMapping=true" "-Xmx1536m" )
+(defcustom lspce-java-vmargs '("--add-modules=ALL-SYSTEM"
+                               "--add-opens java.base/java.util=ALL-UNNAMED"
+                               "--add-opens java.base/java.lang=ALL-UNNAMED"
+                               "-XX:+UseParallelGC"
+                               "-XX:GCTimeRatio=4"
+                               "-XX:AdaptiveSizePolicyWeight=90"
+                               "-Dsun.zip.disableMemoryMapping=true"
+                               "-Xmx1536m" )
   "Specifies extra VM arguments used to launch the Java Language Server."
   :group 'lspce
   :risky t
@@ -76,13 +83,20 @@
   :group 'lspce
   :type '(choice (:tag "Standard" "LightWeight" "Hybrid")))
 
+(defcustom lspce-jdtls-completion-max-results 30
+  "The max number of completion results jdtls can return."
+  :type 'integer
+  :group 'lspce)
+
 (declare-function tar-untar-buffer "tar-mode" ())
 ;;;###autoload
 (defun lspce-install-jdtls-server ()
   "Install the Eclipse JDT LSP server."
   (interactive)
   (let* ((dest-dir (expand-file-name lspce-jdtls-install-dir))
-         (dest-dir-bak (concat (string-trim-right dest-dir (f-path-separator)) ".bak" (format ".%s" (format-time-string "%Y%m%d%H%M%S"))))
+         (dest-dir-bak (concat (string-trim-right dest-dir (f-path-separator))
+                               ".bak"
+                               (format ".%s" (format-time-string "%Y%m%d%H%M%S"))))
          (download-url lspce-jdtls-download-url)
          (dest-filename (file-name-nondirectory download-url))
          (dest-abspath (expand-file-name dest-filename dest-dir))
@@ -116,8 +130,10 @@
 
 (defun lspce--jdtls-locate-server-jar ()
   "Return the jar file location of the language server.
-The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/org.eclipse.equinox.launcher_`version'.jar."
-  (pcase (f-glob "org.eclipse.equinox.launcher_*.jar" (expand-file-name "plugins" lspce-jdtls-install-dir))
+The entry point of the language server is in
+`lspce-jdtls-install-dir'/plugins/org.eclipse.equinox.launcher_`version'.jar."
+  (pcase (f-glob "org.eclipse.equinox.launcher_*.jar"
+                 (expand-file-name "plugins" lspce-jdtls-install-dir))
     (`(,single-entry) single-entry)
     (`nil nil)
     (server-jar-filenames
@@ -164,7 +180,9 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
         (when (string-match
                "jdt://.*?/\\(.*?\\)\\?=\\(.*?\\)/.*/\\(.*\\)"
                (url-unhex-string uri))
-          (format "%s(%s)" (match-string 2 uri) (string-replace "\\" "" (string-replace "/" "" (match-string 4 uri))))))
+          (format "%s(%s)" (match-string 2 uri)
+                  (string-replace "\\" ""
+                                  (string-replace "/" "" (match-string 4 uri))))))
       (save-match-data
         (when (string-match "chelib://\\(.*\\)" uri)
           (let ((matched (match-string 1 uri)))
@@ -187,11 +205,18 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
 
 (defun lspce-jdtls-initializationOptions ()
   (let ((options (make-hash-table :test #'equal)))
-    (lspce--add-option "settings.java.server.launchMode" lspce-jdtls-launch-mode options)
+    (lspce--add-option "settings.java.server.launchMode"
+                       lspce-jdtls-launch-mode options)
     (lspce--add-option "settings.java.completion.enabled" t options)
-    (lspce--add-option "settings.java.completion.maxResults" 30 options)
-    (lspce--add-option "settings.java.completion.importOrder" (vector "java" "javax" "com" "org") options)
-    (lspce--add-option "settings.java.completion.guessMethodArguments" t options)
+    (lspce--add-option "settings.java.completion.maxResults"
+                       (if (> lspce-jdtls-completion-max-results 0)
+                           lspce-jdtls-completion-max-results
+                         30)
+                       options)
+    (lspce--add-option "settings.java.completion.importOrder"
+                       (vector "java" "javax" "com" "org") options)
+    (lspce--add-option "settings.java.completion.guessMethodArguments"
+                       t options)
     (lspce--add-option "settings.java.signatureHelp.enabled" t options)
     (lspce--add-option "settings.java.progressReports.enabled" t options)
     (lspce--add-option "settings.java.foldingRange.enabled" :json-false options)
@@ -204,13 +229,18 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
     (lspce--add-option "settings.java.maven.downloadSources" t options)
     (lspce--add-option "settings.java.maven.updateSnapshots" t options)
     (lspce--add-option "settings.java.project.importHint" t options)
-    (lspce--add-option "settings.java.project.importOnFirstTimeStartup" "automatic" options)
-    (lspce--add-option "settings.java.project.referecedLibraries" (vector "lib/**/*.jar") options)
+    (lspce--add-option "settings.java.project.importOnFirstTimeStartup"
+                       "automatic" options)
+    (lspce--add-option "settings.java.project.referecedLibraries"
+                       (vector "lib/**/*.jar") options)
     (lspce--add-option "settings.java.trace.server" "off" options)
-    (lspce--add-option "settings.java.configuration.updateBuildConfiguration" "automatic" options)
-    (lspce--add-option "settings.java.configuration.checkProjectSettingsExclusions" t options)
+    (lspce--add-option "settings.java.configuration.updateBuildConfiguration"
+                       "automatic" options)
+    (lspce--add-option "settings.java.configuration.checkProjectSettingsExclusions"
+                       t options)
     (lspce--add-option "settings.java.showBuildStatusOnStart.enabled" t options)
-    (lspce--add-option "extendedClientCapabilities.classFileContentsSupport" t options)))
+    (lspce--add-option "extendedClientCapabilities.classFileContentsSupport"
+                       t options)))
 
 ;;; python pylsp
 (defun lspce-pylsp-initializationOptions ()
@@ -218,7 +248,8 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
     (lspce--add-option "pylsp.plugins.jedi_completion.include_params" t options)
     (lspce--add-option "pylsp.plugins.jedi_completion.fuzzy" t options)
     (when (boundp 'lspce-jedi-environment)
-      (lspce--add-option "pylsp.plugins.jedi.environment" lspce-jedi-environment options))
+      (lspce--add-option "pylsp.plugins.jedi.environment"
+                         lspce-jedi-environment options))
     (lspce--add-option "pylsp.plugins.pylint.enabled" :json-false options)
     options))
 
@@ -226,7 +257,8 @@ The entry point of the language server is in `lspce-jdtls-install-dir'/plugins/o
 (defun lspce-jedi-initializationOptions ()
   (let ((options (make-hash-table :test #'equal)))
     (when (boundp 'lspce-jedi-environment)
-      (lspce--add-option "workspace.environmentPath" lspce-jedi-environment options))
+      (lspce--add-option "workspace.environmentPath"
+                         lspce-jedi-environment options))
     (lspce--add-option "completion.disableSnippets" :json-false options)
     (lspce--add-option "completion.resolveEagerly" :json-false options)
     (lspce--add-option "diagnostics.enable" t options)
