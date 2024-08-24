@@ -1,8 +1,9 @@
 * Next
-** enhancement - add initializationOptions for deno/pylsp/jedi-language-server, delete things about pyright
-** README - mention how to support python virtual environments for pylsp and jedi-language-server
+** enhancement - add initializationOptions for deno/pylsp/jedi-language-server, delete things about pyright.
+** README - mention how to support python virtual environments for pylsp and jedi-language-server.
 ** enhancement - support specifing which environment variables should be passed to rust code to start lsp servers.
-** enhancement - support specifing how many completion items jdtls can return at the most
+** enhancement - support specifing how many completion items jdtls can return at the most.
+** enhancement - add lspce--lsp-type-map where you can specify lsp-type for file extensions.
 * 1.1.0 (2024-07-12)
 ** enhancement - add =xref-find-type-definition=
 ** enhancement - support =xref-find-declaration=

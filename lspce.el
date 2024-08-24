@@ -414,27 +414,35 @@ Return value of `body', or nil if interrupted."
 (defun lspce--uri ()
   (lspce--path-to-uri (buffer-file-name)))
 
+(defvar lspce--lsp-type-map (make-hash-table :test #'equal)
+  "Use file name extension to determine lsp type.")
+
 (defun lspce--lsp-type-default ()
   "The return value is also used as language-id."
   (let ((suffix "")
-        (mm (symbol-name major-mode)))
+        (mm (symbol-name major-mode))
+        lsp-type)
     (when buffer-file-name
       (setq suffix (file-name-extension buffer-file-name)))
-    (cond
-     ((member suffix '("js"))
-      "javascript")
-     ((member suffix '("ts"))
-      "typescript")
-     ((member suffix '("tsx"))
-      "typescriptreact")
-     ((member suffix '("c" "c++" "cpp" "h" "hpp" "cxx" "cc"))
-      "C")
-     ((member mm '("go-mode" "go-ts-mode"))
-      "go")
-     ((string-suffix-p "-ts-mode" mm)
-      (string-remove-suffix "-ts-mode" mm))
-     (t
-      (string-remove-suffix "-mode" (symbol-name major-mode))))))
+    (setq lsp-type (gethash suffix lspce--lsp-type-map))
+    (unless lsp-type
+      (setq lsp-type
+            (cond
+             ((member suffix '("js"))
+              "javascript")
+             ((member suffix '("ts"))
+              "typescript")
+             ((member suffix '("tsx"))
+              "typescriptreact")
+             ((member suffix '("c" "c++" "cpp" "h" "hpp" "cxx" "cc"))
+              "C")
+             ((member mm '("go-mode" "go-ts-mode"))
+              "go")
+             ((string-suffix-p "-ts-mode" mm)
+              (string-remove-suffix "-ts-mode" mm))
+             (t
+              (string-remove-suffix "-mode" (symbol-name major-mode))))))
+    lsp-type))
 
 (defalias 'lspce--buffer-language-id
   'lspce--lsp-type-default "lspce--buffer-language-id")
