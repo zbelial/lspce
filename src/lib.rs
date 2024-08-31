@@ -601,7 +601,7 @@ fn initialize(
     req_str: String,
     timeout: i32,
 ) -> bool {
-    Logger::info(&format!("initialize request {:#?}", req_str));
+    Logger::debug(&format!("raw initialize request {:#?}", req_str));
 
     let msg = serde_json::from_str::<Request>(&req_str);
     if msg.is_err() {
@@ -611,6 +611,8 @@ fn initialize(
 
     let msg = msg.unwrap();
     let id = msg.id.clone();
+
+    Logger::info(&format!("initialize request {}", serde_json::to_string_pretty(&msg).unwrap()));
 
     if !_request_async(server, msg) {
         return false;
@@ -625,7 +627,7 @@ fn initialize(
                     Logger::error(&format!("Lsp error {:?}", m.error));
                     return false;
                 }
-                Logger::info(&format!("initialize response {:#?}", &m.content));
+                Logger::info(&format!("initialize response {}", serde_json::to_string_pretty(&m).unwrap()));
 
                 if let Ok(ir) = serde_json::from_value::<InitializeResult>(m.result.unwrap()) {
                     let initialized = Notification::new(

@@ -135,6 +135,8 @@
   "初始化参数"
   (let ((params (make-hash-table)))
     (puthash :processId (emacs-pid) params)
+    ;; some lsp servers don't support rootUri well
+    (puthash :rootPath rootUri params)
     (puthash :rootUri rootUri params)
     (puthash :capabilities (lspce--clientCapabilities) params)
     (when initializationOptions
