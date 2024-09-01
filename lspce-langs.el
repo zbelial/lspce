@@ -2,6 +2,8 @@
 
 (require 'f)
 (require 'lspce-util)
+(eval-when-compile
+  (require 'cl-macs))
 
 (declare-function lspce--request "lspce")
 
@@ -24,6 +26,25 @@
         (setq ht (gethash left options))
         (puthash left (lspce--add-option-internal remain value ht) options)))
     options))
+
+(defmacro lspce--add-options (options &rest kvs)
+  (declare (indent 1) (debug t))
+  (when (cl-oddp (length kvs))
+    (cl-return-from lspce--add-options options))
+  (let ((tmpvar-key (make-symbol "key"))
+        (tmpvar-value (make-symbol "value"))
+        (tmpvar-params (make-symbol "params"))
+        (tmpvar-result (make-symbol "result")))
+    `(setq options (let ((,tmpvar-key nil)
+                         (,tmpvar-value nil)
+                         (,tmpvar-params (list ,@kvs))
+                         (,tmpvar-result ,options))
+                     (while ,tmpvar-params
+                       (setq ,tmpvar-key (car ,tmpvar-params)
+                             ,tmpvar-value (cadr ,tmpvar-params))
+                       (setq ,tmpvar-result (lspce--add-option-internal ,tmpvar-key ,tmpvar-value ,tmpvar-result))
+                       (setq ,tmpvar-params (cddr ,tmpvar-params)))
+                     ,tmpvar-result))))
 
 ;;; rust rust-analyzer
 (defun lspce-ra-initializationOptions ()
