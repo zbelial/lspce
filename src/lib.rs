@@ -235,6 +235,10 @@ impl LspServer {
             if let Some(m) = message {
                 match m {
                     Message::Request(r) => {
+                        if r.method.eq("workspace/configuration") {
+                            let mut server_data = server_data.lock().unwrap();
+                            server_data.requests.push_back(r);
+                        }
                         // save request into the queue FIXME
                         // {
                         //     let mut requests = requests2.lock().unwrap();

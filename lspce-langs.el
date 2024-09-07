@@ -1,50 +1,12 @@
 ;;; lspce.el --- LSP Client for Emacs -*- lexical-binding: t; -*-
 
 (require 'f)
-(require 'lspce-util)
+(eval-and-compile
+  (require 'lspce-util))
 (eval-when-compile
   (require 'cl-macs))
 
 (declare-function lspce--request "lspce")
-
-(defmacro lspce--add-option (option value options)
-  `(setq ,options (lspce--add-option-internal ,option ,value ,options)))
-
-(defun lspce--add-option-internal (option value options)
-  (let ((sep (string-search "." option))
-        left remain ht)
-    (if (null sep)
-        (progn
-          (when (null options)
-            (setq options (make-hash-table :test #'equal)))
-          (puthash option value options))
-      (progn
-        (setq left (substring option 0 sep)
-              remain (substring option (+ sep 1)))
-        (when (null options)
-          (setq options (make-hash-table :test #'equal)))
-        (setq ht (gethash left options))
-        (puthash left (lspce--add-option-internal remain value ht) options)))
-    options))
-
-(defmacro lspce--add-options (options &rest kvs)
-  (declare (indent 1) (debug t))
-  (when (cl-oddp (length kvs))
-    (cl-return-from lspce--add-options options))
-  (let ((tmpvar-key (make-symbol "key"))
-        (tmpvar-value (make-symbol "value"))
-        (tmpvar-params (make-symbol "params"))
-        (tmpvar-result (make-symbol "result")))
-    `(setq options (let ((,tmpvar-key nil)
-                         (,tmpvar-value nil)
-                         (,tmpvar-params (list ,@kvs))
-                         (,tmpvar-result ,options))
-                     (while ,tmpvar-params
-                       (setq ,tmpvar-key (car ,tmpvar-params)
-                             ,tmpvar-value (cadr ,tmpvar-params))
-                       (setq ,tmpvar-result (lspce--add-option-internal ,tmpvar-key ,tmpvar-value ,tmpvar-result))
-                       (setq ,tmpvar-params (cddr ,tmpvar-params)))
-                     ,tmpvar-result))))
 
 ;;; rust rust-analyzer
 (defun lspce-ra-initializationOptions ()
@@ -83,6 +45,7 @@
   :risky t
   :type '(repeat string))
 
+;;;###autoload
 (defcustom lspce-java-path "java"
   "Path of the java executable."
   :group 'lspce

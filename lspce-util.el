@@ -246,4 +246,46 @@ for normal snippets, and a list for command snippets)."
 
 (defalias 'lspce--json-serialize #'json-encode)
 
+(defmacro lspce--add-option (option value options)
+  `(setq ,options (lspce--add-option-internal ,option ,value ,options)))
+
+(defun lspce--add-option-internal (option value options)
+  (let ((sep (string-search "." option))
+        left remain ht)
+    (if (null sep)
+        (progn
+          (when (null options)
+            (setq options (make-hash-table :test #'equal)))
+          (puthash option value options))
+      (progn
+        (setq left (substring option 0 sep)
+              remain (substring option (+ sep 1)))
+        (when (null options)
+          (setq options (make-hash-table :test #'equal)))
+        (setq ht (gethash left options))
+        (puthash left (lspce--add-option-internal remain value ht) options)))
+    options))
+
+(defmacro lspce--add-options-internal (options kvs)
+  (declare (indent 1) (debug t))
+  (let ((tmpvar-key (make-symbol "key"))
+        (tmpvar-value (make-symbol "value"))
+        (tmpvar-params (make-symbol "params"))
+        (tmpvar-result (make-symbol "result")))
+    `(progn (unless (cl-oddp (length ,kvs))
+              (let ((,tmpvar-key nil)
+                    (,tmpvar-value nil)
+                    (,tmpvar-params ,kvs)
+                    (,tmpvar-result ,options))
+                (while ,tmpvar-params
+                  (setq ,tmpvar-key (car ,tmpvar-params)
+                        ,tmpvar-value (cadr ,tmpvar-params))
+                  (setq ,tmpvar-result (lspce--add-option-internal ,tmpvar-key ,tmpvar-value ,tmpvar-result))
+                  (setq ,tmpvar-params (cddr ,tmpvar-params)))
+                (setq ,options ,tmpvar-result)))
+            ,options)))
+
+(defmacro lspce--add-options (options &rest kvs)
+  `(lspce--add-options-internal ,options (list ,@kvs)))
+
 (provide 'lspce-util)

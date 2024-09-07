@@ -16,7 +16,8 @@
 (require 'flymake)
 
 (require 'lspce-module)
-(require 'lspce-util)
+(eval-and-compile
+  (require 'lspce-util))
 (require 'lspce-types)
 (require 'lspce-langs)
 (require 'lspce-structs)
@@ -659,6 +660,26 @@ Return value of `body', or nil if interrupted."
       (puthash "PATH" (mapconcat 'identity exec-path ":") ht))
     (lspce--json-serialize ht)))
 
+
+
+;;;###autoload
+(defvar-local lspce-workspace-configuration nil
+  "Configure LSP servers specifically for a given project.")
+
+;;;###autoload
+(put 'lspce-workspace-configuration 'safe-local-variable 'listp)
+
+(defun lspce--workspace-configuration-plist (&optional current-buffer)
+  "Returns workspace configuration of current server as a plist."
+  (with-current-buffer (or current-buffer (current-buffer))
+    lspce-workspace-configuration))
+
+(defun lspce--notify-workspace/didChangeConfiguration (configuration)
+  (let ((settings (make-hash-table :test #'equal)))
+    (lspce--add-options-internal settings configuration)
+    (lspce--notify
+     "workspace/didChangeConfiguration" (list :settings (or settings lspce--{})))))
+
 ;; 返回server info.
 (cl-defun lspce--connect ()
   (let ((root-uri lspce--root-uri)
@@ -733,6 +754,10 @@ Return value of `body', or nil if interrupted."
                                 lspce-connect-server-timeout
                                 (lspce--envs-pass-to-subprocess)))
     (lspce--debug "lspce--connect response: %s" response-str)
+
+    (when response-str
+      (let ((configuration (lspce--workspace-configuration-plist (current-buffer))))
+        (lspce--notify-workspace/didChangeConfiguration configuration)))
 
     response-str))
 
