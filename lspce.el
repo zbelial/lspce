@@ -2129,10 +2129,17 @@ matches any of the TRIGGER-CHARACTERS."
     (let ((signature (lspce--signature-at-point)))
       (funcall callback signature))))
 
+(defface lspce-eldoc-backend-face
+  '((((background light)) :foreground "#7F7F7F")
+    (t :foreground "#9B9B9B"))
+  "Face used to highlight backend name."
+  :group 'lspce)
+
 (defun lspce-eldoc-function (callback)
   (when lspce-mode
     (let ((hover-info (and lspce-eldoc-enable-hover (lspce--hover-at-point)))
           (signature (and lspce-eldoc-enable-signature (lspce--signature-at-point)))
+          backend
           content
           document)
       (when hover-info
@@ -2143,7 +2150,8 @@ matches any of the TRIGGER-CHARACTERS."
        ((or signature content)
         (setq document (concat signature content))))
       (when document
-        (funcall callback document)))))
+        (setq backend (propertize "[lspce]\n" 'face 'lspce-eldoc-backend-face))
+        (funcall callback (concat backend document))))))
 
 ;;; diagnostics
 (put 'lspce-note 'flymake-category 'flymake-note)
