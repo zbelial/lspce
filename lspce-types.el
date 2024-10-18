@@ -36,7 +36,7 @@
 (defun lspce--clientCapabilities ()
   (list
    :workspace (list
-               :applyEdit :json-false
+               :applyEdit t
                :executeCommand (list
                                 :dynamicRegistration :json-false)
                :workspaceEdit (list
