@@ -1758,6 +1758,7 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
       (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
       (add-hook 'before-save-hook 'lspce--notify-textDocument/willSave nil t)
       (add-hook 'after-save-hook 'lspce--notify-textDocument/didSave nil t)
+      (lspce-enable-request-handler)
       (when lspce-enable-eldoc
         (when eldoc-mode
           (setq-local lspce--eldoc-already-enabled t))
@@ -1797,6 +1798,7 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
     (remove-hook 'after-save-hook 'lspce--notify-textDocument/didSave t)
     (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
     (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-function t)
+    (lspce-disable-request-handler)
     (when lspce--server-info
       (lspce--notify-textDocument/didClose))
     (when lspce-enable-flymake
