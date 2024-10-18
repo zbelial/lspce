@@ -1007,6 +1007,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
       (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
       (add-hook 'before-save-hook 'lspce--notify-textDocument/willSave nil t)
       (add-hook 'after-save-hook 'lspce--notify-textDocument/didSave nil t)
+      (lspce-enable-request-handler)
       (when lspce-enable-eldoc
         (when eldoc-mode
           (setq-local lspce--eldoc-already-enabled t))
@@ -1043,6 +1044,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (remove-hook 'after-save-hook 'lspce--notify-textDocument/didSave t)
     (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
     (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-function t)
+    (lspce-disable-request-handler)
     (when lspce--server-info
       (lspce--notify-textDocument/didClose))
     (when lspce-enable-flymake
