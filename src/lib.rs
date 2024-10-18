@@ -20,6 +20,7 @@ use logger::LOG_DISABLED;
 use logger::LOG_FILE_NAME;
 use logger::LOG_LEVEL;
 
+use lsp_types::request;
 use lsp_types::Diagnostic;
 use lsp_types::DidChangeTextDocumentParams;
 use lsp_types::InitializeParams;
@@ -160,15 +161,16 @@ impl LspServer {
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
                         .envs(envs)
-                        .spawn();                    
+                        .spawn();
                 }
                 Err(e) => {
                     Logger::error(&format!(
-                        "deserializing emacs_envs failed with error {:?}", e
+                        "deserializing emacs_envs failed with error {:?}",
+                        e
                     ));
                     return None;
                 }
-            } 
+            }
         } else {
             child = Command::new(cmd)
                 .args(args)
@@ -235,15 +237,8 @@ impl LspServer {
             if let Some(m) = message {
                 match m {
                     Message::Request(r) => {
-                        if r.method.eq("workspace/configuration") {
-                            let mut server_data = server_data.lock().unwrap();
-                            server_data.requests.push_back(r);
-                        }
-                        // save request into the queue FIXME
-                        // {
-                        //     let mut requests = requests2.lock().unwrap();
-                        //     requests.push_back(r);
-                        // }
+                        let mut server_data = server_data.lock().unwrap();
+                        server_data.requests.push_back(r);
                     }
                     Message::Response(mut r) => {
                         Logger::trace(&format!("Response {}", &r.content));
@@ -616,7 +611,10 @@ fn initialize(
     let msg = msg.unwrap();
     let id = msg.id.clone();
 
-    Logger::info(&format!("initialize request {}", serde_json::to_string_pretty(&msg).unwrap()));
+    Logger::info(&format!(
+        "initialize request {}",
+        serde_json::to_string_pretty(&msg).unwrap()
+    ));
 
     if !_request_async(server, msg) {
         return false;
@@ -631,7 +629,10 @@ fn initialize(
                     Logger::error(&format!("Lsp error {:?}", m.error));
                     return false;
                 }
-                Logger::info(&format!("initialize response {}", serde_json::to_string_pretty(&m).unwrap()));
+                Logger::info(&format!(
+                    "initialize response {}",
+                    serde_json::to_string_pretty(&m).unwrap()
+                ));
 
                 if let Ok(ir) = serde_json::from_value::<InitializeResult>(m.result.unwrap()) {
                     let initialized = Notification::new(
@@ -939,6 +940,29 @@ fn read_notification(env: &Env, root_uri: String, file_type: String) -> Result<O
         env.message(&format!("No project for {} {}", &root_uri, &file_type));
     }
 
+    Ok(None)
+}
+
+#[defun]
+fn read_request(env: &Env, root_uri: String, file_type: String) -> Result<Option<String>> {
+    let projects = projects().lock().unwrap();
+    if let Some(p) = projects.get(&root_uri) {
+        if let Some(server) = p.servers.get(&file_type) {
+            let request = server.read_request();
+            match request {
+                Some(r) => {
+                    return Ok(Some(r.content));
+                }
+                None => {
+                    return Ok(None);
+                }
+            }
+        } else {
+            env.message(format!("No server for {}", &file_type));
+        }
+    } else {
+        env.message(format!("No project for {} {}", &root_uri, &file_type));
+    }
     Ok(None)
 }
 

@@ -176,7 +176,7 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defun lspce--clientCapabilities ()
   (list
    :workspace (list
-               :applyEdit :json-false
+               :applyEdit t
                :executeCommand (list
                                 :dynamicRegistration :json-false)
                :workspaceEdit (list
@@ -847,6 +847,7 @@ Return value of `body', or nil if interrupted."
 (defvar-local lspce--server-capabilities nil)
 
 (defvar lspce--notification-idle-timer nil)
+(defvar lspce--request-idle-timer nil)
 
 ;;;###autoload
 (defun lspce-enable-notification-handler ()
@@ -895,5 +896,29 @@ Return value of `body', or nil if interrupted."
            (t
             )))))))
 
+;;;###autoload
+(defun lspce-enable-request-handler ()
+  (interactive)
+  (when lspce--request-idle-timer
+    (cancel-timer lspce--request-idle-timer))
+  (setq lspce--request-idle-timer
+        (run-with-idle-timer 0.01 t #'lspce--request-handler)))
+
+;;;###autoload
+(defun lspce-disable-request-handler ()
+  (interactive)
+  (when lspce--request-idle-timer
+    (cancel-timer lspce--request-idle-timer)))
+
+(defun lspce--request-handler ()
+  (with-current-buffer (current-buffer)
+    (when (and lspce-mode
+               lspce--root-uri
+               lspce--lsp-type)
+      (when-let* ((request (lspce-module-read-request lspce--root-uri lspce--lsp-type))
+                  (request (lspce--json-deserialize request))
+                  (method (gethash "method" request)))
+        (when (string-equal method "workspace/applyEdit")
+          (lspce--apply-workspace-edit (gethash "edit" (gethash "params" request))))))))
 
 (provide 'lspce-core)
