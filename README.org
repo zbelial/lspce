@@ -133,6 +133,7 @@
   | lspce-xref-append-implementations-to-definitions | nil            | If non-nil, also fetch implementations when fetching definitions.                                   |
   | lspce-envs-pass-to-subprocess                    | nil            | Environment variables that should be passed to rust code to create the lsp subprocess.              |
   | lspce-jdtls-completion-max-results               | 30             | how many completion items jdtls can return at the most                                              |
+  | lspce-enable-imenu-index-function                | nil            | set `lspce-imenu-create' as `imenu-create-index-function'.                                          |
   
 ** MAX_DIAGNOSTIC_COUNT
    This variable is defined in rust code, you can customize it via =lspce-change-max-diagnostics-count= . If it's negative, then all diagnostics will be retrieved.

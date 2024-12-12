@@ -132,6 +132,11 @@ create the lsp server subprocesses."
   :group 'lspce
   :type 'boolean)
 
+(defcustom lspce-enable-imenu-index-function nil
+  "If non-nil, set `lspce-imenu-create' as `imenu-create-index-function'."
+  :group 'lspce
+  :type 'boolean)
+
 ;;; Constants
 ;;;
 (defconst lspce--symbol-kind-names
@@ -992,6 +997,9 @@ The value is also a hash table, with uri as the key and the value is just t.")
         (lspce--save-and-rebind flymake-diagnostic-functions
                                 '(lspce-flymake-backend))
         (flymake-mode 1))
+      (when lspce-enable-imenu-index-function
+        (lspce--save-and-rebind imenu-create-index-function
+                                'lspce-imenu-create))
       (condition-case err
           (progn
             (lspce--refresh-log-level)
@@ -1965,6 +1973,44 @@ matches any of the TRIGGER-CHARACTERS."
                             (funcall snippet-fn (or insertText label)))))))
                (lspce--completion-clear-cache)
                (lspce--notify-textDocument/didChange)))))))))
+
+;;; imenu
+(defun lspce-imenu-create ()
+  (cl-labels
+      ((unfurl (obj)
+         (if-let ((children (gethash "children" obj))
+                  (name (gethash "name" obj)))
+             (cons obj
+                   (mapcar (lambda (c)
+                             (puthash
+                              "containerName"
+                              (let ((existing (gethash "containerName" c)))
+                                (if existing (format "%s::%s" name existing)
+                                  name)) c) c)
+                           (mapcan #'unfurl children)))
+           (list obj))))
+    (when (lspce--server-capable-chain "documentSymbolProvider")
+      (mapcar
+       (lambda (obj)
+         (cons
+          (cdr (assoc (car obj) lspce--symbol-kind-names))
+          (mapcar
+           (lambda (obj)
+             (let ((content
+                    (cons (gethash "name" obj)
+                          (lspce--lsp-position-to-point
+                           (gethash "start"
+                                    (if-let ((range (gethash "selectionRange" obj)))
+                                        range
+                                      (gethash "range" (gethash "location" obj)))))))
+                   (container (gethash "containerName" obj)))
+               (if container (list container content)
+                 content)))
+           (cdr obj))))
+       (seq-group-by
+        (lambda (obj) (gethash "kind" obj))
+        (mapcan #'unfurl
+                (lspce--request "textDocument/documentSymbol" (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))))))))))
 
 ;;; hover
 (defvar lspce--doc-buffer-name "*lspce-hover*")

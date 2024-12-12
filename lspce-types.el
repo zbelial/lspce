@@ -98,6 +98,12 @@
                                        :linkSupport :json-false)
                   :documentHighlight  (list
                                        :dynamicRegistration :json-false)
+                  :documentSymbol     (list
+                                       :dynamicRegistration :json-false
+                                       :hierarchicalDocumentSymbolSupport t
+                                       :symbolKind `(:valueSet
+                                                     [,@(mapcar
+                                                         #'car lspce--symbol-kind-names)]))
                   :codeAction         (list
                                        :dynamicRegistration :json-false
                                        :codeActionLiteralSupport (list
