@@ -878,8 +878,8 @@ The value is also a hash table, with uri as the key and the value is just t.")
         (setq-local lspce--lsp-type nil)
         (setq-local lspce--recent-changes nil
                     lspce--identifier-version 0
-                    lspce--uri nil))))
-  )
+                    lspce--uri nil)))))
+  
 
 (defun lspce--server-id (&optional buffer)
   (with-current-buffer (or buffer (current-buffer))
@@ -900,6 +900,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
   "Whether eldoc is enabled before lspce starting.")
 
 (defvar lspce--notification-idle-timer nil)
+(defvar lspce--request-idle-timer nil)
 
 ;;;###autoload
 (defun lspce-enable-notification-handler ()
@@ -914,6 +915,31 @@ The value is also a hash table, with uri as the key and the value is just t.")
   (interactive)
   (when lspce--notification-idle-timer
     (cancel-timer lspce--notification-idle-timer)))
+
+;;;###autoload
+(defun lspce-enable-request-handler ()
+  (interactive)
+  (when lspce--request-idle-timer
+    (cancel-timer lspce--request-idle-timer))
+  (setq lspce--request-idle-timer
+        (run-with-idle-timer 0.01 t #'lspce--request-handler)))
+
+;;;###autoload
+(defun lspce-disable-request-handler ()
+  (interactive)
+  (when lspce--request-idle-timer
+    (cancel-timer lspce--request-idle-timer)))
+
+(defun lspce--request-handler ()
+  (with-current-buffer (current-buffer)
+    (when (and lspce-mode
+               lspce--root-uri
+               lspce--lsp-type)
+      (when-let* ((request (lspce-module-read-request lspce--root-uri lspce--lsp-type))
+                  (request (lspce--json-deserialize request))
+                  (method (gethash "method" request)))
+        (when (string-equal method "workspace/applyEdit")
+          (lspce--apply-workspace-edit (gethash "edit" (gethash "params" request))))))))
 
 (defun lspce--notification-handler ()
   (let (notification
@@ -945,8 +971,8 @@ The value is also a hash table, with uri as the key and the value is just t.")
               (lspce--info "Server message: %s" message))
              ((eq message-type 4)
               (lspce--debug "Server message: %s" message))))
-           (t
-            )))))))
+           (t)))))))
+            
 
 (defun lspce--remove-overlays ()
   (remove-overlays nil nil 'lspce--overlay t))
@@ -986,6 +1012,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
       (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
       (add-hook 'before-save-hook 'lspce--notify-textDocument/willSave nil t)
       (add-hook 'after-save-hook 'lspce--notify-textDocument/didSave nil t)
+      (lspce-enable-request-handler)
       (when lspce-enable-eldoc
         (when eldoc-mode
           (setq-local lspce--eldoc-already-enabled t))
@@ -1025,6 +1052,7 @@ The value is also a hash table, with uri as the key and the value is just t.")
     (remove-hook 'after-save-hook 'lspce--notify-textDocument/didSave t)
     (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
     (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-function t)
+    (lspce-disable-request-handler)
     (when lspce--server-info
       (lspce--notify-textDocument/didClose))
     (when lspce-enable-flymake
@@ -1133,8 +1161,8 @@ The value is also a hash table, with uri as the key and the value is just t.")
                   (paddingRight (gethash "paddingRight" hint))
                   (hint-after-p (eql kind 1))
                   (hint-point (lspce--lsp-position-to-point pos))
-                  (left-pad )
-                  (right-pad )
+                  (left-pad)
+                  (right-pad)
                   ov text)
              (when (and (>= hint-point start) (<= hint-point end))
                (goto-char hint-point)
@@ -1329,8 +1357,8 @@ If optional MARKERS, make markers."
               end-line end-column items xref-items groups)
     (cond
      ((arrayp locations)
-      (setq items locations)
-      )
+      (setq items locations))
+      
      ((hash-table-p locations)
       (setq items (list locations)))
      ((listp locations)
@@ -1484,9 +1512,9 @@ IDENTIFIER can be any string returned by
 `xref-backend-identifier-at-point', or from the table returned by
 `xref-backend-identifier-completion-table'.
 
-To create an xref object, call `xref-make'.")
+To create an xref object, call `xref-make'."))
   
-  )
+  
 
 (cl-defmethod xref-backend-implementations
   ((_backend (eql xref-lspce)) identifier)
@@ -1521,8 +1549,8 @@ IDENTIFIER can be any string returned by
 `xref-backend-identifier-at-point', or from the table returned by
 `xref-backend-identifier-completion-table'.
 
-To create an xref object, call `xref-make'.")
-  )
+To create an xref object, call `xref-make'."))
+  
 
 (cl-defmethod xref-backend-type-definition
   ((_backend (eql xref-lspce)) identifier)
@@ -1561,8 +1589,8 @@ IDENTIFIER can be any string returned by
 `xref-backend-identifier-at-point', or from the table returned by
 `xref-backend-identifier-completion-table'.
 
-To create an xref object, call `xref-make'.")
-  )
+To create an xref object, call `xref-make'."))
+  
 
 (cl-defmethod xref-backend-declaration ((_backend (eql xref-lspce)) identifier)
   (when (lspce--server-capable "declarationProvider")
@@ -1695,7 +1723,7 @@ Doubles as an indicator of snippet support."
       (setq-local markdown-fontify-code-blocks-natively t)
       (insert string)
       (let ((inhibit-message t)
-	    (message-log-max nil))
+            (message-log-max nil))
         (ignore-errors (delay-mode-hooks (funcall mode))))
       (font-lock-ensure)
       (string-trim (buffer-string)))))
@@ -2094,13 +2122,13 @@ matches any of the TRIGGER-CHARACTERS."
               (setq content (concat content "\n" c)))
              ((hash-table-p c)
               (setq content (concat "```" (gethash "language" c) "\n" (gethash "value" c) "\n```")))
-             (t
-              )))
+             (t)))
+              
           (when (and kind content)
             (setq hover-info (list kind content))))
-         (t
+         (t)))
           ;; nothing
-          )))
+          
       hover-info)))
 
 (defun lspce--eldoc-render-markup (content)
@@ -2112,7 +2140,7 @@ matches any of the TRIGGER-CHARACTERS."
           (setq mode 'gfm-view-mode)
         (setq mode 'gfm-mode))
       (let ((inhibit-message t)
-	    (message-log-max nil))
+            (message-log-max nil))
         (ignore-errors (delay-mode-hooks (funcall mode))))
       (font-lock-ensure)
       (mapconcat #'identity (seq-filter (lambda (s) (not (string-match-p "^```" s)))
