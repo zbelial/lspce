@@ -1,11 +1,39 @@
 ;;; lspce.el --- LSP Client for Emacs -*- lexical-binding: t; -*-
 
+(require 'lspce-core)
+(require 'lspce-util)
 (require 'cl-lib)
 (require 'compile) ;; for compile face
+(require 'hierarchy)
 
-(declare-function lspce--query-call-hierarchy "lspce")
 (declare-function lspce--uri-to-path "lspce-util")
 (declare-function lspce--widening "lspce-util")
+
+
+(defun lspce--incoming-calls (item)
+  (let ((response (lspce--request "callHierarchy/incomingCalls" (list :item item)))
+        children
+        from result)
+    (when response
+      (dolist (incoming response)
+        (message "incoming: %s" (json-encode incoming))
+        (setq from (gethash "from" incoming))
+        (cl-pushnew (list from (lspce--incoming-calls from)) children)))
+    (setq result (reverse children))
+    result))
+
+(defun lspce--query-incoming-calls ()
+  (if (lspce--server-capable-chain "callHierarchyProvider")
+      (let ((response (lspce--request "textDocument/prepareCallHierarchy" (lspce--make-textDocumentPositionParams)))
+            tree)
+        (when response
+          (dolist (item response)
+            (message "item: %s" (json-encode item))
+            (cl-pushnew (list item (lspce--incoming-calls item)) tree))
+          tree))
+    (lspce--warn "Server does not support call hierarchy.")
+    nil))
+
 
 (defvar lspce--incoming-call-indent 0)
 (defvar lspce--incoming-call-items nil)
@@ -15,63 +43,8 @@
   (setq lspce--incoming-call-items nil)
 
   (when-let ((tree (lspce--query-incoming-calls)))
+    (message "tree: %s" tree)
     (funcall walker-fn tree)))
-
-(when (featurep 'ivy)
-  (defun lspce--call-hierarchy-ivy-item-transfer (item indent)
-    "ivy transfer"
-    (let (result
-          label
-          name kind detail uri range start end
-          start-line start-column info)
-      (setq name (gethash "name" item)
-            uri (gethash "uri" item)
-            range (gethash "range" item))
-      (setq start (gethash "start" range))
-      (setq start-line (1+ (gethash "line" start)))
-      (setq start-column (gethash "character" start))
-      (setq info (list :uri uri :start-line start-line))
-
-      (setq label (format "%30s:%s%s%s"
-                          (propertize (truncate-string-to-width (f-filename (lspce--uri-to-path uri)) 30) 'face 'compilation-info)
-                          (propertize (format "%4d" start-line) 'face 'compilation-line-number)
-                          (make-string (* indent 4) ?\s) name ))
-      (cons label info)))
-
-  (defun lspce--call-hierarchy-ivy-walker (item-list)
-    (dolist (item item-list)
-      (cond
-       ((listp item)
-        (setq lspce--incoming-call-indent (1+ lspce--incoming-call-indent))
-        (lspce--call-hierarchy-ivy-walker item)
-        (setq lspce--incoming-call-indent (- lspce--incoming-call-indent 1)))
-       (t
-        (cl-pushnew (lspce--call-hierarchy-ivy-item-transfer item lspce--incoming-call-indent) lspce--incoming-call-items)))))
-
-;;;###autoload
-  (defun lspce-incoming-calls-to-ivy ()
-    "Fetch incoming calls to current symbol, render the result with ivy."
-    (interactive)
-    (lspce--call-hierarchy-item-collector #'lspce--call-hierarchy-ivy-walker)
-    (ivy-read "调用链: " (reverse lspce--incoming-call-items)
-              :action '(1
-                        ("v" (lambda (item)
-                               (let* ((info (cdr item))
-                                      (uri (plist-get info :uri))
-                                      (start-line (plist-get info :start-line))
-                                      (start-column (plist-get info :start-column))
-                                      (filename (lspce--uri-to-path uri))
-                                      (buffer (find-file-noselect filename)))
-                                 (switch-to-buffer buffer)
-                                 (with-current-buffer buffer
-                                   (widen)
-                                   (goto-char (point-min))
-                                   (forward-line start-line)
-                                   (forward-char start-column)))
-                               )
-                         ))))
-
-  )
 
 (defvar lspce--incoming-call-org-buffer "*Incoming Calls in Org*")
 (defun lspce--call-hierarchy-org-item-transfer (item indent)
