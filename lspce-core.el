@@ -729,10 +729,10 @@ Return value of `body', or nil if interrupted."
          (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))))))))
 
 (cl-defun lspce--request-async (method &optional params root-uri lsp-type)
-  (unless (and buffer-file-name
-               (file-exists-p buffer-file-name))
-    (lspce--warn "lspce--request-async: current buffer has no disk file.")
-    (cl-return-from lspce--request-async nil))
+  ;; (unless (and buffer-file-name
+  ;;              (file-exists-p buffer-file-name))
+  ;;   (lspce--warn "lspce--request-async: current buffer has no disk file.")
+  ;;   (cl-return-from lspce--request-async nil))
   (setq lspce--latest-tick (lspce--current-tick))
   (let* ((request (lspce--make-request method params lspce--latest-tick))
          (root-uri (or root-uri lspce--root-uri))

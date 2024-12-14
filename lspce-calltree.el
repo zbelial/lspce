@@ -2,93 +2,140 @@
 
 (require 'lspce-core)
 (require 'lspce-util)
-(require 'cl-lib)
-(require 'compile) ;; for compile face
+(require 'seq)
 (require 'hierarchy)
+(require 'button)
 
-(declare-function lspce--uri-to-path "lspce-util")
-(declare-function lspce--widening "lspce-util")
+(defcustom lspce-call-hierarchy-call-site nil
+  "If t, jump to the first call site instead of the start
+of the surrounding function when clicking."
+  :type 'boolean)
 
+(defvar lspce--incoming-call-buffer-name "*Lspce incoming call*")
+(defvar lspce--outgoing-call-buffer-name "*Lspce outgoing call*")
 
-(defun lspce--incoming-calls (item)
-  (let ((response (lspce--request "callHierarchy/incomingCalls" (list :item item)))
-        children
-        from result)
-    (when response
-      (dolist (incoming response)
-        (message "incoming: %s" (json-encode incoming))
-        (setq from (gethash "from" incoming))
-        (cl-pushnew (list from (lspce--incoming-calls from)) children)))
-    (setq result (reverse children))
-    result))
-
-(defun lspce--query-incoming-calls ()
+(defun lspce--prepare-call-hierarchy ()
   (if (lspce--server-capable-chain "callHierarchyProvider")
-      (let ((response (lspce--request "textDocument/prepareCallHierarchy" (lspce--make-textDocumentPositionParams)))
-            tree)
-        (when response
-          (dolist (item response)
-            (message "item: %s" (json-encode item))
-            (cl-pushnew (list item (lspce--incoming-calls item)) tree))
-          tree))
+      (lspce--request "textDocument/prepareCallHierarchy" (lspce--make-textDocumentPositionParams))
     (lspce--warn "Server does not support call hierarchy.")
     nil))
 
+(define-button-type 'lspce-call-hierarchy-button
+  'follow-link t                        ; Click via mouse
+  'face 'default)
 
-(defvar lspce--incoming-call-indent 0)
-(defvar lspce--incoming-call-items nil)
+(defun lspce--call-hierarchy-open-file (file)
+  (select-window (get-mru-window (selected-frame) nil :not-selected))
+  (find-file file))
 
-(defun lspce--call-hierarchy-item-collector (walker-fn)
-  (setq lspce--incoming-call-indent 0)
-  (setq lspce--incoming-call-items nil)
+(defun lspce--char-after-point-is-alpha ()
+  "Check if the character before point is an alphabetic character."
+  (let ((char (char-after (point))))
+    (and char (or (and (>= char ?a) (<= char ?z))
+                  (and (>= char ?A) (<= char ?Z))
+                  (= char ?_)))))
 
-  (when-let ((tree (lspce--query-incoming-calls)))
-    (message "tree: %s" tree)
-    (funcall walker-fn tree)))
+(defun lspce--call-hierarchy-next-line ()
+  (interactive)
+  (when (= (forward-line 1) 1)
+    (goto-char (point-min)))
+  (goto-char (line-beginning-position))
+  (skip-chars-forward "^a-zA-Z_"))
 
-(defvar lspce--incoming-call-org-buffer "*Incoming Calls in Org*")
-(defun lspce--call-hierarchy-org-item-transfer (item indent)
-  "org transfer"
-  (let (label filename range start start-line)
-    (setq name (gethash "name" item))
-    (setq name (gethash "name" item)
-          filename (lspce--uri-to-path (gethash "uri" item))
-          range (gethash "range" item))
-    (setq start (gethash "start" range))
-    (setq start-line (1+ (gethash "line" start)))
-    
-    (setq label (format "%s %s\n%s" (make-string indent ?*) name
-                        (format "%s[[%s::%d][%s:%d]]" (make-string (1+ indent) ?\s) filename start-line (f-filename filename) start-line)))
+(defun lspce--call-hierarchy-previous-line ()
+  (interactive)
+  (when (= (forward-line -1) -1)
+    (goto-char (point-max)))
+  (goto-char (line-beginning-position))
+  (skip-chars-forward "^a-zA-Z_"))
 
-    label))
-
-(defun lspce--call-hierarchy-org-walker (item-list)
-  (dolist (item item-list)
-    (cond
-     ((listp item)
-      (setq lspce--incoming-call-indent (1+ lspce--incoming-call-indent))
-      (lspce--call-hierarchy-org-walker item)
-      (setq lspce--incoming-call-indent (- lspce--incoming-call-indent 1)))
-     (t
-      (cl-pushnew (lspce--call-hierarchy-org-item-transfer item lspce--incoming-call-indent) lspce--incoming-call-items)))))
+;; learn some skills from https://github.com/dolmens/eglot-hierarchy
+(defun lspce--hierarchy-calls (direction)
+  "Fetch incoming calls to current symbol.
+DIRECTION should be 'incoming or 'outgoing."
+  (let* ((root (lspce--prepare-call-hierarchy))
+         (root-nodes (seq-map (lambda (node) `(:item ,node)) root))
+         (tree (hierarchy-new))
+         (root-uri lspce--root-uri)
+         (lsp-type lspce--lsp-type)
+         (method (if (eq direction 'incoming)
+                     "callHierarchy/incomingCalls"
+                   "callHierarchy/outgoingCalls"))
+         (tag (if (eq direction 'incoming)
+                  "from"
+                "to"))
+         (buffer-name (if (eq direction 'incoming)
+                          lspce--incoming-call-buffer-name
+                        lspce--outgoing-call-buffer-name)))
+    (if (length> root 0)
+        (progn
+          (hierarchy-add-trees
+           tree
+           root-nodes
+           nil
+           (lambda (node)
+             (let* ((item (plist-get node :item)))
+               (condition-case err
+                   (let* ((response (lspce--request method (list :item item) nil root-uri lsp-type))
+                          children)
+                     (setq children (seq-map (lambda (item)
+                                               `(:item ,(gethash tag item)
+                                                       :fromRanges ,(gethash "fromRanges" item)))
+                                             response))
+                     children)
+                 ((error user-error)
+                  (lspce--error "Failed to invoke %s, %s" method err)))))
+           nil
+           t)
+          (pop-to-buffer
+           (hierarchy-tree-display
+            tree
+            (lambda (node _)
+              (let* ((item (plist-get node :item))
+                     (fromRanges (plist-get node :fromRanges))
+                     name range filename selectionRange)
+                (setq name (gethash "name" item)
+                      filename (lspce--uri-to-path (gethash "uri" item))
+                      range (gethash "range" item)
+                      selectionRange (gethash "selectionRange" item))
+                (insert-text-button name
+                                    :type 'lspce-call-hierarchy-button
+                                    'action (lambda (btn)
+                                              ;; FIXME select-window may fail
+                                              (let ((w (get-buffer-window (marker-buffer btn))))
+	                                        (when w
+                                                  (select-window w)))
+                                              (lspce--call-hierarchy-open-file filename)
+                                              (let (jump-range)
+                                                (if (and lspce-call-hierarchy-call-site)
+                                                    (setq jump-range selectionRange)
+                                                  (setq jump-range range))
+                                                (goto-char (lspce--lsp-position-to-point
+                                                            (gethash "start" jump-range))))))))
+            (get-buffer-create buffer-name)))
+          (with-current-buffer buffer-name
+            (keymap-local-set (kbd "h") #'backward-char)
+            (keymap-local-set (kbd "l") #'forward-char)
+            (keymap-local-set (kbd "b") #'backward-char)
+            (keymap-local-set (kbd "f") #'forward-char)
+            (keymap-local-set (kbd "n") #'lspce--call-hierarchy-next-line)
+            (keymap-local-set (kbd "p") #'lspce--call-hierarchy-previous-line)
+            (keymap-local-set (kbd "j") #'lspce--call-hierarchy-next-line)
+            (keymap-local-set (kbd "k") #'lspce--call-hierarchy-previous-line)
+            (goto-char (point-min))
+            (widget-button-press (point))))
+      (lspce--warn "No incoming call hierachy under point."))))
 
 ;;;###autoload
-(defun lspce-incoming-calls-to-org ()
-  "Fetch incoming calls to current symbol, render the result in orgmode format."
+(defun lspce-incoming-calls ()
+  "Fetch incoming calls to current symbol."
   (interactive)
-  (let (call-items
-        buffer)
-    (lspce--call-hierarchy-item-collector #'lspce--call-hierarchy-org-walker)
-    (setq call-items (reverse lspce--incoming-call-items))
-    (if call-items
-        (progn
-          (setq buffer (get-buffer-create lspce--incoming-call-org-buffer))
-          (with-current-buffer buffer
-            (erase-buffer)
-            (dolist (ci call-items)
-              (insert ci "\n"))
-            (org-mode))
-          (switch-to-buffer buffer))
-      (message "No incoming calls."))))
+  (lspce--hierarchy-calls 'incoming))
+
+;;;###autoload
+(defun lspce-outgoing-calls ()
+  "Fetch outgoing calls from current symbol."
+  (interactive)
+  (lspce--hierarchy-calls 'outgoing))
 
 (provide 'lspce-calltree)
