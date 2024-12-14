@@ -18,6 +18,7 @@
   - signature/hover help (as an ~eldoc-documentation-functions~ function)
   - code action (triggered by ~lspce-code-actions~)
   - rename (triggered by ~lspce-rename~ )
+  - call hierarchy
     
 
   All features I need have been implemented now, and my next step is to make it more robust and more performant.
