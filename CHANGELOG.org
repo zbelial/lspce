@@ -1,10 +1,12 @@
 * Next
-** enhancement - support =workspace/didChangeConfiguration=
+** enhancement - add =lspce-incoming-calls= and =lspce-outgoing-calls=.
+** enhancement - add =lspce-imenu-create=, which creates imenu with textDocument/documentSymbol. Thanks @theFool32.
+** enhancement - support =workspace/didChangeConfiguration=.
 ** enhancement - add lspce--lsp-type-map where you can specify lsp-type for file extensions.
 ** enhancement - support specifing how many completion items jdtls can return at the most.
 ** enhancement - support specifing which environment variables should be passed to rust code to start lsp servers.
 ** enhancement - add initializationOptions for deno/pylsp/jedi-language-server, delete things about pyright.
-** README - mention how to support python virtual environments for pylsp and jedi-language-server.
+** README      - mention how to support python virtual environments for pylsp and jedi-language-server.
 * 1.1.0 (2024-07-12)
 ** enhancement - add =xref-find-type-definition=
 ** enhancement - support =xref-find-declaration=
@@ -14,8 +16,8 @@
 ** enhancement - support passing exec-path to then environment when spawning a LSP server
 ** enhancement - support writing LSP server's stderr to the log file
 ** enhancement - support fetching implementations when fetching definitions in =xref-find-declaration= (useful for languages like go/rust/java etc.)
-** bugfix - fix no argument snippets for rust code
-** bugfix - stop writing "stderr reach EOF" repeatedly to log
+** bugfix      - fix no argument snippets for rust code
+** bugfix      - stop writing "stderr reach EOF" repeatedly to log
 ** other enhancements and bugfixes
 * 1.0.0  (2023-06-21)
   Hard to say.

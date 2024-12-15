@@ -5,10 +5,15 @@
 (require 'seq)
 (require 'hierarchy)
 (require 'button)
+(require 'compile) ;; compilation-info-face, compilation-line-face
 
 (defcustom lspce-call-hierarchy-call-site nil
   "If t, jump to the first call site instead of the start
 of the surrounding function when clicking."
+  :type 'boolean)
+
+(defcustom lspce-call-hierarchy-show-position nil
+  "If t, show where the incoming or outgoing call comes from."
   :type 'boolean)
 
 (defvar lspce--incoming-call-buffer-name "*Lspce incoming call*")
@@ -27,13 +32,6 @@ of the surrounding function when clicking."
 (defun lspce--call-hierarchy-open-file (file)
   (select-window (get-mru-window (selected-frame) nil :not-selected))
   (find-file file))
-
-(defun lspce--char-after-point-is-alpha ()
-  "Check if the character before point is an alphabetic character."
-  (let ((char (char-after (point))))
-    (and char (or (and (>= char ?a) (<= char ?z))
-                  (and (>= char ?A) (<= char ?Z))
-                  (= char ?_)))))
 
 (defun lspce--call-hierarchy-next-line ()
   (interactive)
@@ -93,12 +91,25 @@ DIRECTION should be 'incoming or 'outgoing."
             (lambda (node _)
               (let* ((item (plist-get node :item))
                      (fromRanges (plist-get node :fromRanges))
+                     (label "")
                      name range filename selectionRange)
                 (setq name (gethash "name" item)
                       filename (lspce--uri-to-path (gethash "uri" item))
                       range (gethash "range" item)
                       selectionRange (gethash "selectionRange" item))
-                (insert-text-button name
+                (if lspce-call-hierarchy-show-position
+                    (let ((rname filename)
+                          (line (when-let* ((start (gethash "start" selectionRange)))
+                                  (or (gethash "line" start) 0))))
+                      (when (string-prefix-p (lspce--uri-to-path root-uri) rname)
+                        (setq rname (string-replace (lspce--uri-to-path root-uri) "" rname))
+                        (when (string-prefix-p "/" rname)
+                          (setq rname (substring-no-properties rname 1))))
+                      (setq rname (propertize rname 'face compilation-info-face))
+                      (setq line (propertize (format "%s" line) 'face compilation-line-face))
+                      (setq label (format "%s    %s:%s" name rname line)))
+                  (setq label name))
+                (insert-text-button label
                                     :type 'lspce-call-hierarchy-button
                                     'action (lambda (btn)
                                               ;; FIXME select-window may fail
