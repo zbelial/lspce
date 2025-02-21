@@ -111,6 +111,35 @@ When running hooks, current buffer is set to the buffer being edited."
 When running hooks, current buffer is set to the buffer being edited."
   :type 'hook)
 
+(defcustom lspce-enable-symbol-highlight t
+  "Whether enable lsp symbol highlighting."
+  :group 'lspce
+  :type 'boolean)
+
+(defcustom lspce-on-idle-hook nil
+  "on idle hook"
+  :type 'hook
+  :group 'lspce)
+
+(defcustom lspce-idle-delay 0.5
+  "idle time."
+  :type 'number
+  :group 'lspce)
+
+(defface lspce-face-highlight-textual
+  '((t :inherit highlight))
+  "Face used for textual occurrences of symbols."
+  :group 'lspce-mode)
+
+(defface lspce-face-highlight-read
+  '((t :inherit highlight :underline t))
+  "Face used for highlighting symbols being read."
+  :group 'lspce-mode)
+
+(defface lspce-face-highlight-write
+  '((t :inherit highlight :weight bold))
+  "Face used for highlighting symbols being written to."
+  :group 'lspce-mode)
 
 ;;; Logging
 (defvar lspce--log-level-text nil)
@@ -609,7 +638,7 @@ Doubles as an indicator of snippet support."
       (setq-local markdown-fontify-code-blocks-natively t)
       (insert string)
       (let ((inhibit-message t)
-	    (message-log-max nil))
+            (message-log-max nil))
         (ignore-errors (delay-mode-hooks (funcall mode))))
       (font-lock-ensure)
       (string-trim (buffer-string)))))
@@ -977,6 +1006,115 @@ matches any of the TRIGGER-CHARACTERS."
           (lspce--display-help (nth 0 hover-info) (nth 1 hover-info))))
     (user-error "Lspce mode is not enabled yet.")))
 
+(defun lspce--line-character-to-point (line character)
+  (lspce--widening
+   (goto-char (point-min))
+   (forward-line line)
+   (-let [line-end (line-end-position)]
+            (if (> character (- line-end (point)))
+                line-end
+              (forward-char character)
+              (point)))))
+
+
+;;; textDocument/documentHighlight
+
+(defconst lspce--highlight-kind-face
+  '((1 . lspce-face-highlight-textual)
+    (2 . lspce-face-highlight-read)
+    (3 . lspce-face-highlight-write)))
+
+(defalias 'lspce--textDocumentHighlightParams 'lspce--textDocumentPositionParams "lspce--textDocumentHighlightParams")
+
+(defun lspce--make-textDocumentHighlightParams ()
+  (lspce--textDocumentHighlightParams
+   (lspce--textDocumentIdenfitier (lspce--path-to-uri buffer-file-name))
+   (lspce--make-position)))
+
+(defun lspce--update-highlight ()
+  (interactive)
+  (let* ((wins-visible-pos (-map (lambda (win)
+                                   (cons (1- (window-start win))
+                                         (1+ (min (window-end win)
+                                                  (with-current-buffer (window-buffer win)
+                                                    (buffer-end +1))))))
+                                 (get-buffer-window-list nil nil 'visible))))
+    (--map (lspce--update-highlights-region (car it) (cdr it)) wins-visible-pos)))
+
+(defun lspce--update-highlights-region (start end)
+  (when (lspce--server-capable "documentHighlightProvider")
+    (let ((resp (lspce--request
+                 "textDocument/documentHighlight"
+                 (lspce--make-textDocumentHighlightParams)))
+          ;; TODO this needs correction and some optimize
+          (predicate (lambda (sym-start sym-end)
+                       (and (> sym-start start) (< sym-end end)))))
+      (when resp
+        (lspce--remove-highlight-overlays start end)
+        (lspce--highlight-symbols resp predicate)))))
+
+(defun lspce--remove-highlight-overlays (start end)
+  (lspce--debug "lspce--remove-highlight-overlays from %s to %s" start end)
+  (let ((ovs (overlays-in (1- start) (1+ end))))
+    (dolist (o ovs)
+      (when (overlay-get o 'lspce--highlight)
+        (lspce--debug "old overlay: %s" o)
+        (delete-overlay o)))))
+
+
+(defun lspce--highlight-symbols (highlights predicate)
+  (let ((items (cond ((or (arrayp highlights) (listp highlights)) highlights)
+                     ((hash-table-p highlights) (list highlights)))))
+    (condition-case err
+        (progn
+          (dolist (item items)
+            (let* ((range (or (gethash "range" item) (gethash "targetSelectionRange" item)))
+                   (kind? (gethash "kind" item))
+                   (kind (cond ((stringp kind?) (string-to-number kind?))
+                               ((numberp kind?) kind?)
+                               (t 1)))
+                   (start (gethash "start" range))
+                   (end (gethash "end" range))
+                   (start-line (gethash "line" start))
+                   (start-column (gethash "character" start))
+                   (end-line (gethash "line" end))
+                   (end-column (gethash "character" end))
+                   (start-point (lspce--line-character-to-point start-line start-column))
+                   (end-point (lspce--line-character-to-point end-line end-column)))
+              (when (funcall predicate start-point end-point)
+                (-doto (make-overlay start-point end-point)
+                  (overlay-put 'face (cdr (assq kind lspce--highlight-kind-face)))
+                  (overlay-put 'lspce--highlight t)
+                  (overlay-put 'lspce--overlay t)))))))))
+
+
+(defun lspce--post-command ()
+  (lspce--cleanup-highlights-if-needed)
+  (lspce--idle-reschedule (current-buffer)))
+
+(defvar lspce--on-idle-timer nil)
+
+(defun lspce--idle-reschedule (buffer)
+  (when lspce--on-idle-timer
+    (cancel-timer lsp--on-idle-timer))
+  (setq lsp--on-idle-timer
+        (run-with-idle-timer lspce-idle-delay nil #'lspce--on-idle buffer)))
+
+(defun lspce--on-idle (buffer)
+  "Start post command loop."
+  (when (and (buffer-live-p buffer)
+             (equal buffer (current-buffer)))
+    (run-hooks 'lspce-on-idle-hook)))
+
+(defun lspce--point-on-highlight? ()
+  (-some? (lambda (overlay)
+            (overlay-get overlay 'lspce--highlight))
+          (overlays-at (point))))
+
+(defun lspce--cleanup-highlights-if-needed ()
+  (when (and lspce-enable-symbol-highlight (not (lspce--point-on-highlight?)))
+    (remove-overlays nil nil 'lspce--highlight t)))
+
 (defun lspce--hover-at-point ()
   "Show document of the symbol at the point using LSP's hover."
   (when (and
@@ -1026,7 +1164,7 @@ matches any of the TRIGGER-CHARACTERS."
           (setq mode 'gfm-view-mode)
         (setq mode 'gfm-mode))
       (let ((inhibit-message t)
-	    (message-log-max nil))
+            (message-log-max nil))
         (ignore-errors (delay-mode-hooks (funcall mode))))
       (font-lock-ensure)
       (mapconcat #'identity (seq-filter (lambda (s) (not (string-match-p "^```" s)))
@@ -1758,6 +1896,9 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
       (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
       (add-hook 'before-save-hook 'lspce--notify-textDocument/willSave nil t)
       (add-hook 'after-save-hook 'lspce--notify-textDocument/didSave nil t)
+      (add-hook 'post-command-hook #'lspce--post-command nil t)
+      (when lspce-enable-symbol-highlight
+        (add-hook 'lspce-on-idle-hook #'lspce--update-highlight))
       (when lspce-enable-eldoc
         (when eldoc-mode
           (setq-local lspce--eldoc-already-enabled t))
@@ -1797,6 +1938,9 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
     (remove-hook 'after-save-hook 'lspce--notify-textDocument/didSave t)
     (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
     (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-function t)
+    (remove-hook 'post-command-hook #'lspce--post-command t)
+    (when lspce-enable-symbol-highlight
+      (remove-hook 'lspce-on-idle-hook #'lspce--update-highlight))
     (when lspce--server-info
       (lspce--notify-textDocument/didClose))
     (when lspce-enable-flymake
