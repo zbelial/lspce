@@ -126,6 +126,14 @@ impl LspServerData {
         }
     }
 }
+
+/// Represents a Language Server Protocol (LSP) server instance.
+///
+/// This struct manages the lifecycle of an LSP server process, including:
+/// - The child process handle
+/// - Server information (name, version, capabilities)
+/// - Connection state and transport threads
+/// - Server data and exit flag
 struct LspServer {
     pub child: Option<Child>,
     pub server_info: LspServerInfo,
