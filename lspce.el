@@ -126,18 +126,23 @@ When running hooks, current buffer is set to the buffer being edited."
   :type 'number
   :group 'lspce)
 
-(defface lspce-face-highlight-textual
+(defface lspce-face-highlight
   '((t :inherit highlight))
+  "Base face used for highlighting occurrences of symbols."
+  :group 'lspce-mode)
+
+(defface lspce-face-highlight-textual
+  '((t :inherit lspce-face-highlight))
   "Face used for textual occurrences of symbols."
   :group 'lspce-mode)
 
 (defface lspce-face-highlight-read
-  '((t :inherit highlight :underline t))
+  '((t :inherit lspce-face-highlight))
   "Face used for highlighting symbols being read."
   :group 'lspce-mode)
 
 (defface lspce-face-highlight-write
-  '((t :inherit highlight :weight bold))
+  '((t :inherit lspce-face-highlight :weight bold))
   "Face used for highlighting symbols being written to."
   :group 'lspce-mode)
 
