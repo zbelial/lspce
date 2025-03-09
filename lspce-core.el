@@ -566,16 +566,29 @@ Return value of `body', or nil if interrupted."
         (setq capabilities (gethash c capabilities))))
     capabilities))
 
-(defun lspce--root-uri ()
+(defun lspce--project-root ()
   (let ((proj (project-current))
-        root-uri)
-    (setq root-uri
+        proj-root)
+    (setq proj-root
           (if proj
               (project-root proj)
-            (when (member major-mode lspce-modes-enable-single-file-root)
+            (when (and
+                   buffer-file-name
+                   (member major-mode lspce-modes-enable-single-file-root))
               buffer-file-name)))
-    (when root-uri
-      (lspce--path-to-uri root-uri))))
+    proj-root))
+
+(defun lspce--root-uri ()
+  (let ((proj-root (lspce--project-root)))
+    (when proj-root
+      (lspce--path-to-uri proj-root))))
+
+(defun lspce--project-root-dir ()
+  (let ((proj-root (lspce--project-root)))
+    (when proj-root
+      (if (file-directory-p proj-root)
+          proj-root
+        (file-name-directory proj-root)))))
 
 (defun lspce--lsp-type ()
   (funcall lspce-lsp-type-function))

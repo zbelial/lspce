@@ -112,6 +112,11 @@
     (lspce--ensure-dir cache-dir)
     cache-dir))
 
+(defun lspce--jdtls-project-cache-dir ()
+  (let ((cache-dir (f-join (lspce--project-root-dir) ".lspce/")))
+    (lspce--ensure-dir cache-dir)
+    cache-dir))
+
 (defun lspce--jdtls-locate-server-jar ()
   "Return the jar file location of the language server.
 The entry point of the language server is in
@@ -177,7 +182,7 @@ The entry point of the language server is in
   (let ((filename (lspce--jdtls-get-jdt-filename uri))
         fullname content)
     (when filename 
-      (setq fullname (f-join (lspce--jdtls-workspace-cache-dir) filename))
+      (setq fullname (f-join (lspce--jdtls-project-cache-dir) filename))
       ;; FIXME use a cache to reduce requesting
       (lspce--debug "jdt link uri %s" uri)
       (setq content (lspce--request "java/classFileContents" (list :uri uri)))
