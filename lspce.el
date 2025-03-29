@@ -1038,13 +1038,13 @@ matches any of the TRIGGER-CHARACTERS."
 
 (defun lspce--update-highlight ()
   (interactive)
-  (let* ((wins-visible-pos (-map (lambda (win)
+  (let* ((wins-visible-pos (mapcar (lambda (win)
                                    (cons (1- (window-start win))
                                          (1+ (min (window-end win)
                                                   (with-current-buffer (window-buffer win)
                                                     (buffer-end +1))))))
                                  (get-buffer-window-list nil nil 'visible))))
-    (--map (lspce--update-highlights-region (car it) (cdr it)) wins-visible-pos)))
+    (mapcar (lambda (pos) (lspce--update-highlights-region (car pos) (cdr pos))) wins-visible-pos)))
 
 (defun lspce--update-highlights-region (start end)
   (when (lspce--server-capable "documentHighlightProvider")
@@ -1087,10 +1087,10 @@ matches any of the TRIGGER-CHARACTERS."
                    (start-point (lspce--line-character-to-point start-line start-column))
                    (end-point (lspce--line-character-to-point end-line end-column)))
               (when (funcall predicate start-point end-point)
-                (-doto (make-overlay start-point end-point)
-                  (overlay-put 'face (cdr (assq kind lspce--highlight-kind-face)))
-                  (overlay-put 'lspce--highlight t)
-                  (overlay-put 'lspce--overlay t)))))))))
+                (let ((ov (make-overlay start-point end-point)))
+                  (overlay-put ov 'face (cdr (assq kind lspce--highlight-kind-face)))
+                  (overlay-put ov 'lspce--highlight t)
+                  (overlay-put ov 'lspce--overlay t)))))))))
 
 
 (defun lspce--post-command ()
