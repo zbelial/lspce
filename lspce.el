@@ -111,7 +111,7 @@ When running hooks, current buffer is set to the buffer being edited."
 When running hooks, current buffer is set to the buffer being edited."
   :type 'hook)
 
-(defcustom lspce-enable-symbol-highlight t
+(defcustom lspce-enable-symbol-highlight nil
   "Whether enable lsp symbol highlighting."
   :group 'lspce
   :type 'boolean)
