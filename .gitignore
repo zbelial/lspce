@@ -50,3 +50,5 @@ Thumbs.db
 
 lspce-module.so
 lspce-module.so.*
+
+.aider*
