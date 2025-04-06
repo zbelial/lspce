@@ -220,7 +220,7 @@ The entry point of the language server is in
     (lspce--add-option "settings.java.project.importHint" t options)
     (lspce--add-option "settings.java.project.importOnFirstTimeStartup"
                        "automatic" options)
-    (lspce--add-option "settings.java.project.referecedLibraries"
+    (lspce--add-option "settings.java.project.referencedLibraries"
                        (vector "lib/**/*.jar") options)
     (lspce--add-option "settings.java.trace.server" "off" options)
     (lspce--add-option "settings.java.configuration.updateBuildConfiguration"
