@@ -1951,7 +1951,12 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
     (when lspce-enable-flymake
       (if (not lspce--flymake-already-enabled)
           (flymake-mode -1)
-        (mapc #'delete-overlay (flymake-diagnostics))))
+        ;; Extract the overlay from each diagnostic before deletion
+        ;; This prevents "wrong-type-argument overlayp" errors
+        (mapc (lambda (diag)
+                (when-let ((overlay (flymake--diag-overlay diag)))
+                  (delete-overlay overlay)))
+              (flymake-diagnostics))))
     (when (and lspce-enable-eldoc
                (not lspce--eldoc-already-enabled))
       (eldoc-mode -1))
