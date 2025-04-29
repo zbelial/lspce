@@ -127,7 +127,7 @@
   | lspce-enable-logging                             | nil            | If non-nil, enable logging to file.                                                                 |
   | lspce-auto-enable-within-project                 | t              | If non-nil, enable lspce when a file is opened if lspce has already been enabled in current project |
   | lspce-after-text-edit-hook                       | nil            | Functions called after finishing all text edits in a buffer.                                        |
-  | lspce-afte-each-text-edit-hook                   | nil            | Functions called after finishing each text edit in a buffer.                                        |
+  | lspce-after-each-text-edit-hook                  | nil            | Functions called after finishing each text edit in a buffer.                                        |
   | lspce-show-log-level-in-modeline                 | t              | If non-nil, show log level in modeline.                                                             |
   | lspce-inherit-exec-path                          | nil            | If non-nil, pass `exec-path' as PATH to rust code to create the lsp subprocess.                     |
   | MAX_DIAGNOSTIC_COUNT                             | 30             | How many diagnostics should be retrieved.                                                           |
