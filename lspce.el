@@ -1914,6 +1914,8 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
           (setq-local lspce--flymake-already-enabled t))
         (lspce--save-and-rebind flymake-diagnostic-functions
                                 '(lspce-flymake-backend))
+        ;; postpone flymake check since there is no diagnostic yet
+        (setq-local flymake-start-on-flymake-mode nil)
         (flymake-mode 1))
       (when lspce-enable-imenu-index-function
         (lspce--save-and-rebind imenu-create-index-function
@@ -1928,7 +1930,13 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
               (lspce-mode -1)))
         ((error user-error quit)
          (lspce--error "lspce-mode enable: error [%s]" err)
-         (lspce-mode -1))))))
+         (lspce-mode -1)))
+
+      (when lspce-enable-flymake
+        ;; if diagnostics configured, then server will send `publishDiagnostics'
+        ;; notification after receiving a `didOpen' one. So, wait a bit more to
+        ;; let it arrive and be checked synchroniously by flymake. 
+        (run-with-timer lspce-idle-delay nil #'flymake-start t)))))
    (t
     (remove-hook 'after-change-functions 'lspce--after-change t)
     (remove-hook 'before-change-functions 'lspce--before-change t)
@@ -1951,7 +1959,12 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
     (when lspce-enable-flymake
       (if (not lspce--flymake-already-enabled)
           (flymake-mode -1)
-        (mapc #'delete-overlay (flymake-diagnostics))))
+        ;; Extract the overlay from each diagnostic before deletion
+        ;; This prevents "wrong-type-argument overlayp" errors
+        (mapc (lambda (diag)
+                (when-let ((overlay (flymake--diag-overlay diag)))
+                  (delete-overlay overlay)))
+              (flymake-diagnostics))))
     (when (and lspce-enable-eldoc
                (not lspce--eldoc-already-enabled))
       (eldoc-mode -1))
