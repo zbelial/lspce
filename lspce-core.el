@@ -30,7 +30,7 @@
   :group 'lspce
   :type 'integer)
 
-(defcustom lspce-modes-enable-single-file-root '(python-mode)
+(defcustom lspce-modes-enable-single-file-root '(python-mode python-ts-mode)
   "Major modes where lspce enables even for a single file (IOW no project)."
   :group 'lspce
   :type 'list)
