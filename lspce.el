@@ -799,7 +799,7 @@ matches any of the TRIGGER-CHARACTERS."
               collection
               (lambda (proxy)
                 (let* ((item (get-text-property 0 'lspce--lsp-item proxy))
-                       (filterText (gethash "filterText" item)))
+                       (filterText (and item (gethash "filterText" item))))
                   (and (or (null pred) (funcall pred proxy))
                        (string-prefix-p
                         probe (or filterText proxy) lspce-completion-ignore-case)))))))))
