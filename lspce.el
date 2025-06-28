@@ -807,11 +807,13 @@ matches any of the TRIGGER-CHARACTERS."
               (lambda (proxy)
                 (let* ((item (get-text-property 0 'lspce--lsp-item proxy))
                        (filterText (and item (gethash "filterText" item))))
-                  (message "item: %s" item)
-                  (message "filterText: %s" filterText)
-                  (message "probe: %s" probe)
+                  (lspce--debug "item: %s" item)
+                  (lspce--debug "filterText: %s" filterText)
+                  (lspce--debug "probe: %s" probe)
                   ;; FIXME typescript-language-server returns filterText and newText with a "." prefix,
                   ;; it will make the following string-prefix-p fail since probe does not have a "."
+                  ;; NOTE https://github.com/typescript-language-server/typescript-language-server/issues/631
+                  ;; There is useful information about filterText in the above link.
                   (and (or (null pred) (funcall pred proxy))
                        (string-prefix-p
                         probe (or filterText proxy) lspce-completion-ignore-case)))))))))
