@@ -706,11 +706,11 @@ matches any of the TRIGGER-CHARACTERS."
                             (buffer-substring-no-properties bounds-start (point)))))
                      (old-cached-proxies
                       (and same-session?
-                           lspce--completion-cache
                            (lspce-completionCache-candidates lspce--completion-cache))))
                 (if same-session?
                     (lspce--debug "same-session")
                   (lspce--debug "not same-session"))
+                (lspce--debug "last insert char: " lspce--last-inserted-char)
                 (cond
                  ((or done? (listp cached-proxies))
                   (lspce--debug "use cached-proxies")
@@ -721,11 +721,13 @@ matches any of the TRIGGER-CHARACTERS."
                   (lspce--debug "use old cached-proxies")
                   (setq cached-proxies old-cached-proxies))
                  (t
+                  (lspce--debug "new completion request")
                   (let* ((completions (lspce--request-completion))
                          (complete? (nth 0 completions))
                          (items (nth 1 completions))
                          (markers (list bounds-start (copy-marker (point) t)))
                          (prefix (buffer-substring-no-properties bounds-start (point))))
+                    (lspce--debug "completion result: %s" (json-encode completions))
                     (if completions
                         (progn
                           (if complete?
@@ -780,6 +782,7 @@ matches any of the TRIGGER-CHARACTERS."
        (point)
        (lambda (probe pred action)
          (let (collection)
+           (lspce--debug "action: %s" action)
            (cond
             ((eq action 'metadata) `(metadata (category . lspce-capf)
                                               (display-sort-function . ,sort-completions)
@@ -788,18 +791,27 @@ matches any of the TRIGGER-CHARACTERS."
             ;; test-completion: not return exact match so that the selection will
             ;; always be shown
             ((eq action 'lambda)                           ; test-completion
-             nil)
+             (setq collection (funcall proxies))
+             (lspce--debug "lambda collection: %s" collection)
+             (test-completion pattern collection))
             ((null action)                                 ; try-completion
              (setq collection (funcall proxies))
+             (lspce--debug "null collection: %s" collection)
              (try-completion probe collection))
             ((eq action t)                                 ; all-completions
              (setq collection (funcall proxies))
+             (lspce--debug "t collection: %s" collection)
              (all-completions
               probe
               collection
               (lambda (proxy)
                 (let* ((item (get-text-property 0 'lspce--lsp-item proxy))
                        (filterText (and item (gethash "filterText" item))))
+                  (message "item: %s" item)
+                  (message "filterText: %s" filterText)
+                  (message "probe: %s" probe)
+                  ;; FIXME typescript-language-server returns filterText and newText with a "." prefix,
+                  ;; it will make the following string-prefix-p fail since probe does not have a "."
                   (and (or (null pred) (funcall pred proxy))
                        (string-prefix-p
                         probe (or filterText proxy) lspce-completion-ignore-case)))))))))
