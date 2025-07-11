@@ -1914,6 +1914,7 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
       (add-hook 'pre-command-hook 'lspce--pre-command-hook nil t)
       (add-hook 'post-self-insert-hook 'lspce--post-self-insert-hook nil t)
       (add-hook 'before-save-hook 'lspce--notify-textDocument/willSave nil t)
+      (add-hook 'before-save-hook 'lspce--request-textDocument/willSaveWaitUntil nil t)
       (add-hook 'after-save-hook 'lspce--notify-textDocument/didSave nil t)
       (add-hook 'post-command-hook #'lspce--post-command nil t)
       (when lspce-enable-symbol-highlight
@@ -1962,6 +1963,7 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
     (remove-hook 'pre-command-hook 'lspce--pre-command-hook t)
     (remove-hook 'post-self-insert-hook 'lspce--post-self-insert-hook t)
     (remove-hook 'before-save-hook 'lspce--notify-textDocument/willSave t)
+    (remove-hook 'before-save-hook 'lspce--request-textDocument/willSaveWaitUntil t)
     (remove-hook 'after-save-hook 'lspce--notify-textDocument/didSave t)
     (remove-hook 'flymake-diagnostic-functions 'lspce-flymake-backend t)
     (remove-hook 'eldoc-documentation-functions #'lspce-eldoc-function t)
