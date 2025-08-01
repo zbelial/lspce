@@ -95,8 +95,12 @@ be set to `lspce-move-to-lsp-abiding-column', and
 (defvar lspce--lsp-type-map (make-hash-table :test #'equal)
   "Use file name extension to determine lsp type.")
 
+(defvar lspce--language-id-map (make-hash-table :test #'equal)
+  "Use file name extension to determine language id.")
+
 (defun lspce--lsp-type-default ()
-  "The return value is also used as language-id."
+  "Default lsp type function. Lsp type is used to determine which
+language server to use."
   (let ((suffix "")
         (mm (symbol-name major-mode))
         lsp-type)
@@ -122,8 +126,35 @@ be set to `lspce-move-to-lsp-abiding-column', and
               (string-remove-suffix "-mode" (symbol-name major-mode))))))
     lsp-type))
 
-(defalias 'lspce--buffer-language-id
-  'lspce--lsp-type-default "lspce--buffer-language-id")
+(defun lspce--buffer-language-id ()
+  "Language id of current buffer."
+  (let ((suffix "")
+        (mm (symbol-name major-mode))
+        language-id)
+    (when buffer-file-name
+      (setq suffix (file-name-extension buffer-file-name)))
+    (setq language-id (gethash suffix lspce--language-id-map))
+    (unless language-id
+      (setq language-id
+            (cond
+             ((member suffix '("js"))
+              "javascript")
+             ((member suffix '("ts"))
+              "typescript")
+             ((member suffix '("tsx"))
+              "typescriptreact")
+             ((member suffix '("c" "c++" "cpp" "h" "hpp" "cxx" "cc"))
+              "C")
+             ((member mm '("go-mode" "go-ts-mode"))
+              "go")
+             ((string-suffix-p "-ts-mode" mm)
+              (string-remove-suffix "-ts-mode" mm))
+             (t
+              (string-remove-suffix "-mode" (symbol-name major-mode))))))
+    language-id))
+
+;; (defalias 'lspce--buffer-language-id
+;;   'lspce--lsp-type-default "lspce--buffer-language-id")
 
 (defvar lspce-lsp-type-function #'lspce--lsp-type-default
   "Function to figure out the lsp type of current buffer.")
