@@ -242,7 +242,7 @@ for normal snippets, and a list for command snippets)."
 
 (defun lspce--json-deserialize (str)
   "Parse the JSON STRING into a Lisp object."
-  (json-parse-string str :array-type 'list :null-object nil :false-object nil))
+  (json-parse-string str :array-type 'list :null-object nil :false-object :json-false))
 
 (defalias 'lspce--json-serialize #'json-encode)
 
