@@ -1885,10 +1885,12 @@ Records BEG, END and PRE-CHANGE-LENGTH locally."
                               (setq lspce--change-idle-timer nil))))))))
 
 (defun lspce--before-revert-hook ()
+  (lspce--info "run before-revert-hook for %s" (current-buffer))
   (lspce--notify-textDocument/didClose))
 
 (defun lspce--after-revert-hook ()
   "Lspce's `after-revert-hook'."
+  (lspce--info "run after-revert-hook for %s" (current-buffer))
   (lspce--notify-textDocument/didOpen))
 
 
