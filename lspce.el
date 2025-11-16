@@ -793,7 +793,7 @@ matches any of the TRIGGER-CHARACTERS."
             ((eq action 'lambda)                           ; test-completion
              (setq collection (funcall proxies))
              (lspce--debug "lambda collection: %s" collection)
-             (test-completion pattern collection))
+             (test-completion probe collection))
             ((null action)                                 ; try-completion
              (setq collection (funcall proxies))
              (lspce--debug "null collection: %s" collection)
