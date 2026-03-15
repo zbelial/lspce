@@ -1622,8 +1622,8 @@ at point.  With prefix argument, prompt for ACTION-KIND."
    (list (read-from-minibuffer
           (format "Rename `%s' to: " (or (thing-at-point 'symbol t)
                                          "unknown symbol"))
-          nil nil nil nil
-          (symbol-name (symbol-at-point)))))
+          (or (thing-at-point 'symbol t) "") nil nil nil
+          (or (thing-at-point 'symbol t) ""))))
   (if (lspce--server-capable-chain "renameProvider")
       (let ((response (lspce--request "textDocument/rename" (lspce--make-renameParams newname))))
         (when response
