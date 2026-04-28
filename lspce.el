@@ -94,7 +94,9 @@ if lspce is running in current project."
   "If non-nil, when finding definitions, also query implementations
  and append them to definitions."
   :group 'lspce
-  :type 'boolean)
+  :type '(choice (const :tag "No appending" nil)
+                 (const :tag "Append implementations in all buffers" t)
+                 (repeat :tag "Language ids in which implementations should be appended to definitions" string)))
 
 (defcustom lspce-enable-imenu-index-function nil
   "If non-nil, set `lspce-imenu-create' as `imenu-create-index-function'."
@@ -387,7 +389,9 @@ If optional MARKERS, make markers."
                                          (lspce--make-definitionParams))))
           (when response
             (setq defs (lspce--locations-to-xref response)))))
-      (when (and lspce-xref-append-implementations-to-definitions
+      (when (and (or (eq lspce-xref-append-implementations-to-definitions t)
+                     (and (listp lspce-xref-append-implementations-to-definitions)
+                          (member lspce--lsp-type lspce-xref-append-implementations-to-definitions)))
                  (lspce--server-capable "implementationProvider"))
         (let* ((method "textDocument/implementation")
                (response (lspce--request method
