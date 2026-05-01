@@ -64,6 +64,11 @@
   :group 'lspce
   :type 'boolean)
 
+(defcustom lspce-eldoc-display-backend "[lspce]"
+  "If non-nil, display this variable above the documentation as a header"
+  :group 'lspce
+  :type '(choice string (const nil)))
+
 (defcustom lspce-enable-flymake t
   "If non-nil, enable flymake."
   :group 'lspce
@@ -1271,7 +1276,8 @@ matches any of the TRIGGER-CHARACTERS."
        ((or signature content)
         (setq document (concat signature content))))
       (when document
-        (setq backend (propertize "[lspce]\n" 'face 'lspce-eldoc-backend-face))
+        (when lspce-eldoc-display-backend
+          (setq backend (propertize (concat lspce-eldoc-display-backend "\n") 'face 'lspce-eldoc-backend-face)))
         (funcall callback (concat backend document))))))
 
 ;;; diagnostics
