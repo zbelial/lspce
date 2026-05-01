@@ -158,6 +158,7 @@ impl LspServer {
         Logger::info(&format!("emacs_envs: {}", &emacs_envs));
 
         let mut child;
+        let root_dir = root_uri.strip_prefix("file://").unwrap_or(&root_uri);
         if !emacs_envs.is_empty() {
             let envs = serde_json::from_str::<HashMap<String, String>>(&emacs_envs);
             match envs {
@@ -168,7 +169,8 @@ impl LspServer {
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
                         .envs(envs)
-                        .spawn();                    
+                        .current_dir(root_dir)
+                        .spawn();
                 }
                 Err(e) => {
                     Logger::error(&format!(
@@ -176,13 +178,14 @@ impl LspServer {
                     ));
                     return None;
                 }
-            } 
+            }
         } else {
             child = Command::new(cmd)
                 .args(args)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
+                .current_dir(root_dir)
                 .spawn();
         }
 

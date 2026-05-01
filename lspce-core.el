@@ -163,8 +163,8 @@ language server to use."
 
 (cl-defstruct lspce-documentChange
   (kind) ;; change, documentChange, create, rename or delete
-  (change) ;; 
-  )
+  (change)) ;; 
+  
 
 (cl-defstruct lspce-completionCache
   (prefix-start)
@@ -221,6 +221,7 @@ language server to use."
                   :synchronization (list
                                     :dynamicRegistration :json-false
                                     :willSave t
+                                    :willSaveWaitUntil t
                                     :didSave t)
                   :completion      (list
                                     :dynamicRegistration :json-false
@@ -236,8 +237,7 @@ language server to use."
                                                      :tagSupport (list :valueSet [1])
                                                      :preselectSupoort :json-false
                                                      :insertReplaceSupport :json-false
-                                                     :resolveSupport (list :properties (vector "documentation" "details" "additionalTextEdits"))
-                                                     )
+                                                     :resolveSupport (list :properties (vector "documentation" "details" "additionalTextEdits")))
                                     :contextSupport t)
                   :hover              (list
                                        :dynamicRegistration :json-false
@@ -305,8 +305,8 @@ language server to use."
                                        :tagSupport (list :valueSet [1 2]))
                   :callHierarchy (list
                                   :dynamicRegistration :json-false))
-   :experimental lspce--{})
-  )
+   :experimental lspce--{}))
+  
 
 (defun lspce--initializeParams (rootUri &optional initializationOptions trace workspaceFolders)
   "初始化参数"
@@ -745,13 +745,22 @@ Return value of `body', or nil if interrupted."
     (lspce--notify
      "textDocument/didClose" (lspce--make-didCloseTextDocumentParams))))
 
+(defun lspce--make-willSaveTextDocumentParams ()
+  (list :textDocument (lspce--textDocumentIdenfitier (lspce--uri))
+        :reason 1))
+
 (defun lspce--notify-textDocument/willSave ()
   "Send textDocument/willSave to server."
   (when (lspce--server-capable-chain "textDocumentSync" "willSave")
     (lspce--notify
      "textDocument/willSave"
-     (list :textDocument
-           (lspce--textDocumentIdenfitier (lspce--uri)) :reason 1))))
+     (lspce--make-willSaveTextDocumentParams))))
+
+(defun lspce--request-textDocument/willSaveWaitUntil ()
+  "Request textDocument/willSaveWaitUntil."
+  (when (lspce--server-capable-chain "textDocumentSync" "willSaveWaitUntil")
+    (let ((response (lspce--request "textDocument/willSaveWaitUntil" (lspce--make-willSaveTextDocumentParams) 1)))
+      (when response (lspce--apply-text-edits response)))))
 
 (defun lspce--notify-textDocument/didSave ()
   "Send textDocument/willSave to server."
@@ -936,8 +945,8 @@ Return value of `body', or nil if interrupted."
               (lspce--info "Server message: %s" message))
              ((eq message-type 4)
               (lspce--debug "Server message: %s" message))))
-           (t
-            )))))))
+           (t)))))))
+            
 
 
 (provide 'lspce-core)
